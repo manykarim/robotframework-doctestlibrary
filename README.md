@@ -56,35 +56,35 @@ Compare two PDF Docments and ignore parts by using masks
 ##### Areas, Coordinates, Text Patterns
 ```python
 [
-    {
-		"page": "all",
-		"name": "Date Pattern",
-		"type": "pattern",
-		"pattern": ".*[0-9]{2}-[a-zA-Z]{3}-[0-9]{4}.*"
-    },
-    {
-		"page": "1",
-		"name": "Top Border",
-		"type": "area",
-        "location": "top",
-        "percent":  5
-    }
-    {
-		"page": "1",
-		"name": "Left Border",
-		"type": "area",
-        "location": "left",
-        "percent":  5
-    },
-    {
-		"page": 1,
-		"name": "Top Rectangle",
-		"type": "coordinates",
-		"x": 0,
-		"y": 0,
-		"height": 10,
-		"width": 210,
-		"unit": "mm"
+	{
+	"page": "all",
+	"name": "Date Pattern",
+	"type": "pattern",
+	"pattern": ".*[0-9]{2}-[a-zA-Z]{3}-[0-9]{4}.*"
+	},
+	{
+	"page": "1",
+	"name": "Top Border",
+	"type": "area",
+	"location": "top",
+	"percent":  5
+	},
+	{
+	"page": "1",
+	"name": "Left Border",
+	"type": "area",
+	"location": "left",
+	"percent":  5
+	},
+	{
+	"page": 1,
+	"name": "Top Rectangle",
+	"type": "coordinates",
+	"x": 0,
+	"y": 0,
+	"height": 10,
+	"width": 210,
+	"unit": "mm"
 	}
 ]
 ```
