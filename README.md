@@ -21,16 +21,19 @@ Powered by
 
 See keyword documentation for
 
-- [Visual Document Tests](https://github.com/manykarim/robotframework-doctestlibrary/VisualTest.html)
-- [Print Job Tests](https://github.com/manykarim/robotframework-doctestlibrary/PrintJobTest.html)
-- [Pdf Tests (very basic)](https://github.com/manykarim/robotframework-doctestlibrary/PdfTest.html)
+- [Visual Document Tests](./VisualTest.html)
+- [Print Job Tests](./PrintJobTest.html)
+- [Pdf Tests (very basic)](./PdfTest.html)
 
 # Installation instructions
 
 Only Python 3.X or newer is supported.
 
+
 1. Clone the robotframework-doctestlibrary `git clone https://github.com/manykarim/robotframework-doctestlibrary.git`
-2. Install robotframework-doctestlibrary from the commandline: `python setup.py install`
+2. Install robotframework-doctestlibrary via `pip` or `setup.py`
+   * `pip install --upgrade robotframework-doctestlibrary`
+   * `python setup.py install`
 3. Install Tesseract, Ghoscript, GhostPCL, ImageMagick binaries
    * Linux
      * `apt-get install imagemagick`
