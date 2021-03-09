@@ -20,9 +20,10 @@ Powered by
 - The knowledge of stackoverflow.com
 
 See keyword documentation for
-[Visual Document Tests](https://github.com/manykarim/robotframework-doctestlibrary/VisualTest.html).
-[Print Job Tests](https://github.com/manykarim/robotframework-doctestlibrary/PrintJobTest.html).
-[Pdf Tests (very basic)](https://github.com/manykarim/robotframework-doctestlibrary/PdfTest.html).
+
+- [Visual Document Tests](https://github.com/manykarim/robotframework-doctestlibrary/VisualTest.html)
+- [Print Job Tests](https://github.com/manykarim/robotframework-doctestlibrary/PrintJobTest.html)
+- [Pdf Tests (very basic)](https://github.com/manykarim/robotframework-doctestlibrary/PdfTest.html)
 
 # Installation instructions
 
