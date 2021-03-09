@@ -1,0 +1,14 @@
+[
+    {
+		"page": "all",
+		"name": "Ref ID",
+		"type": "pattern",
+		"pattern": ".*RTMOE.*"
+	},
+	{
+		"page": "all",
+		"name": "Job ID",
+		"type": "pattern",
+		"pattern": "JobID.*"
+	}
+]

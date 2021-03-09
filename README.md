@@ -1,6 +1,10 @@
 # robotframework-doctestlibrary
 ----
 
+Project will be moved to GitHub soon as a public package.
+So some links in this readme already refer to the future GitHub Locations.
+Sorry for the inconvenience.
+
 [Robot Framework](https://robotframework.org) DocTest library.
 Simple Automated Visual Document Testing.
 
@@ -23,11 +27,55 @@ Only Python 3.X or newer is supported.
 
 1. Clone the robotframework-doctestlibrary `git clone https://github.com/manykarim/robotframework-doctestlibrary.git`
 2. Install robotframework-doctestlibrary from the commandline: `python setup.py install`
-3. Install Tesseract, Ghoscript and GhostPCL binaries
+3. Install Tesseract, Ghoscript, GhostPCL, ImageMagick binaries
+   * Linux
+     * `apt-get install imagemagick`
+     * `apt-get install tesseract-ocr`
+     * `apt-get install ghostscript`
+     * `apt-get install libdmtx0b`
+   * Windows
+     * https://github.com/UB-Mannheim/tesseract/wiki
+     * https://www.ghostscript.com/download/gsdnld.html
+     * https://www.ghostscript.com/download/gpcldnld.html
+     * https://imagemagick.org/script/download.php
 
-Or use the [docker images](https://github.com/manykarim/robotframework-doctestlibrary/packages).
+
+## Some special instructions for Windows 
+
+### Add tesseract, ghostscript and imagemagick to system path in windows
+* C:\Program Files\ImageMagick-7.0.10-Q16-HDRI
+* C:\Program Files\Tesseract-OCR
+* C:\Program Files\gs\gs9.53.1\bin
+* C:\Program Files\gs\ghostpcl-9.53.1-win64
+
+(The folder names and versions on your system might be different)
+
+That means: When you open the CMD shell you can run the commands
+* `magick.exe`
+* `tesseract.exe`
+* `gswin64.exe`
+* `pcl6.exe`
+
+successfully from any folder/location
+
+### Rename executable for GhostPCL to pcl6.exe
+The executable for GhostPCL `gpcl6win64.exe` needs to be renamed to `pcl6.exe`
+
+Otherwise it will not be possible to render .pcl files successfully for visual comparison.
+
+## Docker
+
+You can also use the [docker images](https://github.com/manykarim/robotframework-doctestlibrary/packages) or create your own Docker Image
+`docker build -t robotframework-doctest .`
+Afterwards you can e.g. start the container and run the povided examples like this:
+* Windows
+  * `docker run -t -v "%cd%":/opt/test -w /opt/test robotframework-doctest robot atest/Compare.robot`
+* Linux
+  * `docker run -t -v $PWD:/opt/test -w /opt/test robotframework-doctest robot atest/Compare.robot`
 
 # Examples
+
+Check the `/atest/Compare.robot` test suite for some examples
 
 ### Testing with [Robot Framework](https://robotframework.org)
 ```RobotFramework
@@ -56,36 +104,36 @@ Compare two PDF Docments and ignore parts by using masks
 ##### Areas, Coordinates, Text Patterns
 ```python
 [
-	{
-	"page": "all",
-	"name": "Date Pattern",
-	"type": "pattern",
-	"pattern": ".*[0-9]{2}-[a-zA-Z]{3}-[0-9]{4}.*"
-	},
-	{
-	"page": "1",
-	"name": "Top Border",
-	"type": "area",
-	"location": "top",
-	"percent":  5
-	},
-	{
-	"page": "1",
-	"name": "Left Border",
-	"type": "area",
-	"location": "left",
-	"percent":  5
-	},
-	{
-	"page": 1,
-	"name": "Top Rectangle",
-	"type": "coordinates",
-	"x": 0,
-	"y": 0,
-	"height": 10,
-	"width": 210,
-	"unit": "mm"
-	}
+    {
+    "page": "all",
+    "name": "Date Pattern",
+    "type": "pattern",
+    "pattern": ".*[0-9]{2}-[a-zA-Z]{3}-[0-9]{4}.*"
+    },
+    {
+    "page": "1",
+    "name": "Top Border",
+    "type": "area",
+    "location": "top",
+    "percent":  5
+    },
+    {
+    "page": "1",
+    "name": "Left Border",
+    "type": "area",
+    "location": "left",
+    "percent":  5
+    },
+    {
+    "page": 1,
+    "name": "Top Rectangle",
+    "type": "coordinates",
+    "x": 0,
+    "y": 0,
+    "height": 10,
+    "width": 210,
+    "unit": "mm"
+    }
 ]
 ```
 ### Accept visual different by checking move distance or text content
