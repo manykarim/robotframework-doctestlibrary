@@ -1,10 +1,5 @@
 # robotframework-doctestlibrary
 ----
-
-Project will be moved to GitHub soon as a public package.
-So some links in this readme already refer to the future GitHub Locations.
-Sorry for the inconvenience.
-
 [Robot Framework](https://robotframework.org) DocTest library.
 Simple Automated Visual Document Testing.
 
