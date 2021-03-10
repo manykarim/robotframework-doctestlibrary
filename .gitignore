@@ -4,6 +4,7 @@ logs/
 __pycache__/
 dist/
 build/
+robotframework_doctestlibrary.egg-info/
 log.html
 output.xml
 report.html
