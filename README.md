@@ -24,8 +24,11 @@ See keyword documentation for
 
 Only Python 3.X or newer is supported.
 
+In general, an installation via `pip` or `setup.py` is possible.
 
-1. Clone the robotframework-doctestlibrary `git clone https://github.com/manykarim/robotframework-doctestlibrary.git`
+I recommend to use `pip` as it will also install a required binary `libdmtx-64.dll` (for windows) automatically.  
+
+1. Clone the robotframework-doctestlibrary `git clone https://github.com/manykarim/robotframework-doctestlibrary.git` (only needed for installing via `setup.py`)
 2. Install robotframework-doctestlibrary via `pip` or `setup.py`
    * `pip install --upgrade robotframework-doctestlibrary`
    * `python setup.py install`
@@ -64,6 +67,14 @@ successfully from any folder/location
 The executable for GhostPCL `gpcl6win64.exe` needs to be renamed to `pcl6.exe`
 
 Otherwise it will not be possible to render .pcl files successfully for visual comparison.
+
+### Windows error message regarding pylibdmtx
+
+[How to solve ImportError for pylibdmtx](https://github.com/NaturalHistoryMuseum/pylibdmtx/#windows-error-message)
+
+If you see an ugly `ImportError` when importing `pylibdmtx` on
+Windows you will most likely need the [Visual C++ Redistributable Packages for
+Visual Studio 2013](https://www.microsoft.com/en-US/download/details.aspx?id=40784). Install `vcredist_x64.exe` if using 64-bit Python, `vcredist_x86.exe` if using 32-bit Python.
 
 ## Docker
 
