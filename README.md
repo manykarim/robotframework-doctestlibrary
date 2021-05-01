@@ -32,7 +32,7 @@ I recommend to use `pip` as it will also install a required binary `libdmtx-64.d
 2. Install robotframework-doctestlibrary via `pip` or `setup.py`
    * `pip install --upgrade robotframework-doctestlibrary`
    * `python setup.py install`
-3. Install Tesseract, Ghoscript, GhostPCL, ImageMagick binaries
+3. Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries
    * Linux
      * `apt-get install imagemagick`
      * `apt-get install tesseract-ocr`
@@ -75,6 +75,17 @@ Otherwise it will not be possible to render .pcl files successfully for visual c
 If you see an ugly `ImportError` when importing `pylibdmtx` on
 Windows you will most likely need the [Visual C++ Redistributable Packages for
 Visual Studio 2013](https://www.microsoft.com/en-US/download/details.aspx?id=40784). Install `vcredist_x64.exe` if using 64-bit Python, `vcredist_x86.exe` if using 32-bit Python.
+
+##ImageMagick
+
+The library might return the error `File could not be converted by ImageMagick to OpenCV Image: <path to the file>` when comparing PDF files.
+This is due to ImageMagick permissions. Verify this as follows with the `sample.pdf` in the `testdata` directory:
+```bash
+convert sample.pdf sample.jpg 
+convert-im6.q16: attempt to perform an operation not allowed by the security policy
+```
+
+Solution is to copy the `policy.xml` from the repository to the ImageMagick installation directory.
 
 ## Docker
 
