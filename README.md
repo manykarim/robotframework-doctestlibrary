@@ -47,6 +47,11 @@ I recommend to use `pip` as it will also install a required binary `libdmtx-64.d
 
 ## Some special instructions for Windows 
 
+### Rename executable for GhostPCL to pcl6.exe
+The executable for GhostPCL `gpcl6win64.exe` needs to be renamed to `pcl6.exe`
+
+Otherwise it will not be possible to render .pcl files successfully for visual comparison.
+
 ### Add tesseract, ghostscript and imagemagick to system path in windows
 * C:\Program Files\ImageMagick-7.0.10-Q16-HDRI
 * C:\Program Files\Tesseract-OCR
@@ -62,11 +67,6 @@ That means: When you open the CMD shell you can run the commands
 * `pcl6.exe`
 
 successfully from any folder/location
-
-### Rename executable for GhostPCL to pcl6.exe
-The executable for GhostPCL `gpcl6win64.exe` needs to be renamed to `pcl6.exe`
-
-Otherwise it will not be possible to render .pcl files successfully for visual comparison.
 
 ### Windows error message regarding pylibdmtx
 
@@ -91,7 +91,7 @@ Solution is to copy the `policy.xml` from the repository to the ImageMagick inst
 
 You can also use the [docker images](https://github.com/manykarim/robotframework-doctestlibrary/packages) or create your own Docker Image
 `docker build -t robotframework-doctest .`
-Afterwards you can e.g. start the container and run the povided examples like this:
+Afterwards you can, e.g., start the container and run the povided examples like this:
 * Windows
   * `docker run -t -v "%cd%":/opt/test -w /opt/test robotframework-doctest robot atest/Compare.robot`
 * Linux
@@ -99,7 +99,7 @@ Afterwards you can e.g. start the container and run the povided examples like th
 
 # Examples
 
-Check the `/atest/Compare.robot` test suite for some examples
+Check the `/atest/Compare.robot` test suite for some examples.
 
 ### Testing with [Robot Framework](https://robotframework.org)
 ```RobotFramework
@@ -124,7 +124,7 @@ Compare two Images and ignore parts by using masks
 Compare two PDF Docments and ignore parts by using masks
     Compare Images    Reference.jpg    Candidate.jpg    placeholder_file=masks.json
 ```
-#### Different Mask Types to ignore parts from comparison
+#### Different Mask Types to Ignore Parts When Comparing
 ##### Areas, Coordinates, Text Patterns
 ```python
 [
