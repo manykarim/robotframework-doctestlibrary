@@ -76,7 +76,7 @@ If you see an ugly `ImportError` when importing `pylibdmtx` on
 Windows you will most likely need the [Visual C++ Redistributable Packages for
 Visual Studio 2013](https://www.microsoft.com/en-US/download/details.aspx?id=40784). Install `vcredist_x64.exe` if using 64-bit Python, `vcredist_x86.exe` if using 32-bit Python.
 
-##ImageMagick
+## ImageMagick
 
 The library might return the error `File could not be converted by ImageMagick to OpenCV Image: <path to the file>` when comparing PDF files.
 This is due to ImageMagick permissions. Verify this as follows with the `sample.pdf` in the `testdata` directory:
