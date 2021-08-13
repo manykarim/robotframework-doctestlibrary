@@ -1,7 +1,9 @@
+from inspect import signature
 from DocTest.PdfDoc import PdfDoc
 from pprint import pprint
 from deepdiff import DeepDiff
 from robot.api.deco import keyword, library
+import fitz
 
 ROBOT_AUTO_KEYWORDS = False
 
@@ -34,20 +36,41 @@ class PdfTest(object):
         
         """
 
+        ref_doc = fitz.open(reference_document)
+        cand_doc = fitz.open(candidate_document)
         reference = {}
-        reference['Signature']=PdfDoc.get_signature(reference_document)
-        reference['Output Intents']=PdfDoc.get_output_intents(reference_document)
-        reference['SigFlags']=PdfDoc.get_sig_flags(reference_document)
+        reference['pages'] = []
+        #reference['metadata']=ref_doc.metadata
+        reference['page_count']=ref_doc.page_count
+        reference['sigflags']=ref_doc.get_sigflags()
+        for i, page in enumerate(ref_doc.pages()):
+            signature_list = []
+            text = page.get_text("text").splitlines()
+            for widget in page.widgets():
+                if widget.is_signed:
+                    signature_list.append(list((widget.field_name, widget.field_label, widget.field_value)))
+            reference['pages'].append(dict([('number',i+1), ('fonts', page.get_fonts()), ('images', page.get_images()), ('rotation', page.rotation), ('mediabox', page.mediabox), ('signatures', signature_list),('text', text)]))
+
+
         candidate = {}
-        candidate['Signature']=PdfDoc.get_signature(candidate_document)
-        candidate['Output Intents']=PdfDoc.get_output_intents(candidate_document)
-        candidate['SigFlags']=PdfDoc.get_sig_flags(candidate_document)
+        candidate['pages'] = []
+        #candidate['metadata']=cand_doc.metadata
+        candidate['page_count']=cand_doc.page_count
+        candidate['sigflags']=cand_doc.get_sigflags()
+        for i, page in enumerate(cand_doc.pages()):
+            signature_list = []
+            text = page.get_text("text").splitlines()
+            for widget in page.widgets():
+                if widget.is_signed:
+                    signature_list.append(list((widget.field_name, widget.field_label, widget.field_value)))
+            candidate['pages'].append(dict([('number',i+1), ('fonts', page.get_fonts()), ('images', page.get_images()), ('rotation', page.rotation), ('mediabox', page.mediabox), ('signatures', signature_list),('text', text)]))
+
         if reference!=candidate:
             pprint(DeepDiff(reference, candidate, verbose_level=2), width=200)
             print("Reference Document:")
-            print(reference)
+            pprint(reference)
             print("Candidate Document:")
-            print(candidate)           
+            pprint(candidate)           
             raise AssertionError('The compared PDF Document Data is different.')
 
     @keyword
@@ -62,17 +85,19 @@ class PdfTest(object):
         | Check Text Content | ${strings} | candidate.pdf |
         
         """
-        all_texts_were_found = None
+        doc = fitz.open(candidate_document)
         missing_text_list = []
-        pdf_content = PdfDoc.get_pdf_content(candidate_document)
-        for item in expected_text_list:
-            for i in range(len(pdf_content)):
-                results = PdfDoc.get_items_with_matching_text(pdf_content[i], item, objecttype='textbox', page_height=pdf_content[i].height)
-                for textline in results:
-                    (x, y, w, h) = (textline['x'], textline['y'], textline['width'], textline['height'])
-                if not results:
-                    all_texts_were_found = False
-                    missing_text_list.append({'text':item, 'document':candidate_document, 'page':i+1})
+        all_texts_were_found = None
+        for text_item in expected_text_list:
+            text_found_in_page = False
+            for page in doc.pages():
+                if any(text_item in s for s in page.get_text("text").splitlines()):
+                    text_found_in_page = True
+                    break
+            if text_found_in_page:
+                continue
+            all_texts_were_found = False
+            missing_text_list.append({'text':text_item, 'document':candidate_document})
         if all_texts_were_found is False:
             print(missing_text_list)
             raise AssertionError('Some expected texts were not found in document')
@@ -89,13 +114,19 @@ class PdfTest(object):
         | PDF Should Contain Strings | ${strings} | candidate.pdf |
         
         """
-        pdf_text= PdfDoc.get_pdf_text(candidate_document)
+        doc = fitz.open(candidate_document)
         missing_text_list = []
         all_texts_were_found = None
         for text_item in expected_text_list:
-            if not any(text_item in s for s in pdf_text.splitlines()):
-                all_texts_were_found = False
-                missing_text_list.append({'text':text_item, 'document':candidate_document})
+            text_found_in_page = False
+            for page in doc.pages():
+                if any(text_item in s for s in page.get_text("text").splitlines()):
+                    text_found_in_page = True
+                    break
+            if text_found_in_page:
+                continue
+            all_texts_were_found = False
+            missing_text_list.append({'text':text_item, 'document':candidate_document})
         if all_texts_were_found is False:
             print(missing_text_list)
             raise AssertionError('Some expected texts were not found in document')
