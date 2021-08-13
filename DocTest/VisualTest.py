@@ -14,6 +14,8 @@ from DocTest.PdfDoc import PdfDoc
 import re
 from concurrent import futures
 from robot.api.deco import keyword, library
+import fitz
+import json
 
 @library
 class VisualTest(object):
@@ -31,6 +33,7 @@ class VisualTest(object):
     LINE_TYPE = 2
     REFERENCE_LABEL = "Expected Result (Reference)"
     CANDIDATE_LABEL = "Actual Result (Candidate)"
+    PDF_RENDERING_ENGINE = "pymupdf"
 
     def __init__(self, **kwargs):
         self.threshold = kwargs.pop('threshold', 0.0000)
@@ -38,6 +41,7 @@ class VisualTest(object):
         self.DPI = int(kwargs.pop('DPI', 200))
         self.take_screenshots = bool(kwargs.pop('take_screenshots', False))
         self.show_diff = bool(kwargs.pop('show_diff', False))
+        self.pdf_rendering_engine = kwargs.pop('pdf_rendering_engine', self.PDF_RENDERING_ENGINE)
         self.screenshot_format = kwargs.pop('screenshot_format', 'jpg')
         if not (self.screenshot_format == 'jpg' or self.screenshot_format == 'png'):
              self.screenshot_format == 'jpg'
@@ -94,6 +98,7 @@ class VisualTest(object):
         force_ocr = kwargs.pop('force_ocr', False)
         self.DPI = int(kwargs.pop('DPI', self.DPI))
         ignore_watermarks = kwargs.pop('ignore_watermarks', True)
+        pdf_rendering_engine = kwargs.pop('pdf_rendering_engine', self.pdf_rendering_engine)
 
         compare_options = {'get_pdf_content':get_pdf_content, 'ignore_watermarks':ignore_watermarks,'check_text_content':check_text_content,'contains_barcodes':contains_barcodes, 'force_ocr':force_ocr, 'move_tolerance':move_tolerance}
 
@@ -109,8 +114,8 @@ class VisualTest(object):
             raise AssertionError('The candidate file does not exist: {}'.format(test_image))
 
         with futures.ThreadPoolExecutor(max_workers=2) as parallel_executor:
-            reference_future = parallel_executor.submit(CompareImage, reference_image, placeholder_file=placeholder_file, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, force_ocr=force_ocr, mask=mask)
-            candidate_future = parallel_executor.submit(CompareImage, test_image, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI)
+            reference_future = parallel_executor.submit(CompareImage, reference_image, placeholder_file=placeholder_file, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, force_ocr=force_ocr, mask=mask, pdf_rendering_engine=pdf_rendering_engine)
+            candidate_future = parallel_executor.submit(CompareImage, test_image, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, pdf_rendering_engine=pdf_rendering_engine)
             reference_compare_image = reference_future.result()
             candidate_compare_image = candidate_future.result()
         
@@ -299,7 +304,7 @@ class VisualTest(object):
 
                         text_reference = pytesseract.image_to_string(diff_area_reference)
                         text_test = pytesseract.image_to_string(diff_area_candidate)
-                        if(text_reference==text_test):                           
+                        if(text_reference.strip()==text_test.strip()):                           
                             print("Partial text content is the same")
                             print(text_reference)
                         else:
@@ -308,38 +313,76 @@ class VisualTest(object):
                             print("Partial text content is different")
                             print(text_reference + " is not equal to " + text_test)
                 elif compare_options["get_pdf_content"] is True:
-                    images_are_equal=True
-                    for c in range(len(cnts)):
-                        (x, y, w, h) = cv2.boundingRect(cnts[c])
-                        diff_area_reference = reference[y:y+h, x:x+w]
-                        diff_area_candidate = candidate[y:y+h, x:x+w]
+                    if self.pdf_rendering_engine.lower() == "pymupdf":
+                        images_are_equal=True
+                        ref_words = reference_pdf_content.get_text("words")
+                        cand_words = candidate_pdf_content.get_text("words")
+                        for c in range(len(cnts)):
 
-                        self.add_screenshot_to_log(diff_area_reference, "_page_" + str(i+1) + "_diff_area_reference_"+str(c))
-                        self.add_screenshot_to_log(diff_area_candidate, "_page_" + str(i+1) + "_diff_area_test_"+str(c))
+                            (x, y, w, h) = cv2.boundingRect(cnts[c])
+                            rect = fitz.Rect(x*72/self.DPI, y*72/self.DPI, (x+w)*72/self.DPI, (y+h)*72/self.DPI)
+                            diff_area_ref_words = [w for w in ref_words if fitz.Rect(w[:4]).intersects(rect)]
+                            diff_area_cand_words = [w for w in cand_words if fitz.Rect(w[:4]).intersects(rect)]
+                            diff_area_ref_words = make_text(diff_area_ref_words)
+                            diff_area_cand_words = make_text(diff_area_cand_words)
+                            diff_area_reference = reference[y:y+h, x:x+w]
+                            diff_area_candidate = candidate[y:y+h, x:x+w]
+                            referenceItems = json.loads(reference_pdf_content.get_text("json", clip=fitz.Rect(x*72/self.DPI, y*72/self.DPI, (x+w)*72/self.DPI, (y+h)*72/self.DPI), flags=None))
+                            candidateItems = json.loads(candidate_pdf_content.get_text("json", clip=fitz.Rect(x*72/self.DPI, y*72/self.DPI, (x+w)*72/self.DPI, (y+h)*72/self.DPI), flags=None))
 
-                        referenceItems = PdfDoc.get_items_in_area(reference_pdf_content, x, y, w, h, self.DPI/72)
-                        candidateItems = PdfDoc.get_items_in_area(candidate_pdf_content, x, y, w, h, self.DPI/72)
-                        
-                        referenceItems = remove_empty_textelements(referenceItems)
-                        candidateItems = remove_empty_textelements(candidateItems)
+                            self.add_screenshot_to_log(diff_area_reference, "_page_" + str(i+1) + "_diff_area_reference_"+str(c))
+                            self.add_screenshot_to_log(diff_area_candidate, "_page_" + str(i+1) + "_diff_area_test_"+str(c))
+                                                                      
+                            
+                            if len(diff_area_ref_words)!=len(diff_area_cand_words):
+                                images_are_equal=False
+                                detected_differences.append(True)
+                                print("The identified pdf layout elements are different", diff_area_ref_words, diff_area_cand_words)
+                            else:
 
-                        if len(referenceItems)!=len(candidateItems):
-                            images_are_equal=False
-                            detected_differences.append(True)
-                            print("The identified pdf layout elements are different", referenceItems, candidateItems)
-                        else:
-
-                            for ref_Item, cand_Item in zip(referenceItems, candidateItems):
-                                if ref_Item == cand_Item:
-                                    pass
-                                elif str(ref_Item['text']).strip() != str(cand_Item['text']).strip():
+                                if diff_area_ref_words.strip() != diff_area_cand_words.strip():
                                     images_are_equal=False
                                     detected_differences.append(True)
                                     print("Partial text content is different")
-                                    print(ref_Item['text'], " is not equal to " ,cand_Item['text'])
+                                    print(diff_area_ref_words.strip(), " is not equal to " ,diff_area_cand_words.strip())
                             if images_are_equal:
                                 print("Partial text content of area is the same")
-                                print(referenceItems)
+                                print(diff_area_ref_words)
+                                pass
+                        pass
+                    else:
+                        images_are_equal=True
+                        for c in range(len(cnts)):
+                            (x, y, w, h) = cv2.boundingRect(cnts[c])
+                            diff_area_reference = reference[y:y+h, x:x+w]
+                            diff_area_candidate = candidate[y:y+h, x:x+w]
+
+                            self.add_screenshot_to_log(diff_area_reference, "_page_" + str(i+1) + "_diff_area_reference_"+str(c))
+                            self.add_screenshot_to_log(diff_area_candidate, "_page_" + str(i+1) + "_diff_area_test_"+str(c))
+
+                            referenceItems = PdfDoc.get_items_in_area(reference_pdf_content, x, y, w, h, self.DPI/72)
+                            candidateItems = PdfDoc.get_items_in_area(candidate_pdf_content, x, y, w, h, self.DPI/72)
+                            
+                            referenceItems = remove_empty_textelements(referenceItems)
+                            candidateItems = remove_empty_textelements(candidateItems)
+
+                            if len(referenceItems)!=len(candidateItems):
+                                images_are_equal=False
+                                detected_differences.append(True)
+                                print("The identified pdf layout elements are different", referenceItems, candidateItems)
+                            else:
+
+                                for ref_Item, cand_Item in zip(referenceItems, candidateItems):
+                                    if ref_Item == cand_Item:
+                                        pass
+                                    elif str(ref_Item['text']).strip() != str(cand_Item['text']).strip():
+                                        images_are_equal=False
+                                        detected_differences.append(True)
+                                        print("Partial text content is different")
+                                        print(ref_Item['text'], " is not equal to " ,cand_Item['text'])
+                                if images_are_equal:
+                                    print("Partial text content of area is the same")
+                                    print(referenceItems)
 
 
             
@@ -348,16 +391,24 @@ class VisualTest(object):
                 images_are_equal=True
                 
                 if compare_options["get_pdf_content"] is not True:
-
-                
+                    #Experimental, to solve a problem with small images
+                    #wr, hr, _ = reference.shape
                     for c in range(len(cnts)):
                     
                         (x, y, w, h) = cv2.boundingRect(cnts[c])
                         diff_area_reference = reference[y:y+h, x:x+w]
                         diff_area_candidate = candidate[y:y+h, x:x+w]
+
+                        #Experimental, to solve a problem with small images
+                        #search_area_candidate = candidate[(y - self.BORDER_FOR_MOVE_TOLERANCE_CHECK) if y >= self.BORDER_FOR_MOVE_TOLERANCE_CHECK else 0:(y + h + self.BORDER_FOR_MOVE_TOLERANCE_CHECK) if hr >= (y + h + self.BORDER_FOR_MOVE_TOLERANCE_CHECK) else hr, (x - self.BORDER_FOR_MOVE_TOLERANCE_CHECK) if x >= self.BORDER_FOR_MOVE_TOLERANCE_CHECK else 0:(x + w + self.BORDER_FOR_MOVE_TOLERANCE_CHECK) if wr >= (x + w + self.BORDER_FOR_MOVE_TOLERANCE_CHECK) else wr]
+
                         search_area_candidate = candidate[y - self.BORDER_FOR_MOVE_TOLERANCE_CHECK:y + h + self.BORDER_FOR_MOVE_TOLERANCE_CHECK, x - self.BORDER_FOR_MOVE_TOLERANCE_CHECK:x + w + self.BORDER_FOR_MOVE_TOLERANCE_CHECK]
                         search_area_reference = reference[y - self.BORDER_FOR_MOVE_TOLERANCE_CHECK:y + h + self.BORDER_FOR_MOVE_TOLERANCE_CHECK, x - self.BORDER_FOR_MOVE_TOLERANCE_CHECK:x + w + self.BORDER_FOR_MOVE_TOLERANCE_CHECK]                      
-
+                        
+                        # self.add_screenshot_to_log(search_area_candidate)
+                        # self.add_screenshot_to_log(search_area_reference)
+                        # self.add_screenshot_to_log(diff_area_candidate)
+                        # self.add_screenshot_to_log(diff_area_reference)
                         positions_in_compare_image = self.find_partial_image_position(search_area_candidate, diff_area_reference)
                         #positions_in_compare_image = self.find_partial_image_position(candidate, diff_area_reference)
                         if (np.mean(diff_area_reference) == 255) or (np.mean(diff_area_candidate) == 255):
@@ -469,3 +520,20 @@ def remove_empty_textelements(lst):
         if str(dic['text']).isspace() is not True:
             new_list.append(dic)
     return new_list
+
+def make_text(words):
+    """Return textstring output of get_text("words").
+    Word items are sorted for reading sequence left to right,
+    top to bottom.
+    """
+    line_dict = {}  # key: vertical coordinate, value: list of words
+    words.sort(key=lambda w: w[0])  # sort by horizontal coordinate
+    for w in words:  # fill the line dictionary
+        y1 = round(w[3], 1)  # bottom of a word: don't be too picky!
+        word = w[4]  # the text of the word
+        line = line_dict.get(y1, [])  # read current line content
+        line.append(word)  # append new word
+        line_dict[y1] = line  # write back to dict
+    lines = list(line_dict.items())
+    lines.sort()  # sort vertically
+    return "\n".join([" ".join(line[1]) for line in lines])

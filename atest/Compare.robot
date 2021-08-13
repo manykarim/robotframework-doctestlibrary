@@ -1,5 +1,5 @@
 *** Settings ***
-Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png
+Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png    pdf_rendering_engine=pymupdf
 
 *** Test Cases ***
 Compare two Beach images
@@ -32,8 +32,14 @@ Compare two different PDF Files with moved text but same content OCR
 Compare two different PDF Files with moved text but same content pdfminer
     Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    check_text_content=${true}    get_pdf_content=${true}
 
+Compare two different PDF Files with moved text but and different content pdfminer
+    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved_and_different.pdf    check_text_content=${true}    get_pdf_content=${true}
+
 Compare two different PDF Files with moved text within tolerance
     Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=20
 
 Compare two different PDF Files with moved text outside tolerance
     Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=5
+
+Compare two different Image Files with moved text
+    Compare Images    testdata/small_A_reference.png    testdata/small_A_moved.png    move_tolerance=60    ignore_watermarks=False

@@ -2,7 +2,7 @@
     {
 		"page": "all",
 		"name": "Ref ID",
-		"type": "pattern",
+		"type": "word_pattern",
 		"pattern": ".*RTMOE.*"
 	},
 	{

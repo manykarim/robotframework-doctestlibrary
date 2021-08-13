@@ -10,6 +10,10 @@ def test_single_png(testdata_dir):
     type(img.opencv_images[0])==numpy.ndarray
 
 def test_single_pdf(testdata_dir):
+    img = CompareImage(testdata_dir / 'sample_1_page.pdf')
+    assert len(img.opencv_images)==1
+    assert type(img.opencv_images)==list
+    type(img.opencv_images[0])==numpy.ndarray
     pass
 
 def test_multipage_pdf(testdata_dir):
