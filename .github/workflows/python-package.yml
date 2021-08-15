@@ -33,8 +33,8 @@ jobs:
         tar -xvzf ${archive_name}.tgz
         chmod +x ${archive_name}/gpcl6*
         cp ${archive_name}/gpcl6* ${archive_name}/pcl6
-        cp ${archive_name}/* /usr/bin
-        cp policy.xml /etc/ImageMagick-6/
+        sudo cp ${archive_name}/* /usr/bin
+        sudo cp policy.xml /etc/ImageMagick-6/
         python -m pip install --upgrade pip
         python -m pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
