@@ -41,4 +41,4 @@ jobs:
         pytest
     - name: Test with robotframework
       run: |
-        robot atest/
+        robot --pythonpath ./:DocTest atest/
