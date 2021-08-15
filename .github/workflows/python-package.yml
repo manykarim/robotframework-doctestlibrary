@@ -50,4 +50,11 @@ jobs:
         pytest
     - name: Test with robotframework
       run: |
-        robot --pythonpath ./:DocTest atest/
+        mkdir -p reports/screenshots
+        robot --pythonpath ./:DocTest --outputdir reports atest/
+    - name: 'Upload Artifact'
+      uses: actions/upload-artifact@v2
+      with:
+        name: robotframework-log
+        path: reports/
+        retention-days: 5
