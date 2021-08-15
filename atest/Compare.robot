@@ -43,3 +43,12 @@ Compare two different PDF Files with moved text outside tolerance
 
 Compare two different Image Files with moved text
     Compare Images    testdata/small_A_reference.png    testdata/small_A_moved.png    move_tolerance=60    ignore_watermarks=False
+
+Compare two different PDF Files with moved text within tolerance using OCR
+    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=20
+
+Compare two different PDF Files with moved text outside tolerance using OCR
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=5
+
+Compare two different Image Files with moved text using OCR
+    Compare Images    testdata/small_A_reference.png    testdata/small_A_moved.png    move_tolerance=60    ignore_watermarks=False
