@@ -27,6 +27,14 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get install imagemagick tesseract-ocr ghostscript libdmtx0b
+        export release_name=gs952
+        export archive_name=ghostpcl-9.52-linux-x86_64
+        wget https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/${release_name}/${archive_name}.tgz
+        tar -xvzf ${archive_name}.tgz
+        chmod +x ${archive_name}/gpcl6*
+        cp ${archive_name}/gpcl6* ${archive_name}/pcl6
+        cp ${archive_name}/* /usr/bin
+        cp policy.xml /etc/ImageMagick-6/
         python -m pip install --upgrade pip
         python -m pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
