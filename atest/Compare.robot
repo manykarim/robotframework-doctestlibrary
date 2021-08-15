@@ -33,7 +33,7 @@ Compare two different PDF Files with moved text but same content pdfminer
     Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    check_text_content=${true}    get_pdf_content=${true}
 
 Compare two different PDF Files with moved text but and different content pdfminer
-    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved_and_different.pdf    check_text_content=${true}    get_pdf_content=${true}
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved_and_different.pdf    check_text_content=${true}    get_pdf_content=${true}
 
 Compare two different PDF Files with moved text within tolerance
     Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=20
