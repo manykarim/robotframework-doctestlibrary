@@ -71,55 +71,31 @@ class CompareImage(object):
         if resolution == None:
             resolution = self.DPI
         tic = time.perf_counter()
-        if self.pdf_rendering_engine.lower() == "pymupdf" and self.extension == '.pdf':
-            try:
-                with(fitz.open(self.image)) as doc:
-                    self.mupdfdoc = fitz.open(self.image)
-                    toc = time.perf_counter()
-                    print(f"Rendering document to PyMuPDF Image performed in {toc - tic:0.4f} seconds")
-                    #split pages
-                    tic = time.perf_counter()
-                    for i, page in enumerate(self.mupdfdoc.pages()):
-                        print(i)
-                        zoom = resolution/72
-                        mat = fitz.Matrix(zoom, zoom)
-                        pix = page.getPixmap(matrix = mat)
-                        imgData = pix.getImageData("png")
-                        nparr = np.frombuffer(imgData, np.uint8)
-                        opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                        self.opencv_images.append(opencv_image)
-                        #tdict = json.loads(page.getText("json"))
-                        pass
-                    self.pdf_content = self.mupdfdoc.pages()
-                    toc = time.perf_counter()
-                    print(f"Conversion from PyMuPDF Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
-            except:
-                raise AssertionError("File could not be converted by ImageMagick to OpenCV Image: {}".format(self.image))
+        try:
+            with(fitz.open(self.image)) as doc:
+                self.mupdfdoc = fitz.open(self.image)
+                toc = time.perf_counter()
+                print(f"Rendering document to PyMuPDF Image performed in {toc - tic:0.4f} seconds")
+                #split pages
+                tic = time.perf_counter()
+                for i, page in enumerate(self.mupdfdoc.pages()):
+                    print(i)
+                    zoom = resolution/72
+                    mat = fitz.Matrix(zoom, zoom)
+                    pix = page.getPixmap(matrix = mat)
+                    imgData = pix.getImageData("png")
+                    nparr = np.frombuffer(imgData, np.uint8)
+                    opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    self.opencv_images.append(opencv_image)
+                    #tdict = json.loads(page.getText("json"))
+                    pass
+                self.pdf_content = self.mupdfdoc.pages()
+                toc = time.perf_counter()
+                print(f"Conversion from PyMuPDF Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+        except:
+            raise AssertionError("File could not be converted by ImageMagick to OpenCV Image: {}".format(self.image))
 
-        else:
-            try:
-                with(Image(filename=self.image,resolution=resolution)) as source:
-
-                    toc = time.perf_counter()
-                    print(f"Rendering document to pyWand Image performed in {toc - tic:0.4f} seconds")
-
-                    images=source.sequence
-                    pages=len(images)
-                    
-                    tic = time.perf_counter()
-
-                    for i in range(pages):
-                        images[i].background_color = Color('white') # Set white background.
-                        images[i].alpha_channel = 'remove'          # Remove transparency and replace with bg.
-                        opencv_image = np.array(images[i])
-                        opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2BGR)
-                        self.opencv_images.append(opencv_image)
-                    
-                    toc = time.perf_counter()
-                    print(f"Conversion from pyWand Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
-            except:
-                raise AssertionError("File could not be converted by ImageMagick to OpenCV Image: {}".format(self.image))
-
+        
     def get_text_content(self):
         for i in range(len(self.opencv_images)):
             cv_image = self.opencv_images[i]
@@ -286,37 +262,28 @@ class CompareImage(object):
                         if self.rerendered_for_ocr:
                             self.load_image_into_array()
                     else:
-                        if self.pdf_rendering_engine.lower() == "pymupdf":
-                            for i in range(len(self.opencv_images)):
-                                if (placeholder_type == 'word_pattern'):
-                                    print("Searching word_pattern")
-                                    words = self.mupdfdoc[i].get_text("words")
-                                    search_pattern = re.compile(pattern)
-                                    for word in words:
-                                        if search_pattern.match(word[4]):
-                                            (x, y, w, h) = (word[0]*self.DPI/72, word[1]*self.DPI/72,(word[2]-word[0])*self.DPI/72, (word[3]-word[1])*self.DPI/72)
-                                            text_pattern_mask = {"page":i+1, "x":x-xoffset, "y":y-yoffset, "height":h+2*yoffset, "width":w+2*xoffset}
-                                            self.placeholders.append(text_pattern_mask)
-                                if (placeholder_type == 'pattern' or placeholder_type == 'line_pattern'):
-                                    print("Searching line_pattern")
-                                    tdict = json.loads(self.mupdfdoc[i].getText("json"))
-                                    search_pattern = re.compile(pattern)
-                                    for block in tdict['blocks']:
-                                        if block['type'] == 0:
-                                            for line in block['lines']:
-                                                if search_pattern.match(line['spans'][0]['text']):
-                                                    (x, y, w, h) = (line['bbox'][0]*self.DPI/72, line['bbox'][1]*self.DPI/72,(line['bbox'][2]-line['bbox'][0])*self.DPI/72, (line['bbox'][3]-line['bbox'][1])*self.DPI/72)
-                                                    text_pattern_mask = {"page":i+1, "x":x-xoffset, "y":y-yoffset, "height":h+2*yoffset, "width":w+2*xoffset}
-                                                    self.placeholders.append(text_pattern_mask)       
-                        else:
-                        # print("Using pdfminer for pattern mask")
-                            for i in range(len(self.opencv_images)):
-                                results = PdfDoc.get_items_with_matching_text(self.pdf_content[i], pattern, objecttype='textline', page_height=self.pdf_content[i].height, dpi_calculation_factor=self.DPI/72)
-                                for textline in results:
-                                    (x, y, w, h) = (textline['x'], textline['y'], textline['width'], textline['height'])
-                                    text_pattern_mask = {"page":i+1, "x":x-xoffset, "y":y-yoffset, "height":h+2*yoffset, "width":w+2*xoffset}
-                                    self.placeholders.append(text_pattern_mask)
-
+                        for i in range(len(self.opencv_images)):
+                            if (placeholder_type == 'word_pattern'):
+                                print("Searching word_pattern")
+                                words = self.mupdfdoc[i].get_text("words")
+                                search_pattern = re.compile(pattern)
+                                for word in words:
+                                    if search_pattern.match(word[4]):
+                                        (x, y, w, h) = (word[0]*self.DPI/72, word[1]*self.DPI/72,(word[2]-word[0])*self.DPI/72, (word[3]-word[1])*self.DPI/72)
+                                        text_pattern_mask = {"page":i+1, "x":x-xoffset, "y":y-yoffset, "height":h+2*yoffset, "width":w+2*xoffset}
+                                        self.placeholders.append(text_pattern_mask)
+                            if (placeholder_type == 'pattern' or placeholder_type == 'line_pattern'):
+                                print("Searching line_pattern")
+                                tdict = json.loads(self.mupdfdoc[i].getText("json"))
+                                search_pattern = re.compile(pattern)
+                                for block in tdict['blocks']:
+                                    if block['type'] == 0:
+                                        for line in block['lines']:
+                                            if search_pattern.match(line['spans'][0]['text']):
+                                                (x, y, w, h) = (line['bbox'][0]*self.DPI/72, line['bbox'][1]*self.DPI/72,(line['bbox'][2]-line['bbox'][0])*self.DPI/72, (line['bbox'][3]-line['bbox'][1])*self.DPI/72)
+                                                text_pattern_mask = {"page":i+1, "x":x-xoffset, "y":y-yoffset, "height":h+2*yoffset, "width":w+2*xoffset}
+                                                self.placeholders.append(text_pattern_mask)       
+                        
                 elif (placeholder_type == 'coordinates'):
                     # print("Coordinate placeholder identified:")
                     # print(placeholder)
@@ -440,14 +407,11 @@ class CompareImage(object):
 
     def load_text_content_and_identify_masks(self):
         if self.get_pdf_content or self.extension=='.pdf':
-            if self.pdf_rendering_engine.lower() == "pymupdf":
+            try:
                 self.pdf_content = fitz.Document(self.image)
-            else:
-                try:
-                    self.pdf_content = PdfDoc(self.image).pdf_content
-                except:
-                    print("Problem when reading PDF text content from PDF File. OCR will be used instead")
-                    self.text_content = []   
+            except:
+                print("Problem when reading PDF text content from PDF File. OCR will be used instead")
+                self.text_content = []   
         if (self.placeholder_file is not None) or (self.mask is not None):
             self.identify_placeholders()
         if (self.contains_barcodes==True):

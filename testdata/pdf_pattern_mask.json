@@ -9,6 +9,6 @@
 		"page": "all",
 		"name": "Job ID",
 		"type": "pattern",
-		"pattern": "JobID.*"
+		"pattern": ".*[A-Z0-9]{31,32}.*"
 	}
 ]

@@ -1,5 +1,5 @@
 *** Settings ***
-Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png    pdf_rendering_engine=pymupdf
+Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png    #pdf_rendering_engine=ghostscript
 
 *** Test Cases ***
 Compare two Beach images
