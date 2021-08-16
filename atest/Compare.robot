@@ -52,3 +52,6 @@ Compare two different PDF Files with moved text outside tolerance using OCR
 
 Compare two different Image Files with moved text using OCR
     Compare Images    testdata/small_A_reference.png    testdata/small_A_moved.png    move_tolerance=60    ignore_watermarks=False
+
+Compare Images With Different Shapes
+    Run Keyword And Expect Error    STARTS:The shapes of reference and candidate file are different    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg

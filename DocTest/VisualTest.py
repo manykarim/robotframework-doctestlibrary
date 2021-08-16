@@ -143,6 +143,10 @@ class VisualTest(object):
         
         with futures.ThreadPoolExecutor(max_workers=8) as parallel_executor:
             for i, (reference, candidate) in enumerate(zip(reference_collection, compare_collection)):
+                if reference.shape[0] != candidate.shape[0] or reference.shape[1] != candidate.shape[1]:
+                    self.add_screenshot_to_log(reference, "_reference_page_" + str(i+1))
+                    self.add_screenshot_to_log(candidate, "_candidate_page_" + str(i+1))
+                    raise AssertionError(f'The shapes of reference and candidate file are different:\nreference:{reference.shape}\ncandidate:{candidate.shape}')
                 if get_pdf_content:
                     try:
                         reference_pdf_content = reference_compare_image.pdf_content[i]
@@ -248,7 +252,6 @@ class VisualTest(object):
         return out
 
     def check_for_differences(self, reference, candidate, i, detected_differences, compare_options, reference_pdf_content=None, candidate_pdf_content=None ):
-        pass
         images_are_equal = True
         with futures.ThreadPoolExecutor(max_workers=2) as parallel_executor:
             grayA_future = parallel_executor.submit(cv2.cvtColor, reference, cv2.COLOR_BGR2GRAY)
