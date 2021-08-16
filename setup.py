@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="robotframework-doctestlibrary",
-    version="0.2.0",
+    version="0.2.0-dev",
     author="Many Kasiriha",
     author_email="many.kasiriha@dbschenker.com",
     long_description=long_description,
