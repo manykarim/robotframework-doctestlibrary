@@ -18,7 +18,7 @@ def test_medium_text_from_image(testdata_dir):
 def test_small_text_from_image(testdata_dir):
     img = CompareImage(testdata_dir / 'text_small.png')
     img.get_ocr_text_data()
-    assert 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' in img.text_content[0]['text']
+    assert '1234567890' in img.text_content[0]['text']
     pass
 
 

@@ -17,6 +17,11 @@ def test_single_pdf(testdata_dir):
     pass
 
 def test_multipage_pdf(testdata_dir):
+    img = CompareImage(testdata_dir / 'sample.pdf')
+    assert len(img.opencv_images)==2
+    assert type(img.opencv_images)==list
+    type(img.opencv_images[0])==numpy.ndarray
+    type(img.opencv_images[1])==numpy.ndarray
     pass
 
 def test_huge_pdf(testdata_dir):
@@ -26,7 +31,8 @@ def test_image_text_content(testdata_dir):
     pass
 
 def test_pdf_text_content(testdata_dir):
-    pass
+    img = CompareImage(testdata_dir / 'sample_1_page.pdf')
+    assert len(img.pdf_content.get_page_text(0, "WORDS"))>0
 
 def test_non_existing_file(testdata_dir):
     with pytest.raises(AssertionError):

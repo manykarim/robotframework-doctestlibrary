@@ -1,0 +1,18 @@
+[
+    {
+		"page": "all",
+		"name": "Date Pattern",
+		"type": "pattern",
+		"xoffset": 5,
+		"yoffset": 5,
+		"pattern": "[0-9]{2}-[a-zA-Z]{3}-[0-9]{4}"
+	},
+	{
+		"page": "all",
+		"name": "JobID Pattern",
+		"type": "pattern",
+		"xoffset": 5,
+		"yoffset": 5,
+		"pattern": ".*[0-9A-Z]{9}.*"
+	}
+]
