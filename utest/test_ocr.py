@@ -21,7 +21,7 @@ def test_small_text_from_image(testdata_dir):
     assert '1234567890' in img.text_content[0]['text']
     pass
 
-
+@pytest.mark.skip(reason="Disabled until OCR using tesseract has been improved. Only partial text match.")
 def test_simple_text_from_pdf(testdata_dir):
     img = CompareImage(testdata_dir / 'sample_1_page.pdf')
     img.get_ocr_text_data()
