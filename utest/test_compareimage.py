@@ -28,7 +28,10 @@ def test_huge_pdf(testdata_dir):
     pass
 
 def test_image_text_content(testdata_dir):
-    pass
+    img = CompareImage(testdata_dir / 'Beach_date.png')
+    img.get_ocr_text_data()
+    assert "01-Jan-2021" in img.text_content[0]['text']
+    assert "123456789" in img.text_content[0]['text']
 
 def test_pdf_text_content(testdata_dir):
     img = CompareImage(testdata_dir / 'sample_1_page.pdf')
