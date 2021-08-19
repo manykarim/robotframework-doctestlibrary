@@ -1,11 +1,12 @@
 from setuptools import setup, find_packages
+import datetime
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
     name="robotframework-doctestlibrary",
-    version="0.2.0-dev",
+    version="0.2.0.dev" + datetime.datetime.now().strftime("%Y%m%d%H%M%S")",
     author="Many Kasiriha",
     author_email="many.kasiriha@dbschenker.com",
     long_description=long_description,
