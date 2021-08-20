@@ -98,10 +98,11 @@ class VisualTest(object):
         get_pdf_content = kwargs.pop('get_pdf_content', False)
         force_ocr = kwargs.pop('force_ocr', False)
         self.DPI = int(kwargs.pop('DPI', self.DPI))
+        watermark_file = kwargs.pop('watermark_file', self.watermark_file)
         ignore_watermarks = kwargs.pop('ignore_watermarks', True)
         pdf_rendering_engine = kwargs.pop('pdf_rendering_engine', self.pdf_rendering_engine)
 
-        compare_options = {'get_pdf_content':get_pdf_content, 'ignore_watermarks':ignore_watermarks,'check_text_content':check_text_content,'contains_barcodes':contains_barcodes, 'force_ocr':force_ocr, 'move_tolerance':move_tolerance}
+        compare_options = {'get_pdf_content':get_pdf_content, 'ignore_watermarks':ignore_watermarks,'check_text_content':check_text_content,'contains_barcodes':contains_barcodes, 'force_ocr':force_ocr, 'move_tolerance':move_tolerance, 'watermark_file':watermark_file}
 
         if self.reference_run and (os.path.isfile(test_image) == True):
             shutil.copyfile(test_image, reference_image)
@@ -250,7 +251,7 @@ class VisualTest(object):
         out[mask] = image[mask] * 0.5 + overlay[mask] * 0.5
         return out
 
-    def check_for_differences(self, reference, candidate, i, detected_differences, compare_options, reference_pdf_content=None, candidate_pdf_content=None ):
+    def check_for_differences(self, reference, candidate, i, detected_differences, compare_options, reference_pdf_content=None, candidate_pdf_content=None , watermark_file=None):
         images_are_equal = True
         with futures.ThreadPoolExecutor(max_workers=2) as parallel_executor:
             grayA_future = parallel_executor.submit(cv2.cvtColor, reference, cv2.COLOR_BGR2GRAY)
@@ -293,7 +294,7 @@ class VisualTest(object):
 
             images_are_equal=False
 
-            if (compare_options["ignore_watermarks"] == True) and (len(cnts)==1 or self.watermark_file is not None):
+            if (compare_options["ignore_watermarks"] == True) and (len(cnts)==1 or watermark_file is not None):
                 if len(cnts)==1:
                     (x, y, w, h) = cv2.boundingRect(cnts[0])
                     diff_center_x = abs((x+w/2)-(reference.shape[1]/2))
@@ -301,12 +302,12 @@ class VisualTest(object):
                     if (diff_center_x < reference.shape[1] * self.WATERMARK_CENTER_OFFSET) and (w * 25.4 / self.DPI < self.WATERMARK_WIDTH) and (h * 25.4 / self.DPI < self.WATERMARK_HEIGHT):
                         images_are_equal=True
                         return
-                if self.watermark_file is not None:
-                    if isinstance(self.watermark_file, str):
-                        self.watermark_file = [self.watermark_file]
-                    if isinstance(self.watermark_file, list):
+                if watermark_file is not None:
+                    if isinstance(watermark_file, str):
+                        watermark_file = [watermark_file]
+                    if isinstance(watermark_file, list):
                         try:
-                            for single_watermark in self.watermark_file:
+                            for single_watermark in watermark_file:
                                 watermark = CompareImage(single_watermark).opencv_images[0]
                                 watermark_gray = cv2.cvtColor(watermark, cv2.COLOR_BGR2GRAY)
                                 watermark_bw = cv2.threshold(diff, 0, 255,cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
