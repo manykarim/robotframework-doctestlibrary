@@ -42,6 +42,7 @@ class VisualTest(object):
         self.take_screenshots = bool(kwargs.pop('take_screenshots', False))
         self.show_diff = bool(kwargs.pop('show_diff', False))
         self.pdf_rendering_engine = kwargs.pop('pdf_rendering_engine', self.PDF_RENDERING_ENGINE)
+        self.watermark_file = kwargs.pop('watermark_file', None)
         self.screenshot_format = kwargs.pop('screenshot_format', 'jpg')
         if not (self.screenshot_format == 'jpg' or self.screenshot_format == 'png'):
              self.screenshot_format == 'jpg'
@@ -141,12 +142,9 @@ class VisualTest(object):
                 self.add_screenshot_to_log(compare_collection[i], "_candidate_page_" + str(i+1))
             raise AssertionError('Reference File and Candidate File have different number of pages')
         
+        check_difference_results = []
         with futures.ThreadPoolExecutor(max_workers=8) as parallel_executor:
             for i, (reference, candidate) in enumerate(zip(reference_collection, compare_collection)):
-                if reference.shape[0] != candidate.shape[0] or reference.shape[1] != candidate.shape[1]:
-                    self.add_screenshot_to_log(reference, "_reference_page_" + str(i+1))
-                    self.add_screenshot_to_log(candidate, "_candidate_page_" + str(i+1))
-                    raise AssertionError(f'The shapes of reference and candidate file are different:\nreference:{reference.shape}\ncandidate:{candidate.shape}')
                 if get_pdf_content:
                     try:
                         reference_pdf_content = reference_compare_image.pdf_content[i]
@@ -157,9 +155,10 @@ class VisualTest(object):
                 else:
                     reference_pdf_content = None
                     candidate_pdf_content = None
-                parallel_executor.submit(self.check_for_differences, reference, candidate, i, detected_differences, compare_options, reference_pdf_content, candidate_pdf_content)
-                #self.check_for_differences(reference, candidate, i, detected_differences, compare_options, reference_pdf_content, candidate_pdf_content)
-
+                check_difference_results.append(parallel_executor.submit(self.check_for_differences, reference, candidate, i, detected_differences, compare_options, reference_pdf_content, candidate_pdf_content))
+        for result in check_difference_results:
+            if result.exception() is not None:
+                raise result.exception()
         if reference_compare_image.barcodes!=[]:
             if reference_compare_image.barcodes!=candidate_compare_image.barcodes:
                 detected_differences.append(True)
@@ -259,6 +258,11 @@ class VisualTest(object):
             grayA = grayA_future.result()
             grayB = grayB_future.result()
 
+        if reference.shape[0] != candidate.shape[0] or reference.shape[1] != candidate.shape[1]:
+            self.add_screenshot_to_log(reference, "_reference_page_" + str(i+1))
+            self.add_screenshot_to_log(candidate, "_candidate_page_" + str(i+1))
+            raise AssertionError(f'The compared images have different dimensions:\nreference:{reference.shape}\ncandidate:{candidate.shape}')
+        
         # compute the Structural Similarity Index (SSIM) between the two
         # images, ensuring that the difference image is returned
         (score, diff) = metrics.structural_similarity(grayA, grayB, gaussian_weights=True, full=True)
@@ -267,7 +271,7 @@ class VisualTest(object):
         if self.take_screenshots:
             # Not necessary to take screenshots for every successful comparison
             self.add_screenshot_to_log(np.concatenate((reference, candidate), axis=1), "_page_" + str(i+1) + "_compare_concat")
-            
+               
         if (score > self.threshold):
         
             diff = (diff * 255).astype("uint8")
@@ -289,13 +293,32 @@ class VisualTest(object):
 
             images_are_equal=False
 
-            if compare_options["ignore_watermarks"] == True and len(cnts)==1:
-                (x, y, w, h) = cv2.boundingRect(cnts[0])
-                diff_center_x = abs((x+w/2)-(reference.shape[1]/2))
-                diff_center_y = abs((y+h/2)-(reference.shape[0]/2))
-                if (diff_center_x < reference.shape[1] * self.WATERMARK_CENTER_OFFSET) and (w * 25.4 / self.DPI < self.WATERMARK_WIDTH) and (h * 25.4 / self.DPI < self.WATERMARK_HEIGHT):
-                    images_are_equal=True
-                    return
+            if (compare_options["ignore_watermarks"] == True) and (len(cnts)==1 or self.watermark_file is not None):
+                if len(cnts)==1:
+                    (x, y, w, h) = cv2.boundingRect(cnts[0])
+                    diff_center_x = abs((x+w/2)-(reference.shape[1]/2))
+                    diff_center_y = abs((y+h/2)-(reference.shape[0]/2))
+                    if (diff_center_x < reference.shape[1] * self.WATERMARK_CENTER_OFFSET) and (w * 25.4 / self.DPI < self.WATERMARK_WIDTH) and (h * 25.4 / self.DPI < self.WATERMARK_HEIGHT):
+                        images_are_equal=True
+                        return
+                if self.watermark_file is not None:
+                    if isinstance(self.watermark_file, str):
+                        self.watermark_file = [self.watermark_file]
+                    if isinstance(self.watermark_file, list):
+                        try:
+                            for single_watermark in self.watermark_file:
+                                watermark = CompareImage(single_watermark).opencv_images[0]
+                                watermark_gray = cv2.cvtColor(watermark, cv2.COLOR_BGR2GRAY)
+                                watermark_bw = cv2.threshold(diff, 0, 255,cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+                                result = thresh - watermark_bw
+                                if cv2.countNonZero(result) == 0:
+                                    images_are_equal=True
+                                    return
+                        except:
+                            raise AssertionError('The provided watermark_file format is invalid. Please provide a path to a file or a list of files.')
+                    else:
+                        raise AssertionError('The provided watermark_file format is invalid. Please provide a path to a file or a list of files.')
+                        
 
             if(compare_options["check_text_content"]==True) and images_are_equal is not True:
                 if compare_options["get_pdf_content"] is not True:
