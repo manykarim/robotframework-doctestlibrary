@@ -1,5 +1,4 @@
 from DocTest.CompareImage import CompareImage
-#from ..DocTest.CompareImage import CompareImage
 import pytest
 from pathlib import Path
 
