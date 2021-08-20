@@ -251,7 +251,7 @@ class VisualTest(object):
         out[mask] = image[mask] * 0.5 + overlay[mask] * 0.5
         return out
 
-    def check_for_differences(self, reference, candidate, i, detected_differences, compare_options, reference_pdf_content=None, candidate_pdf_content=None , watermark_file=None):
+    def check_for_differences(self, reference, candidate, i, detected_differences, compare_options, reference_pdf_content=None, candidate_pdf_content=None):
         images_are_equal = True
         with futures.ThreadPoolExecutor(max_workers=2) as parallel_executor:
             grayA_future = parallel_executor.submit(cv2.cvtColor, reference, cv2.COLOR_BGR2GRAY)
@@ -294,7 +294,7 @@ class VisualTest(object):
 
             images_are_equal=False
 
-            if (compare_options["ignore_watermarks"] == True) and (len(cnts)==1 or watermark_file is not None):
+            if (compare_options["ignore_watermarks"] == True) and (len(cnts)==1 or compare_options["watermark_file"] is not None):
                 if len(cnts)==1:
                     (x, y, w, h) = cv2.boundingRect(cnts[0])
                     diff_center_x = abs((x+w/2)-(reference.shape[1]/2))
@@ -302,12 +302,12 @@ class VisualTest(object):
                     if (diff_center_x < reference.shape[1] * self.WATERMARK_CENTER_OFFSET) and (w * 25.4 / self.DPI < self.WATERMARK_WIDTH) and (h * 25.4 / self.DPI < self.WATERMARK_HEIGHT):
                         images_are_equal=True
                         return
-                if watermark_file is not None:
-                    if isinstance(watermark_file, str):
-                        watermark_file = [watermark_file]
-                    if isinstance(watermark_file, list):
+                if compare_options["watermark_file"] is not None:
+                    if isinstance(compare_options["watermark_file"], str):
+                        compare_options["watermark_file"] = [compare_options["watermark_file"]]
+                    if isinstance(compare_options["watermark_file"], list):
                         try:
-                            for single_watermark in watermark_file:
+                            for single_watermark in compare_options["watermark_file"]:
                                 watermark = CompareImage(single_watermark).opencv_images[0]
                                 watermark_gray = cv2.cvtColor(watermark, cv2.COLOR_BGR2GRAY)
                                 watermark_bw = cv2.threshold(diff, 0, 255,cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
