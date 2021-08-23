@@ -16,13 +16,16 @@ from io import BytesIO
 import tempfile
 from skimage.util import img_as_ubyte
 import imutils
-from pylibdmtx import pylibdmtx
 import numpy as np
 import sys
 from DocTest.PdfDoc import PdfDoc
 from concurrent import futures
 import fitz
-
+import logging
+try:
+    from pylibdmtx import pylibdmtx
+except ImportError:
+    logging.debug('Failed to import pylibdmtx', exc_info=True)
 
 class CompareImage(object):
 
@@ -336,7 +339,11 @@ class CompareImage(object):
         for i in range(len(self.opencv_images)):
             print("Identify barcodes")
             image_height = self.opencv_images[i].shape[0]
-            barcodes = pylibdmtx.decode(self.opencv_images[i], timeout=5000)
+            try:
+                barcodes = pylibdmtx.decode(self.opencv_images[i], timeout=5000)
+            except:
+                logging.debug("pylibdmtx could not be loaded",exc_info=True)
+                return
             self.barcodes.extend(barcodes)
             #Add barcode as placehoder
             for barcode in barcodes:
