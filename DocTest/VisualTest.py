@@ -56,6 +56,7 @@ class VisualTest(object):
         except:
             print("Robot Framework is not running")
             self.OUTPUT_DIRECTORY = Path.cwd()
+            os.makedirs(self.OUTPUT_DIRECTORY / self.SCREENSHOT_DIRECTORY, exist_ok=True)
             self.reference_run = False
             self.PABOTQUEUEINDEX = None
     
@@ -301,6 +302,7 @@ class VisualTest(object):
                     diff_center_y = abs((y+h/2)-(reference.shape[0]/2))
                     if (diff_center_x < reference.shape[1] * self.WATERMARK_CENTER_OFFSET) and (w * 25.4 / self.DPI < self.WATERMARK_WIDTH) and (h * 25.4 / self.DPI < self.WATERMARK_HEIGHT):
                         images_are_equal=True
+                        print("A watermark position was identified. After ignoring watermark area, both images are equal")
                         return
                 if compare_options["watermark_file"] is not None:
                     if isinstance(compare_options["watermark_file"], str):
@@ -310,10 +312,14 @@ class VisualTest(object):
                             for single_watermark in compare_options["watermark_file"]:
                                 watermark = CompareImage(single_watermark).opencv_images[0]
                                 watermark_gray = cv2.cvtColor(watermark, cv2.COLOR_BGR2GRAY)
-                                watermark_bw = cv2.threshold(diff, 0, 255,cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-                                result = thresh - watermark_bw
+                                mask = cv2.threshold(watermark_gray, 10, 255,cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+                                mask_inv = cv2.bitwise_not(mask)
+                                #result = thresh - mask
+                                result = cv2.bitwise_and(thresh, thresh, mask=mask_inv)
+                                self.add_screenshot_to_log(result, "_page_" + str(i + 1) + "_watermark_removed")
                                 if cv2.countNonZero(result) == 0:
                                     images_are_equal=True
+                                    print("A watermark file was provided. After removing watermark area, both images are equal")
                                     return
                         except:
                             raise AssertionError('The provided watermark_file format is invalid. Please provide a path to a file or a list of files.')
