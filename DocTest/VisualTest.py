@@ -312,11 +312,11 @@ class VisualTest(object):
                             for single_watermark in compare_options["watermark_file"]:
                                 watermark = CompareImage(single_watermark).opencv_images[0]
                                 watermark_gray = cv2.cvtColor(watermark, cv2.COLOR_BGR2GRAY)
-                                mask = cv2.threshold(watermark_gray, 10, 255,cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+                                watermark_gray = (watermark_gray * 255).astype("uint8")
+                                mask = cv2.threshold(watermark_gray, 0, 255,cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+                                mask = cv2.dilate(mask, None, iterations=1)
                                 mask_inv = cv2.bitwise_not(mask)
-                                #result = thresh - mask
                                 result = cv2.bitwise_and(thresh, thresh, mask=mask_inv)
-                                self.add_screenshot_to_log(result, "_page_" + str(i + 1) + "_watermark_removed")
                                 if cv2.countNonZero(result) == 0:
                                     images_are_equal=True
                                     print("A watermark file was provided. After removing watermark area, both images are equal")
