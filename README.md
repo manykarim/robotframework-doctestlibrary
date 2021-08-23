@@ -6,12 +6,13 @@ Simple Automated Visual Document Testing.
 Powered by
 - Open CV
 - scikit-image
-- ImageMagick
-- Ghostscript
-- PyWand
+- ImageMagick (only needed for rendering .ps and .pcl files)
+- Ghostscript (only needed for rendering .ps and .pcl files)
+- PyWand (only needed for rendering .ps and .pcl files)
 - Tesseract OCR
-- pdfminer
-- parsimonious
+- pdfminer (will be removed)
+- parsimonious (only needed for parsing .pcl and .ps files for)
+- pymupdf
 - The knowledge of stackoverflow.com
 
 See keyword documentation for
@@ -19,6 +20,9 @@ See keyword documentation for
 - [Visual Document Tests](./VisualTest.html)
 - [Print Job Tests](./PrintJobTest.html)
 - [Pdf Tests (very basic)](./PdfTest.html)
+
+
+See [Talk from RoboCon2021](https://robocon.io/#print-is-(not)-dead-%E2%80%93-visual-document-testing-using-robot-framework) for a short demo and some background.
 
 # Installation instructions
 
@@ -33,6 +37,7 @@ I recommend to use `pip` as it will also install a required binary `libdmtx-64.d
    * `pip install --upgrade robotframework-doctestlibrary`
    * `python setup.py install`
 3. Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries
+   <br>Hint: Since `0.2.0` Ghostscript, GhostPCL and ImageMagick are only needed for rendering `.ps` and `.pcl`files
    * Linux
      * `apt-get install imagemagick`
      * `apt-get install tesseract-ocr`
@@ -47,12 +52,12 @@ I recommend to use `pip` as it will also install a required binary `libdmtx-64.d
 
 ## Some special instructions for Windows 
 
-### Rename executable for GhostPCL to pcl6.exe
+### Rename executable for GhostPCL to pcl6.exe (only needed for `.pcl` support)
 The executable for GhostPCL `gpcl6win64.exe` needs to be renamed to `pcl6.exe`
 
 Otherwise it will not be possible to render .pcl files successfully for visual comparison.
 
-### Add tesseract, ghostscript and imagemagick to system path in windows
+### Add tesseract, ghostscript and imagemagick to system path in windows (only needed for OCR, `.pcl` and `.ps` support)
 * C:\Program Files\ImageMagick-7.0.10-Q16-HDRI
 * C:\Program Files\Tesseract-OCR
 * C:\Program Files\gs\gs9.53.1\bin
@@ -96,6 +101,29 @@ Afterwards you can, e.g., start the container and run the povided examples like 
   * `docker run -t -v "%cd%":/opt/test -w /opt/test robotframework-doctest robot atest/Compare.robot`
 * Linux
   * `docker run -t -v $PWD:/opt/test -w /opt/test robotframework-doctest robot atest/Compare.robot`
+
+# Updates
+## Hello PyMuPDF
+With version `0.2.0` the PDF Rendering and PDF content reading is done via `PyMuPDF` (instead of `Ghostscript` and `ImageMagick`/`PyWand`).
+<br>
+Due to that change `PyMuPDF` was added to the dependencies and needs to be installed (e.g. via `pip`)
+<br>
+For the time being, `Ghostscript` and `ImageMagick`/`PyWand` will be kept as dependencies, as they are needed for rendering `.pcl`and `.ps` files.
+<br>
+But both might be removed in the future which will simplify the installation.
+
+##PDF Content Checks
+Thanks to `PyMuPDF` it was possible to implement more content checks for `.PDF` files.
+
+* Text Content
+* Digital Signatures
+* Metadata
+* Images
+* Used Fonts
+
+Each content type can also be compared separately.
+<br>
+Have a look at [PDF Content Tests](./atest/PdfContent.robot)
 
 # Examples
 
@@ -200,7 +228,29 @@ Library    DocTest.PdfTest
 *** Test Cases ***
 Check if list of strings exists in PDF File
     @{strings}=    Create List    First String    Second String
-    Check Text Content    ${strings}    Candidate.pdf
+    PDF Should Contain Strings    ${strings}    Candidate.pdf
+    
+Compare two PDF Files and only check text content
+    Compare Pdf Documents    Reference.pdf    Candidate.pdf    compare=text
+
+Compare two  PDF Files and only check text content and metadata
+    Compare Pdf Documents    Reference.pdf    Candidate.pdf    compare=text,metadata
+    
+Compare two  PDF Files and check all possible content
+    Compare Pdf Documents    Reference.pdf    Candidate.pdf
+```
+
+### Ignore Watermarks for Visual Comparisons
+Store the watermark in a separate B/W image or PDF.
+<br>
+Watermark area needs to be filled with black color
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest
+
+*** Test Cases ***
+Compare two Images and ignore watermark
+    Compare Images    Reference.jpg    Candidate.jpg    watermark_file=Watermark.jpg
 ```
 
 
