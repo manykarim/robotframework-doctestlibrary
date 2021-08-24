@@ -54,7 +54,7 @@ class CompareImage(object):
         self.placeholders = []
         self.placeholder_mask = None
         self.text_content = []
-        self.pdf_content = []
+        #self.pdf_content = []
         self.placeholder_frame_width = 10
         self.tmp_directory = tempfile.TemporaryDirectory()
         self.diff_images = []
@@ -69,7 +69,7 @@ class CompareImage(object):
         toc = time.perf_counter()
         print(f"Compare Image Object created in {toc - tic:0.4f} seconds")
 
-    def convert_document_to_opencv_image(self, resolution=None):
+    def convert_mupdf_to_opencv_image(self, resolution=None):
         self.opencv_images = []
         if resolution == None:
             resolution = self.DPI
@@ -82,7 +82,6 @@ class CompareImage(object):
                 #split pages
                 tic = time.perf_counter()
                 for i, page in enumerate(self.mupdfdoc.pages()):
-                    print(i)
                     zoom = resolution/72
                     mat = fitz.Matrix(zoom, zoom)
                     pix = page.getPixmap(matrix = mat)
@@ -90,9 +89,7 @@ class CompareImage(object):
                     nparr = np.frombuffer(imgData, np.uint8)
                     opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                     self.opencv_images.append(opencv_image)
-                    #tdict = json.loads(page.getText("json"))
                     pass
-                self.pdf_content = self.mupdfdoc.pages()
                 toc = time.perf_counter()
                 print(f"Conversion from PyMuPDF Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
         except:
@@ -126,7 +123,7 @@ class CompareImage(object):
             self.rerendered_for_ocr = True
             print("Re-Render document for OCR at {} DPI as current resolution is only {} DPI".format(self.MINIMUM_OCR_RESOLUTION, self.DPI))
             if ((self.extension=='.pdf') or (self.extension=='.ps') or (self.extension=='.pcl')):                           
-                self.convert_document_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+                self.convert_mupdf_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             else:
                 scale = self.MINIMUM_OCR_RESOLUTION / self.DPI # percent of original size
                 width = int(self.opencv_images[0].shape[1] * scale)
@@ -246,7 +243,7 @@ class CompareImage(object):
                     yoffset = int(placeholder.get('yoffset', 0))
                     # print(pattern)
 
-                    if self.pdf_content == [] or self.force_ocr == True:
+                    if self.mupdfdoc is None or self.force_ocr is True:
                         # self.get_text_content_with_east()
                         self.get_ocr_text_data()
                         for i in range(len(self.opencv_images)):
@@ -400,8 +397,10 @@ class CompareImage(object):
     def load_image_into_array(self):
         if (os.path.isfile(self.image) is False):
             raise AssertionError('The file does not exist: {}'.format(self.image))
-        if ((self.extension=='.pdf') or (self.extension=='.ps') or (self.extension=='.pcl')):
-            self.convert_document_to_opencv_image()
+        if self.extension=='.pdf':
+            self.convert_mupdf_to_opencv_image()
+        elif (self.extension=='.ps') or (self.extension=='.pcl'):
+            self.convert_pywand_to_opencv_image()
         else:
             self.DPI = 72
             img = cv2.imread(self.image)
@@ -413,12 +412,6 @@ class CompareImage(object):
                 self.opencv_images.append(img)
 
     def load_text_content_and_identify_masks(self):
-        if self.get_pdf_content or self.extension=='.pdf':
-            try:
-                self.pdf_content = fitz.Document(self.image)
-            except:
-                print("Problem when reading PDF text content from PDF File. OCR will be used instead")
-                self.text_content = []   
         if (self.placeholder_file is not None) or (self.mask is not None):
             self.identify_placeholders()
         if (self.contains_barcodes==True):
@@ -429,19 +422,23 @@ class CompareImage(object):
     def get_text_content_from_mupdf(self):
         pass
 
-    def make_text(words):
-        """Return textstring output of get_text("words").
-        Word items are sorted for reading sequence left to right,
-        top to bottom.
-        """
-        line_dict = {}  # key: vertical coordinate, value: list of words
-        words.sort(key=lambda w: w[0])  # sort by horizontal coordinate
-        for w in words:  # fill the line dictionary
-            y1 = round(w[3], 1)  # bottom of a word: don't be too picky!
-            word = w[4]  # the text of the word
-            line = line_dict.get(y1, [])  # read current line content
-            line.append(word)  # append new word
-            line_dict[y1] = line  # write back to dict
-        lines = list(line_dict.items())
-        lines.sort()  # sort vertically
-        return "\n".join([" ".join(line[1]) for line in lines])
+    def convert_pywand_to_opencv_image(self):
+        pass
+
+def make_text(words):
+    """Return textstring output of get_text("words").
+    Word items are sorted for reading sequence left to right,
+    top to bottom.
+    """
+    line_dict = {}  # key: vertical coordinate, value: list of words
+    words.sort(key=lambda w: w[0])  # sort by horizontal coordinate
+    for w in words:  # fill the line dictionary
+        y1 = round(w[3], 1)  # bottom of a word: don't be too picky!
+        word = w[4]  # the text of the word
+        line = line_dict.get(y1, [])  # read current line content
+        line.append(word)  # append new word
+        line_dict[y1] = line  # write back to dict
+    lines = list(line_dict.items())
+    lines.sort()  # sort vertically
+    return "\n".join([" ".join(line[1]) for line in lines])
+

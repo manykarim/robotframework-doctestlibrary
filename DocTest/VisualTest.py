@@ -149,11 +149,11 @@ class VisualTest(object):
             for i, (reference, candidate) in enumerate(zip(reference_collection, compare_collection)):
                 if get_pdf_content:
                     try:
-                        reference_pdf_content = reference_compare_image.pdf_content[i]
-                        candidate_pdf_content = candidate_compare_image.pdf_content[i]
+                        reference_pdf_content = reference_compare_image.mupdfdoc[i]
+                        candidate_pdf_content = candidate_compare_image.mupdfdoc[i]
                     except:
-                        reference_pdf_content = reference_compare_image.pdf_content[0]
-                        candidate_pdf_content = reference_compare_image.pdf_content[0]  
+                        reference_pdf_content = reference_compare_image.mupdfdoc[0]
+                        candidate_pdf_content = reference_compare_image.mupdfdoc[0]
                 else:
                     reference_pdf_content = None
                     candidate_pdf_content = None
@@ -305,18 +305,30 @@ class VisualTest(object):
                         print("A watermark position was identified. After ignoring watermark area, both images are equal")
                         return
                 if compare_options["watermark_file"] is not None:
-                    if isinstance(compare_options["watermark_file"], str):
-                        compare_options["watermark_file"] = [compare_options["watermark_file"]]
-                    if isinstance(compare_options["watermark_file"], list):
+                    watermark_file = compare_options["watermark_file"]
+                    if isinstance(watermark_file, str):
+                        if os.path.isdir(watermark_file):
+                            watermark_file = [str(os.path.join(watermark_file, f)) for f in os.listdir(watermark_file) if os.path.isfile(os.path.join(watermark_file, f))]
+                        else:
+                            watermark_file = [watermark_file]
+                    if isinstance(watermark_file, list):
                         try:
-                            for single_watermark in compare_options["watermark_file"]:
-                                watermark = CompareImage(single_watermark).opencv_images[0]
+                            for single_watermark in watermark_file:
+                                try:
+                                    watermark = CompareImage(single_watermark).opencv_images[0]
+                                except:
+                                    print(f'Watermark file {single_watermark} could not be loaded. Continue with next item.')
+                                    continue
                                 watermark_gray = cv2.cvtColor(watermark, cv2.COLOR_BGR2GRAY)
                                 watermark_gray = (watermark_gray * 255).astype("uint8")
-                                mask = cv2.threshold(watermark_gray, 0, 255,cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+                                mask = cv2.threshold(watermark_gray, 10, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
                                 mask = cv2.dilate(mask, None, iterations=1)
                                 mask_inv = cv2.bitwise_not(mask)
-                                result = cv2.bitwise_and(thresh, thresh, mask=mask_inv)
+                                if thresh.shape[0:2] == mask_inv.shape[0:2]:
+                                    result = cv2.bitwise_and(thresh, thresh, mask=mask_inv)
+                                else:
+                                    print(f"The shape of watermark and image are different. Continue with next item")
+                                    continue
                                 if cv2.countNonZero(result) == 0:
                                     images_are_equal=True
                                     print("A watermark file was provided. After removing watermark area, both images are equal")

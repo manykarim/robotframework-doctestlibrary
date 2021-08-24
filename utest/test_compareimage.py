@@ -35,7 +35,7 @@ def test_image_text_content(testdata_dir):
 
 def test_pdf_text_content(testdata_dir):
     img = CompareImage(testdata_dir / 'sample_1_page.pdf')
-    assert len(img.pdf_content.get_page_text(0, "WORDS"))>0
+    assert len(img.mupdfdoc.get_page_text(0, "WORDS"))>0
 
 def test_non_existing_file(testdata_dir):
     with pytest.raises(AssertionError):
