@@ -351,16 +351,16 @@ class VisualTest(object):
                         self.add_screenshot_to_log(diff_area_reference, "_page_" + str(i+1) + "_diff_area_reference_"+str(c))
                         self.add_screenshot_to_log(diff_area_candidate, "_page_" + str(i+1) + "_diff_area_test_"+str(c))
 
-                        text_reference = pytesseract.image_to_string(diff_area_reference)
-                        text_test = pytesseract.image_to_string(diff_area_candidate)
-                        if(text_reference.strip()==text_test.strip()):                           
+                        text_reference = pytesseract.image_to_string(diff_area_reference, config='--psm 6').replace("\n\n", "\n")
+                        text_candidate = pytesseract.image_to_string(diff_area_candidate, config='--psm 6').replace("\n\n", "\n")
+                        if text_reference.strip()==text_candidate.strip():                           
                             print("Partial text content is the same")
                             print(text_reference)
                         else:
                             images_are_equal=False
                             detected_differences.append(True)
                             print("Partial text content is different")
-                            print(text_reference + " is not equal to " + text_test)
+                            print(text_reference + " is not equal to " + text_candidate)
                 elif compare_options["get_pdf_content"] is True:
                 
                     images_are_equal=True
