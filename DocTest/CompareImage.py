@@ -422,8 +422,33 @@ class CompareImage(object):
     def get_text_content_from_mupdf(self):
         pass
 
-    def convert_pywand_to_opencv_image(self):
-        pass
+    def convert_pywand_to_opencv_image(self, resolution=None):
+        self.opencv_images = []
+        if resolution == None:
+            resolution = self.DPI
+        tic = time.perf_counter()
+        try:
+            with(Image(filename=self.image, resolution=resolution)) as source:
+
+                toc = time.perf_counter()
+                print(f"Rendering document to pyWand Image performed in {toc - tic:0.4f} seconds")
+
+                images = source.sequence
+                pages = len(images)
+
+                tic = time.perf_counter()
+
+                for i in range(pages):
+                    images[i].background_color = Color('white')  # Set white background.
+                    images[i].alpha_channel = 'remove'  # Remove transparency and replace with bg.
+                    opencv_image = np.array(images[i])
+                    opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_RGB2BGR)
+                    self.opencv_images.append(opencv_image)
+
+                toc = time.perf_counter()
+                print(f"Conversion from pyWand Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+        except:
+            raise AssertionError("File could not be converted by ImageMagick to OpenCV Image: {}".format(self.image))
 
 def make_text(words):
     """Return textstring output of get_text("words").
