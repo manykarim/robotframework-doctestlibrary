@@ -290,7 +290,7 @@ class VisualTest(object):
             thresh = cv2.threshold(diff, 0, 255,
                 cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
             
-            reference_with_rect, candidate_with_rect , cnts= self.get_images_with_highlighted_differences(thresh, reference.copy(), candidate.copy(), extension=os.getenv('EXTENSION', 2))
+            reference_with_rect, candidate_with_rect , cnts= self.get_images_with_highlighted_differences(thresh, reference.copy(), candidate.copy(), extension=int(os.getenv('EXTENSION', 2)))
             blended_images = self.overlay_two_images(reference_with_rect, candidate_with_rect)
             
             cv2.putText(reference_with_rect,self.REFERENCE_LABEL, self.BOTTOM_LEFT_CORNER_OF_TEXT, self.FONT, self.FONT_SCALE, self.FONT_COLOR, self.LINE_TYPE)
