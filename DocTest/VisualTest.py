@@ -16,6 +16,7 @@ from concurrent import futures
 from robot.api.deco import keyword, library
 import fitz
 import json
+import math
 
 @library
 class VisualTest(object):
@@ -100,7 +101,7 @@ class VisualTest(object):
         force_ocr = kwargs.pop('force_ocr', False)
         self.DPI = int(kwargs.pop('DPI', self.DPI))
         watermark_file = kwargs.pop('watermark_file', self.watermark_file)
-        ignore_watermarks = kwargs.pop('ignore_watermarks', True)
+        ignore_watermarks = os.getenv('IGNORE_WATERMARKS', False)
         pdf_rendering_engine = kwargs.pop('pdf_rendering_engine', self.pdf_rendering_engine)
 
         compare_options = {'get_pdf_content':get_pdf_content, 'ignore_watermarks':ignore_watermarks,'check_text_content':check_text_content,'contains_barcodes':contains_barcodes, 'force_ocr':force_ocr, 'move_tolerance':move_tolerance, 'watermark_file':watermark_file}
@@ -289,7 +290,7 @@ class VisualTest(object):
             thresh = cv2.threshold(diff, 0, 255,
                 cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
             
-            reference_with_rect, candidate_with_rect , cnts= self.get_images_with_highlighted_differences(thresh, reference.copy(), candidate.copy(), extension=1)
+            reference_with_rect, candidate_with_rect , cnts= self.get_images_with_highlighted_differences(thresh, reference.copy(), candidate.copy(), extension=os.getenv('EXTENSION', 2))
             blended_images = self.overlay_two_images(reference_with_rect, candidate_with_rect)
             
             cv2.putText(reference_with_rect,self.REFERENCE_LABEL, self.BOTTOM_LEFT_CORNER_OF_TEXT, self.FONT, self.FONT_SCALE, self.FONT_COLOR, self.LINE_TYPE)
@@ -449,17 +450,17 @@ class VisualTest(object):
                                 pt_compare = positions_in_compare_image['pt2']
                                 x_moved = abs(pt_original[0]-pt_compare[0])
                                 y_moved = abs(pt_original[1]-pt_compare[1])
-
+                                move_distance = math.sqrt(x_moved** 2 +y_moved ** 2)
                                 #cv2.arrowedLine(candidate_with_rect, pt_original, pt_compare, (255, 0, 0), 4)
-                                if int(x_moved+y_moved)>int(move_tolerance):
-                                    print("Image section moved ",x_moved+y_moved, " pixels")
+                                if int(move_distance)>int(move_tolerance):
+                                    print("Image section moved ",move_distance, " pixels")
                                     print("This is outside of the allowed range of ",move_tolerance, " pixels")
                                     images_are_equal=False
                                     detected_differences.append(True)
                                     self.add_screenshot_to_log(self.overlay_two_images(search_area_reference, search_area_candidate), "_diff_area_blended")
                                     
                                 else:
-                                    print("Image section moved ",x_moved+y_moved, " pixels")
+                                    print("Image section moved ",move_distance, " pixels")
                                     print("This is within the allowed range of ",move_tolerance, " pixels")
                                     self.add_screenshot_to_log(self.overlay_two_images(search_area_reference, search_area_candidate), "_diff_area_blended")
 
