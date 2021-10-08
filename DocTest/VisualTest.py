@@ -21,7 +21,7 @@ import json
 class VisualTest(object):
 
     ROBOT_LIBRARY_VERSION = 0.1
-    BORDER_FOR_MOVE_TOLERANCE_CHECK = 50
+    BORDER_FOR_MOVE_TOLERANCE_CHECK = 0
     DPI = 200
     WATERMARK_WIDTH = 25
     WATERMARK_HEIGHT = 30
@@ -182,8 +182,8 @@ class VisualTest(object):
     def get_images_with_highlighted_differences(self, thresh, reference, candidate, extension=10):
         
         #thresh = cv2.dilate(thresh, None, iterations=extension)
-        thresh = cv2.dilate(thresh, None, iterations=10)
-        thresh = cv2.erode(thresh, None, iterations=10)
+        thresh = cv2.dilate(thresh, None, iterations=extension)
+        thresh = cv2.erode(thresh, None, iterations=extension)
         cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
             cv2.CHAIN_APPROX_SIMPLE)
         cnts = imutils.grab_contours(cnts)
@@ -227,21 +227,29 @@ class VisualTest(object):
         template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
         h, w = template.shape[0:2]
 
-        res = cv2.matchTemplate(img_gray,template_gray,cv2.TM_SQDIFF_NORMED)
+        template_blur = cv2.GaussianBlur(template_gray, (3, 3), 0)
+        template_thresh = cv2.threshold(template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+
+        # Obtain bounding rectangle and extract ROI
+        temp_x, temp_y, temp_w, temp_h = cv2.boundingRect(template_thresh)
+
+        res = cv2.matchTemplate(img_gray,template_gray[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w],cv2.TM_SQDIFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-    
-        loc = (np.array([min_loc[1],]), np.array([min_loc[0],]))
 
+        res_temp = cv2.matchTemplate(template_gray, template_gray[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w],
+                                cv2.TM_SQDIFF_NORMED)
+        min_val_temp, max_val_temp, min_loc_temp, max_loc_temp = cv2.minMaxLoc(res_temp)
 
+        # loc = (np.array([min_loc[1],]), np.array([min_loc[0],]))
         # threshold = 0.9
         # loc = np.where( res >= threshold)
-        for pt in zip(*loc[::-1]):
-            rectangles.append({"pt1":pt,"pt2":(pt[0] + w, pt[1] + h) })
-            #cv2.rectangle(img, pt, (pt[0] + w, pt[1] + h), (0,0,255), 2)
+        # for pt in zip(*loc[::-1]):
+        #     rectangles.append({"pt1":pt,"pt2":(pt[0] + w, pt[1] + h) })
+        #     #cv2.rectangle(img, pt, (pt[0] + w, pt[1] + h), (0,0,255), 2)
 
         #Determine whether this sub image has been found
         if (min_val < threshold):
-            return rectangles
+            return {"pt1":min_loc, "pt2":min_loc_temp}
         return
 
     def overlay_two_images(self, image, overlay, ignore_color=[255,255,255]):
@@ -281,7 +289,7 @@ class VisualTest(object):
             thresh = cv2.threshold(diff, 0, 255,
                 cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
             
-            reference_with_rect, candidate_with_rect , cnts= self.get_images_with_highlighted_differences(thresh, reference.copy(), candidate.copy(), extension=5)
+            reference_with_rect, candidate_with_rect , cnts= self.get_images_with_highlighted_differences(thresh, reference.copy(), candidate.copy(), extension=1)
             blended_images = self.overlay_two_images(reference_with_rect, candidate_with_rect)
             
             cv2.putText(reference_with_rect,self.REFERENCE_LABEL, self.BOTTOM_LEFT_CORNER_OF_TEXT, self.FONT, self.FONT_SCALE, self.FONT_COLOR, self.LINE_TYPE)
@@ -437,12 +445,12 @@ class VisualTest(object):
                             if positions_in_compare_image:
                                 
                                 #pt_original = (x, y)
-                                pt_original = (self.BORDER_FOR_MOVE_TOLERANCE_CHECK, self.BORDER_FOR_MOVE_TOLERANCE_CHECK)
-                                pt_compare = positions_in_compare_image[0]['pt1']                                
+                                pt_original = positions_in_compare_image['pt1']
+                                pt_compare = positions_in_compare_image['pt2']
                                 x_moved = abs(pt_original[0]-pt_compare[0])
                                 y_moved = abs(pt_original[1]-pt_compare[1])
 
-                                cv2.arrowedLine(candidate_with_rect, pt_original, pt_compare, (255, 0, 0), 4)
+                                #cv2.arrowedLine(candidate_with_rect, pt_original, pt_compare, (255, 0, 0), 4)
                                 if int(x_moved+y_moved)>int(move_tolerance):
                                     print("Image section moved ",x_moved+y_moved, " pixels")
                                     print("This is outside of the allowed range of ",move_tolerance, " pixels")
