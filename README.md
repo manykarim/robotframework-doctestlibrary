@@ -17,37 +17,53 @@ Powered by
 
 See keyword documentation for
 
-- [Visual Document Tests](./VisualTest.html)
-- [Print Job Tests](./PrintJobTest.html)
-- [Pdf Tests (very basic)](./PdfTest.html)
+- [Visual Document Tests](https://manykarim.github.io/robotframework-doctestlibrary/VisualTest.html)
+- [Print Job Tests](https://manykarim.github.io/robotframework-doctestlibrary/PrintJobTest.html)
+- [Pdf Tests (very basic)](https://manykarim.github.io/robotframework-doctestlibrary/PdfTest.html)
 
 
-See [Talk from RoboCon2021](https://robocon.io/#print-is-(not)-dead-%E2%80%93-visual-document-testing-using-robot-framework) for a short demo and some background.
+See [Talk from RoboCon2021](https://www.youtube.com/watch?v=qmpwlQoJ-nE) for a short demo and some background.
 
 # Installation instructions
 
-Only Python 3.X or newer is supported.
+Only Python 3.X or newer is supported. Tested with Python 3.8/3.9/3.10
 
 In general, an installation via `pip` or `setup.py` is possible.
 
 I recommend to use `pip` as it will also install a required binary `libdmtx-64.dll` (for windows) automatically.  
 
-1. Clone the robotframework-doctestlibrary `git clone https://github.com/manykarim/robotframework-doctestlibrary.git` (only needed for installing via `setup.py`)
-2. Install robotframework-doctestlibrary via `pip` or `setup.py`
-   * `pip install --upgrade robotframework-doctestlibrary`
-   * `python setup.py install`
-3. Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries
-   <br>Hint: Since `0.2.0` Ghostscript, GhostPCL and ImageMagick are only needed for rendering `.ps` and `.pcl`files
-   * Linux
-     * `apt-get install imagemagick`
-     * `apt-get install tesseract-ocr`
-     * `apt-get install ghostscript`
-     * `apt-get install libdmtx0b`
-   * Windows
-     * https://github.com/UB-Mannheim/tesseract/wiki
-     * https://www.ghostscript.com/download/gsdnld.html
-     * https://www.ghostscript.com/download/gpcldnld.html
-     * https://imagemagick.org/script/download.php
+## Install robotframework-doctestlibrary
+
+### Installation via `pip`
+
+* `pip install --upgrade robotframework-doctestlibrary`
+
+
+### Installation via `setup.py`
+
+* Clone the robotframework-doctestlibrary
+  <br>`git clone https://github.com/manykarim/robotframework-doctestlibrary.git`
+* Install via setup.py
+  <br>`python setup.py install`
+
+## Install dependencies
+
+
+Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries
+<br>Hint: Since `0.2.0` Ghostscript, GhostPCL and ImageMagick are only needed for rendering `.ps` and `.pcl`files.
+<br> Rendering and content parsing of `.pdf` is done via MuPDF
+<br>In the future there might be a separate pypi package for `.pcl` and `.ps` files to get rid of those dependencies.
+
+* Linux
+ * `apt-get install imagemagick`
+ * `apt-get install tesseract-ocr`
+ * `apt-get install ghostscript`
+ * `apt-get install libdmtx0b`
+* Windows
+ * https://github.com/UB-Mannheim/tesseract/wiki
+ * https://www.ghostscript.com/download/gsdnld.html
+ * https://www.ghostscript.com/download/gpcldnld.html
+ * https://imagemagick.org/script/download.php
 
 
 ## Some special instructions for Windows 
@@ -208,12 +224,12 @@ Accept differences if text content is the same from PDF Data
     Compare Images    Reference.pdf    Candidate.pdf    check_text_content=${true}    get_pdf_content=${true}
 ```
 ### Options for taking additional screenshots, screenshot format and render resolution
-
+Take additional screenshots or reference and candidate file.
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   take_screenshots=${true}    screenshot_format=png
 ```
-
+Take diff screenshots to highlight differences
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   show_diff=${true}    DPI=300
@@ -243,15 +259,34 @@ Compare two  PDF Files and check all possible content
 ### Ignore Watermarks for Visual Comparisons
 Store the watermark in a separate B/W image or PDF.
 <br>
-Watermark area needs to be filled with black color
+Watermark area needs to be filled with black color.
+<br>
+Watermark content will be subtracted from Visual Comparison result.
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest
 
 *** Test Cases ***
-Compare two Images and ignore watermark
+Compare two Images and ignore jpg watermark
     Compare Images    Reference.jpg    Candidate.jpg    watermark_file=Watermark.jpg
+
+Compare two Images and ignore pdf watermark
+    Compare Images    Reference.pdf    Candidate.pdf    watermark_file=Watermark.pdf
+
+Compare two Images and ignore watermark folder
+    Compare Images    Reference.pdf    Candidate.pdf    watermark_file=${CURDIR}${/}watermarks
 ```
+
+Watermarks can also be passed on Library import. This setting will apply to all Test Cases in Test Suite
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest   watermark_file=${CURDIR}${/}watermarks
+
+*** Test Cases ***
+Compare two Images and ignore watermarks
+    Compare Images    Reference.jpg    Candidate.jpg
+```
+
 
 
 # Development

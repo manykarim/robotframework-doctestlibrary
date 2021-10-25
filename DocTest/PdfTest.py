@@ -19,12 +19,24 @@ class PdfTest(object):
         """Compares some PDF metadata/properties of ``reference_document`` and ``candidate_document``.
         
         ``reference_document`` and ``candidate_document`` shall both be path to ``PDF`` files.
+        ``compare`` can be passed as an optional argument with following values:
 
-        The compared properties are mostly related to digital signatures and are:
+            - all
+            - metadata
+            - text
+            - fonts
+            - images
+            - signatures
+
+        Multiple values shall be separated by ``|`` symbol
+        e.g. ``compare=text|metadata``
+
+        The compared properties are are:
                
-            - Signature
-            - Output Intents
-            - SigFlags
+            - metadata
+            - page_count
+            - sigflags
+            - text
 
         Result is passed if all properties are equal. 
         
@@ -33,7 +45,10 @@ class PdfTest(object):
 
         Examples:
         | = Keyword =    |  = reference_document =  | = candidate_document =       |  = comment = |
-        | Compare Pdf Documents | reference.pdf | candidate.pdf | #Performs a property comparison of both files |       
+        | Compare Pdf Documents | reference.pdf | candidate.pdf | #Performs a property comparison of both files |
+        | Compare Pdf Documents | reference.pdf | candidate.pdf | compare=text | #Performs a property comparison of both files. Only text content will be compared |
+
+        compare=text
         
         """
         mask = kwargs.pop('mask', None)

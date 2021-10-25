@@ -65,7 +65,7 @@ class VisualTest(object):
     def compare_images(self, reference_image, test_image, **kwargs):
         """Compares the documents/images ``reference_image`` and ``test_image``.
 
-        ``**kwargs`` can be used to add settings for ``placeholder_file``, ``contains_barcodes``, ``check_text_content``, ``move_tolerance``, ``get_pdf_content``
+        ``**kwargs`` can be used to add settings for ``placeholder_file``, ``contains_barcodes``, ``check_text_content``, ``move_tolerance``, ``get_pdf_content``, ``watermark_file``
         
         Result is passed if no visual differences are detected. 
         
@@ -80,7 +80,9 @@ class VisualTest(object):
         | Compare Images | reference.pdf | candidate.pdf | contains_barcodes=${true}    | #Identified barcodes in documents and excludes those areas from visual comparison. The barcode data will be checked instead |
         | Compare Images | reference.pdf | candidate.pdf | check_text_content${true}    | #In case of visual differences, the text content in the affected areas will be identified using OCR. If text content it equal, the test is considered passed |
         | Compare Images | reference.pdf | candidate.pdf | move_tolerance=10            | #In case of visual differences, it is checked if difference is caused only by moved areas. If the move distance is within 10 pixels the test is considered as passed. Else it is failed |
-        | Compare Images | reference.pdf | candidate.pdf | check_text_content${true} get_pdf_content=${true} | #In case of visual differences, the text content in the affected areas will be read directly from  PDF (not OCR). If text content it equal, the test is considered passed |
+        | Compare Images | reference.pdf | candidate.pdf | check_text_content=${true} get_pdf_content=${true} | #In case of visual differences, the text content in the affected areas will be read directly from  PDF (not OCR). If text content it equal, the test is considered passed |
+        | Compare Images | reference.pdf | candidate.pdf | watermark_file=watermark.pdf   | #Provides a watermark file as an argument. In case of visual differences, watermark content will be subtracted |
+        | Compare Images | reference.pdf | candidate.pdf | watermark_file=${CURDIR}${/}watermarks   | #Provides a watermark folder as an argument. In case of visual differences, all watermarks in folder will be subtracted |
         | Compare Images | reference.pdf | candidate.pdf | move_tolerance=10 get_pdf_content=${true} | #In case of visual differences, it is checked if difference is caused only by moved areas. Move distance is identified directly from PDF data. If the move distance is within 10 pixels the test is considered as passed. Else it is failed |
         
         
