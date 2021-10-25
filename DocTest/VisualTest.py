@@ -337,13 +337,13 @@ class VisualTest(object):
                                 mask_inv = cv2.bitwise_not(mask)
                                 if thresh.shape[0:2] == mask_inv.shape[0:2]:
                                     result = cv2.bitwise_and(thresh, thresh, mask=mask_inv)
-                                    if self.show_diff:
-                                        print(f"The diff after watermark removal")
-                                        self.add_screenshot_to_log(result, "_page_" + str(i + 1) + "_watermark_diff")
                                 else:
                                     print(f"The shape of watermark and image are different. Continue with next item")
                                     print(f"Document: {thresh.shape}\nMask: {mask_inv.shape}")
                                     continue
+                                if self.show_diff:
+                                    print(f"The diff after watermark removal")
+                                    self.add_screenshot_to_log(result, "_page_" + str(i + 1) + "_watermark_diff")
                                 if cv2.countNonZero(result) == 0:
                                     images_are_equal=True
                                     print("A watermark file was provided. After removing watermark area, both images are equal")
