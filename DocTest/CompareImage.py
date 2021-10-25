@@ -84,8 +84,8 @@ class CompareImage(object):
                 for i, page in enumerate(self.mupdfdoc.pages()):
                     zoom = resolution/72
                     mat = fitz.Matrix(zoom, zoom)
-                    pix = page.getPixmap(matrix = mat)
-                    imgData = pix.getImageData("png")
+                    pix = page.get_pixmap(matrix = mat)
+                    imgData = pix.tobytes("png")
                     nparr = np.frombuffer(imgData, np.uint8)
                     opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                     self.opencv_images.append(opencv_image)
@@ -274,7 +274,7 @@ class CompareImage(object):
                                         self.placeholders.append(text_pattern_mask)
                             if (placeholder_type == 'pattern' or placeholder_type == 'line_pattern'):
                                 print("Searching line_pattern")
-                                tdict = json.loads(self.mupdfdoc[i].getText("json"))
+                                tdict = json.loads(self.mupdfdoc[i].get_text("json"))
                                 search_pattern = re.compile(pattern)
                                 for block in tdict['blocks']:
                                     if block['type'] == 0:
