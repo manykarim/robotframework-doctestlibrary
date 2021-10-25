@@ -122,8 +122,10 @@ class CompareImage(object):
         if (self.DPI < self.MINIMUM_OCR_RESOLUTION):
             self.rerendered_for_ocr = True
             print("Re-Render document for OCR at {} DPI as current resolution is only {} DPI".format(self.MINIMUM_OCR_RESOLUTION, self.DPI))
-            if ((self.extension=='.pdf') or (self.extension=='.ps') or (self.extension=='.pcl')):                           
+            if self.extension == '.pdf':
                 self.convert_mupdf_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+            elif (self.extension == '.ps') or (self.extension == '.pcl'):
+                self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             else:
                 scale = self.MINIMUM_OCR_RESOLUTION / self.DPI # percent of original size
                 width = int(self.opencv_images[0].shape[1] * scale)
