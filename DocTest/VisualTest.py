@@ -326,7 +326,7 @@ class VisualTest(object):
                         try:
                             for single_watermark in watermark_file:
                                 try:
-                                    watermark = CompareImage(single_watermark).opencv_images[0]
+                                    watermark = CompareImage(single_watermark, DPI=self.DPI).opencv_images[0]
                                 except:
                                     print(f'Watermark file {single_watermark} could not be loaded. Continue with next item.')
                                     continue
@@ -342,6 +342,7 @@ class VisualTest(object):
                                         self.add_screenshot_to_log(result, "_page_" + str(i + 1) + "_watermark_diff")
                                 else:
                                     print(f"The shape of watermark and image are different. Continue with next item")
+                                    print(f"Document: {thresh.shape}\nMask: {mask_inv.shape}")
                                     continue
                                 if cv2.countNonZero(result) == 0:
                                     images_are_equal=True
