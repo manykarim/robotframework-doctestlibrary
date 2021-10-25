@@ -14,6 +14,7 @@ import io
 import re
 import logging
 import os
+import fitz
 
 
 class PdfDoc(object):
@@ -30,17 +31,12 @@ class PdfDoc(object):
         if (os.path.isfile(filename) is False):
             raise AssertionError('The PDF file does not exist: {}'.format(filename))
         # Open a PDF file.
-        fp = open(filename, 'rb')
-        # Create a PDF parser object associated with the file object.
-        parser = PDFParser(fp)
-        # Create a PDF document object that stores the document structure.
-        # Supply the password for initialization.
-        document = PDFDocument(parser)
-        return document
+        doc = fitz.open(filename)
+        return doc
 
     @staticmethod
     def get_sig_flags(filename):
-        doc = PdfDoc.get_doc(filename)
+        doc = fitz.open(filename)
         try:
             return doc.catalog['AcroForm'].get('SigFlags', None)
         except:
@@ -50,7 +46,7 @@ class PdfDoc(object):
 
     @staticmethod
     def get_signature(filename, ignore_time_of_signing=True, ignore_signature_content=True):
-        doc = PdfDoc.get_doc(filename)
+        doc = fitz.open(filename)
         try:
             fields = resolve1(doc.catalog['AcroForm'])['Fields']
             for field in fields:
@@ -70,7 +66,7 @@ class PdfDoc(object):
     
     @staticmethod
     def get_output_intents(filename):
-        doc = PdfDoc.get_doc(filename)
+        doc = fitz.open(filename)
         if doc.catalog.get('OutputIntents', None) is not None:
             output_intents = resolve1(doc.catalog['OutputIntents'])[0]
             return output_intents['S'], output_intents['OutputConditionIdentifier']
@@ -94,30 +90,14 @@ class PdfDoc(object):
 
     @staticmethod
     def get_pdf_content(filename):
-        document = PdfDoc.get_doc(filename)
-        # Check if the document allows text extraction. If not, abort.
-        if not document.is_extractable:
-            raise PDFTextExtractionNotAllowed
-        # Create a PDF resource manager object that stores shared 
-        rsrcmgr = PDFResourceManager()
-        # Create a PDF device object.
-        device = PDFDevice(rsrcmgr)
+        doc = fitz.open(filename)
+        words_list = []
+        for page in doc.pages:
 
-        # Set parameters for analysis.
-        laparams = LAParams()
-        # Create a PDF page aggregator object.
-        device = PDFPageAggregator(rsrcmgr, laparams=laparams)
-        interpreter = PDFPageInterpreter(rsrcmgr, device)
-
-        text_content = []
-        layout = []
-        for i, page in enumerate(PDFPage.create_pages(document)):
-            interpreter.process_page(page)
-            # receive the LTPage object for the page.
-            layout.append(device.get_result())
-
-    #        text_content.extend(parse_lt_objs(layout._objs, (i+1), text_content=[], page_height=layout.height, dpi_calculation_factor=300/72))
-        return layout
+            words = page.get_text("words")
+            words = make_text(words)
+            words_list.append(words)
+        return words_list
 
     @staticmethod
     def get_items_with_matching_text(lt_objs, pattern, **kwargs):
@@ -163,23 +143,28 @@ class PdfDoc(object):
         return items_in_area
     @staticmethod
     def get_pdf_text(filename):
-        if (os.path.isfile(filename) is False):
-            raise AssertionError('The PDF file does not exist: {}'.format(filename))
-        resource_manager = PDFResourceManager()
-        fake_file_handle = io.StringIO()
-        converter = TextConverter(resource_manager, fake_file_handle, laparams=LAParams())
-        page_interpreter = PDFPageInterpreter(resource_manager, converter)
+        doc = fitz.open(filename)
+        words_list = []
+        for page in doc.pages:
 
-        with open(filename, 'rb') as fh:
+            words = page.get_text("words")
+            words = make_text(words)
+            words_list.append(words)
+        return words_list
 
-            for page in PDFPage.get_pages(fh,
-                                        caching=True,
-                                        check_extractable=True):
-                page_interpreter.process_page(page)
-
-            text = fake_file_handle.getvalue()
-
-        # close open handles
-        converter.close()
-        fake_file_handle.close()
-        return  text
+def make_text(words):
+    """Return textstring output of get_text("words").
+    Word items are sorted for reading sequence left to right,
+    top to bottom.
+    """
+    line_dict = {}  # key: vertical coordinate, value: list of words
+    words.sort(key=lambda w: w[0])  # sort by horizontal coordinate
+    for w in words:  # fill the line dictionary
+        y1 = round(w[3], 1)  # bottom of a word: don't be too picky!
+        word = w[4]  # the text of the word
+        line = line_dict.get(y1, [])  # read current line content
+        line.append(word)  # append new word
+        line_dict[y1] = line  # write back to dict
+    lines = list(line_dict.items())
+    lines.sort()  # sort vertically
+    return "\n".join([" ".join(line[1]) for line in lines])

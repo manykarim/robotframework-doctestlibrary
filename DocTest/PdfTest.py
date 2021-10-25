@@ -1,7 +1,10 @@
+from inspect import signature
 from DocTest.PdfDoc import PdfDoc
 from pprint import pprint
 from deepdiff import DeepDiff
 from robot.api.deco import keyword, library
+import fitz
+import re
 
 ROBOT_AUTO_KEYWORDS = False
 
@@ -16,12 +19,24 @@ class PdfTest(object):
         """Compares some PDF metadata/properties of ``reference_document`` and ``candidate_document``.
         
         ``reference_document`` and ``candidate_document`` shall both be path to ``PDF`` files.
+        ``compare`` can be passed as an optional argument with following values:
 
-        The compared properties are mostly related to digital signatures and are:
+            - all
+            - metadata
+            - text
+            - fonts
+            - images
+            - signatures
+
+        Multiple values shall be separated by ``|`` symbol
+        e.g. ``compare=text|metadata``
+
+        The compared properties are are:
                
-            - Signature
-            - Output Intents
-            - SigFlags
+            - metadata
+            - page_count
+            - sigflags
+            - text
 
         Result is passed if all properties are equal. 
         
@@ -30,25 +45,104 @@ class PdfTest(object):
 
         Examples:
         | = Keyword =    |  = reference_document =  | = candidate_document =       |  = comment = |
-        | Compare Pdf Documents | reference.pdf | candidate.pdf | #Performs a property comparison of both files |       
+        | Compare Pdf Documents | reference.pdf | candidate.pdf | #Performs a property comparison of both files |
+        | Compare Pdf Documents | reference.pdf | candidate.pdf | compare=text | #Performs a property comparison of both files. Only text content will be compared |
+
+        compare=text
         
         """
-
+        mask = kwargs.pop('mask', None)
+        check_pdf_text = bool(kwargs.pop('check_pdf_text', False))
+        compare = (kwargs.pop('compare', "all"))
+        compare = [x.strip() for x in compare.split(',')]
+        ref_doc = fitz.open(reference_document)
+        cand_doc = fitz.open(candidate_document)
         reference = {}
-        reference['Signature']=PdfDoc.get_signature(reference_document)
-        reference['Output Intents']=PdfDoc.get_output_intents(reference_document)
-        reference['SigFlags']=PdfDoc.get_sig_flags(reference_document)
+        reference['pages'] = []
+        reference['metadata']=ref_doc.metadata
+        reference['page_count']=ref_doc.page_count
+        reference['sigflags']=ref_doc.get_sigflags()
+        for i, page in enumerate(ref_doc.pages()):
+            signature_list = []
+            text = [x for x in page.get_text("text").splitlines() if not is_masked(x, mask)]
+            for widget in page.widgets():
+                if widget.is_signed:
+                    signature_list.append(list((widget.field_name, widget.field_label, widget.field_value)))
+            reference['pages'].append(dict([('number',i+1), ('fonts', page.get_fonts()), ('images', page.get_images()), ('rotation', page.rotation), ('mediabox', page.mediabox), ('signatures', signature_list),('text', text)]))
+
+
         candidate = {}
-        candidate['Signature']=PdfDoc.get_signature(candidate_document)
-        candidate['Output Intents']=PdfDoc.get_output_intents(candidate_document)
-        candidate['SigFlags']=PdfDoc.get_sig_flags(candidate_document)
-        if reference!=candidate:
-            pprint(DeepDiff(reference, candidate, verbose_level=2), width=200)
-            print("Reference Document:")
-            print(reference)
-            print("Candidate Document:")
-            print(candidate)           
+        candidate['pages'] = []
+        candidate['metadata']=cand_doc.metadata
+        candidate['page_count']=cand_doc.page_count
+        candidate['sigflags']=cand_doc.get_sigflags()
+        for i, page in enumerate(cand_doc.pages()):
+            signature_list = []
+            text = [x for x in page.get_text("text").splitlines() if not is_masked(x, mask)]
+            for widget in page.widgets():
+                if widget.is_signed:
+                    signature_list.append(list((widget.field_name, widget.field_label, widget.field_value)))
+            candidate['pages'].append(dict([('number',i+1), ('fonts', page.get_fonts()), ('images', page.get_images()), ('rotation', page.rotation), ('mediabox', page.mediabox), ('signatures', signature_list),('text', text)]))
+
+        differences_detected=False
+
+        if 'metadata' in compare or 'all' in compare:
+            diff = DeepDiff(reference['metadata'], candidate['metadata'])
+            if diff != {}:
+                differences_detected=True
+                print("Different metadata")
+                pprint(diff, width=200)
+        if 'signatures' in compare or 'all' in compare:
+            diff = DeepDiff(reference['sigflags'], candidate['sigflags'])
+            if diff != {}:
+                differences_detected=True
+                print("Different signature")
+                pprint(diff, width=200)
+        for ref_page, cand_page in zip(reference['pages'], candidate['pages']):
+            diff = DeepDiff(ref_page['rotation'], cand_page['rotation'])
+            if diff != {}:
+                differences_detected=True
+                print("Different rotation")
+                pprint(diff, width=200)
+            diff = DeepDiff(ref_page['mediabox'], cand_page['mediabox'])
+            if diff != {}:
+                differences_detected=True
+                print("Different mediabox")
+                pprint(diff, width=200)
+            if 'text' in compare or 'all' in compare:
+                diff = DeepDiff(ref_page['text'], cand_page['text'])
+                if diff != {}:
+                    differences_detected=True
+                    print("Different text")
+                    pprint(diff, width=200)
+            if 'fonts' in compare or 'all' in compare:
+                diff = DeepDiff(ref_page['fonts'], cand_page['fonts'])
+                if diff != {}:
+                    differences_detected=True
+                    print("Different fonts")
+                    pprint(diff, width=200)
+            if 'images' in compare or 'all' in compare:
+                diff = DeepDiff(ref_page['images'], cand_page['images'])
+                if diff != {}:
+                    differences_detected=True
+                    print("Different images")
+                    pprint(diff, width=200)
+            if 'signatures' in compare or 'all' in compare:
+                diff = DeepDiff(ref_page['signatures'], cand_page['signatures'])
+                if diff != {}:
+                    differences_detected=True
+                    print("Different signatures")
+                    pprint(diff, width=200)
+
+        if differences_detected:             
             raise AssertionError('The compared PDF Document Data is different.')
+        # if reference!=candidate:
+        #     pprint(DeepDiff(reference, candidate), width=200)
+        #     print("Reference Document:")
+        #     pprint(reference)
+        #     print("Candidate Document:")
+        #     pprint(candidate)           
+        #     raise AssertionError('The compared PDF Document Data is different.')
 
     @keyword
     def check_text_content(self, expected_text_list, candidate_document):
@@ -62,17 +156,19 @@ class PdfTest(object):
         | Check Text Content | ${strings} | candidate.pdf |
         
         """
-        all_texts_were_found = None
+        doc = fitz.open(candidate_document)
         missing_text_list = []
-        pdf_content = PdfDoc.get_pdf_content(candidate_document)
-        for item in expected_text_list:
-            for i in range(len(pdf_content)):
-                results = PdfDoc.get_items_with_matching_text(pdf_content[i], item, objecttype='textbox', page_height=pdf_content[i].height)
-                for textline in results:
-                    (x, y, w, h) = (textline['x'], textline['y'], textline['width'], textline['height'])
-                if not results:
-                    all_texts_were_found = False
-                    missing_text_list.append({'text':item, 'document':candidate_document, 'page':i+1})
+        all_texts_were_found = None
+        for text_item in expected_text_list:
+            text_found_in_page = False
+            for page in doc.pages():
+                if any(text_item in s for s in page.get_text("text").splitlines()):
+                    text_found_in_page = True
+                    break
+            if text_found_in_page:
+                continue
+            all_texts_were_found = False
+            missing_text_list.append({'text':text_item, 'document':candidate_document})
         if all_texts_were_found is False:
             print(missing_text_list)
             raise AssertionError('Some expected texts were not found in document')
@@ -89,13 +185,31 @@ class PdfTest(object):
         | PDF Should Contain Strings | ${strings} | candidate.pdf |
         
         """
-        pdf_text= PdfDoc.get_pdf_text(candidate_document)
+        doc = fitz.open(candidate_document)
         missing_text_list = []
         all_texts_were_found = None
         for text_item in expected_text_list:
-            if not any(text_item in s for s in pdf_text.splitlines()):
-                all_texts_were_found = False
-                missing_text_list.append({'text':text_item, 'document':candidate_document})
+            text_found_in_page = False
+            for page in doc.pages():
+                if any(text_item in s for s in page.get_text("text").splitlines()):
+                    text_found_in_page = True
+                    break
+            if text_found_in_page:
+                continue
+            all_texts_were_found = False
+            missing_text_list.append({'text':text_item, 'document':candidate_document})
         if all_texts_were_found is False:
             print(missing_text_list)
             raise AssertionError('Some expected texts were not found in document')
+
+def is_masked(text, mask):
+    if isinstance(mask, str):
+        mask = [mask]
+    if isinstance(mask, list):
+        for single_mask in mask:
+            if re.match(single_mask, text):
+                return True
+    return  False
+
+
+

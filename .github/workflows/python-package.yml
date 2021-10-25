@@ -12,7 +12,7 @@ on:
       - '**'
 jobs:
   build:
-
+    continue-on-error: true
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -46,8 +46,17 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
+      continue-on-error: true
       run: |
         pytest
     - name: Test with robotframework
+      continue-on-error: true
       run: |
-        robot --pythonpath ./:DocTest atest/
+        mkdir -p reports/screenshots
+        robot --pythonpath ./:DocTest --outputdir reports atest/
+    - name: 'Upload Artifact'
+      uses: actions/upload-artifact@v2
+      with:
+        name: robotframework-log
+        path: reports/
+        retention-days: 5

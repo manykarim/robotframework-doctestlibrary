@@ -9,3 +9,4 @@ Wand
 pylibdmtx
 pdfminer.six
 deepdiff
+PyMuPDF
