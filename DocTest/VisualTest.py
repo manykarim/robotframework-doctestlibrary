@@ -304,8 +304,8 @@ class VisualTest(object):
 
             images_are_equal=False
 
-            if (compare_options["ignore_watermarks"] == True) and (len(cnts)==1 or compare_options["watermark_file"] is not None):
-                if len(cnts)==1:
+            if (compare_options["ignore_watermarks"] == True and len(cnts)==1) or compare_options["watermark_file"] is not None:
+                if (compare_options["ignore_watermarks"] == True and len(cnts)==1):
                     (x, y, w, h) = cv2.boundingRect(cnts[0])
                     diff_center_x = abs((x+w/2)-(reference.shape[1]/2))
                     diff_center_y = abs((y+h/2)-(reference.shape[0]/2))
@@ -335,6 +335,9 @@ class VisualTest(object):
                                 mask_inv = cv2.bitwise_not(mask)
                                 if thresh.shape[0:2] == mask_inv.shape[0:2]:
                                     result = cv2.bitwise_and(thresh, thresh, mask=mask_inv)
+                                    if self.show_diff:
+                                        print(f"The diff after watermark removal")
+                                        self.add_screenshot_to_log(result, "_page_" + str(i + 1) + "_watermark_diff")
                                 else:
                                     print(f"The shape of watermark and image are different. Continue with next item")
                                     continue
