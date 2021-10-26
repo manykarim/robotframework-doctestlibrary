@@ -54,7 +54,7 @@ jobs:
       continue-on-error: true
       run: |
         mkdir -p reports/screenshots
-#        mkdir -p allure-results
+        mkdir -p allure-results
         robot --pythonpath ./:DocTest --outputdir reports atest/
     - name: Create Keyword Documentation
       continue-on-error: true
