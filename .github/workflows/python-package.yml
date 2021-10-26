@@ -27,6 +27,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
+        sudo apt-get update
         sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b allure
         export release_name=gs952
         export archive_name=ghostpcl-9.52-linux-x86_64
