@@ -10,3 +10,4 @@ pylibdmtx
 pdfminer.six
 deepdiff
 PyMuPDF
+allure-robotframework

@@ -27,7 +27,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
-        sudo apt-get install imagemagick tesseract-ocr ghostscript libdmtx0b
+        sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b allure
         export release_name=gs952
         export archive_name=ghostpcl-9.52-linux-x86_64
         wget https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/${release_name}/${archive_name}.tgz
@@ -53,7 +53,22 @@ jobs:
       continue-on-error: true
       run: |
         mkdir -p reports/screenshots
-        robot --pythonpath ./:DocTest --outputdir reports atest/
+        robot --pythonpath ./:DocTest --listener allure_robotframework;/reports/allure --outputdir reports atest/
+    - name: Create Keyword Documentation
+      continue-on-error: true
+      run: |
+        libdoc DocTest\VisualTest.py docs\VisualTest.html
+        libdoc DocTest\PdfTest.py docs\PdfTestTest.html
+        libdoc DocTest\PrintJobTests.py docs\PrintJobTest.html
+    - name: Create Allure report
+      continue-on-error: true
+      run: |
+        allure generate allure-results --clean -o docs
+    - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@4.1.5
+        with:
+          branch: main # The branch the action should deploy to.
+          folder: docs # The folder the action should deploy.
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v2
       with:
