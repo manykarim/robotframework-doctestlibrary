@@ -65,15 +65,17 @@ jobs:
     - name: Create Allure report
       continue-on-error: true
       run: |
-        allure generate $PWD/allure-results --clean -o docs
-    - name: Deploy 🚀
-      uses: JamesIves/github-pages-deploy-action@4.1.5
-      with:
-        branch: main # The branch the action should deploy to.
-        folder: docs # The folder the action should deploy.
+        allure generate $PWD/allure-results --clean -o $PWD/allure-report
+#    - name: Deploy 🚀
+#      uses: JamesIves/github-pages-deploy-action@4.1.5
+#      with:
+#        branch: main # The branch the action should deploy to.
+#        folder: docs # The folder the action should deploy.
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v2
       with:
         name: robotframework-log
-        path: reports/
+        path: |
+          reports/
+          $PWD/allure-report
         retention-days: 5
