@@ -54,13 +54,14 @@ jobs:
       continue-on-error: true
       run: |
         mkdir -p reports/screenshots
-        robot --pythonpath ./:DocTest --listener allure_robotframework;/reports/allure --outputdir reports atest/
+        mkdir -p allure-results
+        robot --pythonpath ./:DocTest --listener allure_robotframework;allure-results --outputdir reports atest/
     - name: Create Keyword Documentation
       continue-on-error: true
       run: |
-        libdoc DocTest\VisualTest.py docs\VisualTest.html
-        libdoc DocTest\PdfTest.py docs\PdfTestTest.html
-        libdoc DocTest\PrintJobTests.py docs\PrintJobTest.html
+        libdoc DocTest/VisualTest.py docs/VisualTest.html
+        libdoc DocTest/PdfTest.py docs/PdfTestTest.html
+        libdoc DocTest/PrintJobTests.py docs/PrintJobTest.html
     - name: Create Allure report
       continue-on-error: true
       run: |
