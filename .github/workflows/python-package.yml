@@ -59,9 +59,9 @@ jobs:
     - name: Create Keyword Documentation
       continue-on-error: true
       run: |
-        libdoc DocTest/VisualTest.py docs/VisualTest.html
-        libdoc DocTest/PdfTest.py docs/PdfTestTest.html
-        libdoc DocTest/PrintJobTests.py docs/PrintJobTest.html
+        libdoc --pythonpath ./:DocTest DocTest/VisualTest.py docs/VisualTest.html
+        libdoc --pythonpath ./:DocTest DocTest/PdfTest.py docs/PdfTestTest.html
+        libdoc --pythonpath ./:DocTest DocTest/PrintJobTests.py docs/PrintJobTest.html
 #    - name: Create Allure report
 #      continue-on-error: true
 #      run: |
@@ -77,5 +77,6 @@ jobs:
         name: robotframework-log
         path: |
           reports/
+          docs/
 #          $PWD/allure-report
         retention-days: 5
