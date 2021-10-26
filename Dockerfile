@@ -1,4 +1,4 @@
-FROM python:3
+FROM python:3.9
 
 MAINTAINER Many Kasiriha <manykarim@users.noreply.github.com>
 LABEL DocTest Library for Robot Framework in Docker
@@ -6,12 +6,11 @@ LABEL DocTest Library for Robot Framework in Docker
 ARG release_name=gs952
 ARG archive_name=ghostpcl-9.52-linux-x86_64
 
-#COPY requirements.txt /tmp/requirements.txt
 COPY ./ /tmp/robotframework-doctestlibrary
 RUN pip install --no-cache-dir numpy
+#COPY requirements.txt /tmp/requirements.txt
 #RUN pip install --no-cache-dir -r /tmp/requirements.txt
-WORKDIR /tmp/robotframework-doctestlibrary
-RUN python setup.py install
+RUN pip install --no-cache-dir robotframework-doctestlibrary
 WORKDIR    /
 RUN apt-get update && apt-get install -y \
     imagemagick \
