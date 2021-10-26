@@ -6,7 +6,7 @@ LABEL DocTest Library for Robot Framework in Docker
 ARG release_name=gs952
 ARG archive_name=ghostpcl-9.52-linux-x86_64
 
-COPY ./ /tmp/robotframework-doctestlibrary
+#COPY ./ /tmp/robotframework-doctestlibrary
 RUN pip install --no-cache-dir numpy
 #COPY requirements.txt /tmp/requirements.txt
 #RUN pip install --no-cache-dir -r /tmp/requirements.txt
