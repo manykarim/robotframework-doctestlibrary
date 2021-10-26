@@ -55,7 +55,7 @@ jobs:
       run: |
         mkdir -p reports/screenshots
         mkdir -p allure-results
-        robot --pythonpath ./:DocTest --listener allure_robotframework;allure-results --outputdir reports atest/
+        robot --pythonpath ./:DocTest --listener allure_robotframework;$PWD/allure-results --outputdir reports atest/
     - name: Create Keyword Documentation
       continue-on-error: true
       run: |
@@ -65,7 +65,7 @@ jobs:
     - name: Create Allure report
       continue-on-error: true
       run: |
-        allure generate allure-results --clean -o docs
+        allure generate $PWD/allure-results --clean -o docs
     - name: Deploy 🚀
       uses: JamesIves/github-pages-deploy-action@4.1.5
       with:
