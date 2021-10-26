@@ -15,4 +15,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag rf-doctest:$(date +%s)
+      run: docker build . --file Dockerfile --tag ghcr.io/manykarim/robotframework-doctestlibrary/rf-doctest:$(date +%s) --tag ghcr.io/manykarim/robotframework-doctestlibrary/rf-doctest:latest
+    - name: Push the latest Docker image
+      run: docker push ghcr.io/manykarim/robotframework-doctestlibrary/rf-doctest:latest
