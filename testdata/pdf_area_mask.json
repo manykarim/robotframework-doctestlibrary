@@ -1,0 +1,9 @@
+[
+    {
+		"page": "all",
+		"name": "Job ID",
+		"type": "area",
+		"location": "top",
+		"percent":	10
+	}
+]
