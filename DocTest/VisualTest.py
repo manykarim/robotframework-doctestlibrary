@@ -525,6 +525,8 @@ class VisualTest(object):
             if images_are_equal is not True:
                 detected_differences.append(True)
 
+
+    @keyword
     def get_text(self, image):
         """Gets Text Content from documents/images ``image``.
 

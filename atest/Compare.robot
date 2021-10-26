@@ -1,5 +1,6 @@
 *** Settings ***
 Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png    #pdf_rendering_engine=ghostscript
+Library    Collections
 
 *** Test Cases ***
 Compare two Beach images
@@ -55,3 +56,11 @@ Compare two small Image Files with moved text without OCR
 
 Compare Images With Different Shapes
     Run Keyword And Expect Error    STARTS:The compared images have different dimensions    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg
+
+Compare Text Content from PDF
+    ${text}     Get Text    testdata/sample.pdf
+    List Should Contain Value   ${text}     THE TEST SHIPPER
+
+Compare Text Content from Image
+    ${text}     Get Text    testdata/Beach_date.png
+    List Should Contain Value   ${text}     123456789
