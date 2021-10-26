@@ -54,18 +54,18 @@ jobs:
       continue-on-error: true
       run: |
         mkdir -p reports/screenshots
-        mkdir -p allure-results
-        robot --pythonpath ./:DocTest --listener allure_robotframework;$PWD/allure-results --outputdir reports atest/
+#        mkdir -p allure-results
+        robot --pythonpath ./:DocTest --outputdir reports atest/
     - name: Create Keyword Documentation
       continue-on-error: true
       run: |
         libdoc DocTest/VisualTest.py docs/VisualTest.html
         libdoc DocTest/PdfTest.py docs/PdfTestTest.html
         libdoc DocTest/PrintJobTests.py docs/PrintJobTest.html
-    - name: Create Allure report
-      continue-on-error: true
-      run: |
-        allure generate $PWD/allure-results --clean -o $PWD/allure-report
+#    - name: Create Allure report
+#      continue-on-error: true
+#      run: |
+#        allure generate $PWD/allure-results --clean -o $PWD/allure-report
 #    - name: Deploy 🚀
 #      uses: JamesIves/github-pages-deploy-action@4.1.5
 #      with:
@@ -77,5 +77,5 @@ jobs:
         name: robotframework-log
         path: |
           reports/
-          $PWD/allure-report
+#          $PWD/allure-report
         retention-days: 5
