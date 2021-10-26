@@ -525,6 +525,36 @@ class VisualTest(object):
             if images_are_equal is not True:
                 detected_differences.append(True)
 
+    def get_text(self, image):
+        """Gets Text Content from documents/images ``image``.
+
+        Text content is returned as a list of strings. None if no text is identified.
+
+
+        Examples:
+        | ${text} | Get Text | reference.pdf | #Gets Text Content from .pdf |
+        | ${text} | Get Text | reference.jpg | #Gets Text Content from .jpg |
+        | List Should Contain Value | ${text} | Test String | #Checks if list contains a specific string |
+
+        """
+
+        img = CompareImage(image)
+        if img.extension == '.pdf':
+            text = []
+            for i in range(len(img.opencv_images)):
+                tdict = json.loads(img.mupdfdoc[i].get_text("json"))
+                for block in tdict['blocks']:
+                    if block['type'] == 0:
+                        for line in block['lines']:
+                            if line['spans'][0]['text']:
+                                text.append(line['spans'][0]['text'])
+        else:
+            try:
+                img.get_ocr_text_data()
+                text = [x for x in img.text_content[0]['text'] if x]
+            except:
+                text = None
+        return text
 
 
 def remove_empty_textelements(lst):
