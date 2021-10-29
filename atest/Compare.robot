@@ -62,5 +62,5 @@ Compare Text Content from PDF
     List Should Contain Value   ${text}     THE TEST SHIPPER
 
 Compare Text Content from Image
-    ${text}     Get Text    testdata/Beach_date.png
+    ${text}     Get Text From Document    testdata/Beach_date.png
     List Should Contain Value   ${text}     123456789

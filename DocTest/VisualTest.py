@@ -527,15 +527,15 @@ class VisualTest(object):
 
 
     @keyword
-    def get_text(self, image):
+    def get_text_from_document(self, image):
         """Gets Text Content from documents/images ``image``.
 
         Text content is returned as a list of strings. None if no text is identified.
 
 
         Examples:
-        | ${text} | Get Text | reference.pdf | #Gets Text Content from .pdf |
-        | ${text} | Get Text | reference.jpg | #Gets Text Content from .jpg |
+        | ${text} | Get Text From Document| reference.pdf | #Gets Text Content from .pdf |
+        | ${text} | Get Text From Document| reference.jpg | #Gets Text Content from .jpg |
         | List Should Contain Value | ${text} | Test String | #Checks if list contains a specific string |
 
         """
