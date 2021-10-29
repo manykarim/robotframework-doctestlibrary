@@ -58,7 +58,7 @@ Compare Images With Different Shapes
     Run Keyword And Expect Error    STARTS:The compared images have different dimensions    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg
 
 Compare Text Content from PDF
-    ${text}     Get Text    testdata/sample.pdf
+    ${text}     Get Text From Document    testdata/sample.pdf
     List Should Contain Value   ${text}     THE TEST SHIPPER
 
 Compare Text Content from Image

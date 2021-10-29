@@ -287,6 +287,18 @@ Compare two Images and ignore watermarks
     Compare Images    Reference.jpg    Candidate.jpg
 ```
 
+### Get Text From Documents or Images
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest
+
+*** Test Cases ***
+Get Text Content And Compare
+    ${text}    Get Text From Document    Reference.pdf
+    List Should Contain Value    ${text}    Test String
+```
+
 
 
 # Development
