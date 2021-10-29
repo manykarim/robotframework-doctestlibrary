@@ -21,7 +21,7 @@ import math
 @library
 class VisualTest(object):
 
-    ROBOT_LIBRARY_VERSION = 0.1
+    ROBOT_LIBRARY_VERSION = 0.2
     BORDER_FOR_MOVE_TOLERANCE_CHECK = 0
     DPI = 200
     WATERMARK_WIDTH = 25

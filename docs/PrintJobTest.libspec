@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="PrintJobTests" type="LIBRARY" format="HTML" scope="GLOBAL" generated="2021-10-29T13:11:12Z" specversion="3" source="..\DocTest\PrintJobTests.py" lineno="1">
+<version/>
+<doc>&lt;p&gt;Documentation for library &lt;code&gt;PrintJobTests&lt;/code&gt;.&lt;/p&gt;</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Check Print Job Property" lineno="387">
+<arguments repr="print_job, property, value">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="print_job">
+<name>print_job</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="property">
+<name>property</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="value">
+<name>value</name>
+</arg>
+</arguments>
+<doc>&lt;p&gt;Checks if one specific &lt;code&gt;property&lt;/code&gt; of a &lt;code&gt;print_job&lt;/code&gt; file has an expected &lt;code&gt;value&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;print_job&lt;/code&gt; is a printer file, with filetype &lt;code&gt;pcl&lt;/code&gt; or &lt;code&gt;ps&lt;/code&gt; (postscript).&lt;/p&gt;
+&lt;p&gt;The possible compared &lt;code&gt;property&lt;/code&gt; depends on the &lt;code&gt;type&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;PCL&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Paper Source&lt;/li&gt;
+&lt;li&gt;Copies&lt;/li&gt;
+&lt;li&gt;Duplex&lt;/li&gt;
+&lt;li&gt;Page Orientation&lt;/li&gt;
+&lt;li&gt;Paper Format&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Postscript&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Comments&lt;/li&gt;
+&lt;li&gt;Pages&lt;/li&gt;
+&lt;li&gt;Features&lt;/li&gt;
+&lt;li&gt;Setup&lt;/li&gt;
+&lt;li&gt;Header&lt;/li&gt;
+&lt;li&gt;Trailer&lt;/li&gt;
+&lt;li&gt;PJL Commands&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Result is passed if the value of &lt;code&gt;property&lt;/code&gt; is equal to &lt;code&gt;value&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Examples:&lt;/p&gt;
+&lt;table border="1"&gt;
+&lt;tr&gt;
+&lt;td&gt;${value1} =&lt;/td&gt;
+&lt;td&gt;Create Dictionary&lt;/td&gt;
+&lt;td&gt;page=1&lt;/td&gt;
+&lt;td&gt;property=copies&lt;/td&gt;
+&lt;td&gt;value=1&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;${value2} =&lt;/td&gt;
+&lt;td&gt;Create Dictionary&lt;/td&gt;
+&lt;td&gt;page=1&lt;/td&gt;
+&lt;td&gt;property=paper_source&lt;/td&gt;
+&lt;td&gt;value=2&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Check Print Job Property&lt;/td&gt;
+&lt;td&gt;pcl_file.pcl&lt;/td&gt;
+&lt;td&gt;pcl_commands&lt;/td&gt;
+&lt;td&gt;${value1}&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Check Print Job Property&lt;/td&gt;
+&lt;td&gt;pcl_file.pcl&lt;/td&gt;
+&lt;td&gt;pcl_commands&lt;/td&gt;
+&lt;td&gt;${value2}&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;
+&lt;table border="1"&gt;
+&lt;tr&gt;
+&lt;td&gt;${value1} =&lt;/td&gt;
+&lt;td&gt;Create Dictionary&lt;/td&gt;
+&lt;td&gt;property=Copyright&lt;/td&gt;
+&lt;td&gt;value=ExampleCompany Inc.&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;${value2} =&lt;/td&gt;
+&lt;td&gt;Create Dictionary&lt;/td&gt;
+&lt;td&gt;property=LanguageLevel&lt;/td&gt;
+&lt;td&gt;value=2&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Check Print Job Property&lt;/td&gt;
+&lt;td&gt;postscript_file.ps&lt;/td&gt;
+&lt;td&gt;header&lt;/td&gt;
+&lt;td&gt;${value1}&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Check Print Job Property&lt;/td&gt;
+&lt;td&gt;postscript_file.ps&lt;/td&gt;
+&lt;td&gt;header&lt;/td&gt;
+&lt;td&gt;${value2}&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;</doc>
+<shortdoc>Checks if one specific ``property`` of a ``print_job`` file has an expected ``value``.</shortdoc>
+</kw>
+<kw name="Compare Print Jobs" lineno="304">
+<arguments repr="type, reference_file, test_file">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="type">
+<name>type</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="reference_file">
+<name>reference_file</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="test_file">
+<name>test_file</name>
+</arg>
+</arguments>
+<doc>&lt;p&gt;Compares several print job metadata/properties of &lt;code&gt;reference_file&lt;/code&gt; and &lt;code&gt;test_file&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;type&lt;/code&gt; can either be &lt;code&gt;pcl&lt;/code&gt; or &lt;code&gt;ps&lt;/code&gt; (postscript).&lt;/p&gt;
+&lt;p&gt;The compared properties depend on the &lt;code&gt;type&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;PCL&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Paper Source&lt;/li&gt;
+&lt;li&gt;Copies&lt;/li&gt;
+&lt;li&gt;Duplex&lt;/li&gt;
+&lt;li&gt;Page Orientation&lt;/li&gt;
+&lt;li&gt;Paper Format&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Postscript&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Comments&lt;/li&gt;
+&lt;li&gt;Pages&lt;/li&gt;
+&lt;li&gt;Features&lt;/li&gt;
+&lt;li&gt;Setup&lt;/li&gt;
+&lt;li&gt;Header&lt;/li&gt;
+&lt;li&gt;Trailer&lt;/li&gt;
+&lt;li&gt;PJL Commands&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Result is passed if all properties are equal.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;reference_file&lt;/code&gt; and &lt;code&gt;test_file&lt;/code&gt; may be .ps or .pcl files&lt;/p&gt;
+&lt;p&gt;Examples:&lt;/p&gt;
+&lt;table border="1"&gt;
+&lt;tr&gt;
+&lt;th&gt;Keyword&lt;/th&gt;
+&lt;th&gt;reference_file&lt;/th&gt;
+&lt;th&gt;test_file&lt;/th&gt;
+&lt;th&gt;comment&lt;/th&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Print Jobs&lt;/td&gt;
+&lt;td&gt;reference.pcl&lt;/td&gt;
+&lt;td&gt;candidate.pcl&lt;/td&gt;
+&lt;td&gt;#Performs a property comparison of both files&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Print Jobs&lt;/td&gt;
+&lt;td&gt;reference.ps&lt;/td&gt;
+&lt;td&gt;candidate.ps&lt;/td&gt;
+&lt;td&gt;#Performs a property comparison of both files&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;</doc>
+<shortdoc>Compares several print job metadata/properties of ``reference_file`` and ``test_file``.</shortdoc>
+</kw>
+</keywords>
+<datatypes>
+</datatypes>
+</keywordspec>

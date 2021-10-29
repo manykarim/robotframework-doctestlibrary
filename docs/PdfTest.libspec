@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="PdfTest" type="LIBRARY" format="HTML" scope="TEST" generated="2021-10-29T13:11:12Z" specversion="3" source="..\DocTest\PdfTest.py" lineno="11">
+<version/>
+<doc>&lt;p&gt;Documentation for library &lt;code&gt;PdfTest&lt;/code&gt;.&lt;/p&gt;</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Check Text Content" lineno="148">
+<arguments repr="expected_text_list, candidate_document">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="expected_text_list">
+<name>expected_text_list</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="candidate_document">
+<name>candidate_document</name>
+</arg>
+</arguments>
+<doc>&lt;p&gt;Checks if each item provided in the list &lt;code&gt;expected_text_list&lt;/code&gt; appears in the PDF File &lt;code&gt;candidate_document&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;expected_text_list&lt;/code&gt; is a list of strings, &lt;code&gt;candidate_document&lt;/code&gt; is the path to a PDF File.&lt;/p&gt;
+&lt;p&gt;Examples:&lt;/p&gt;
+&lt;table border="1"&gt;
+&lt;tr&gt;
+&lt;td&gt;@{strings}=&lt;/td&gt;
+&lt;td&gt;Create List&lt;/td&gt;
+&lt;td&gt;One String&lt;/td&gt;
+&lt;td&gt;Another String&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Check Text Content&lt;/td&gt;
+&lt;td&gt;${strings}&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;</doc>
+<shortdoc>Checks if each item provided in the list ``expected_text_list`` appears in the PDF File ``candidate_document``.</shortdoc>
+</kw>
+<kw name="Compare Pdf Documents" lineno="18">
+<arguments repr="reference_document, candidate_document, **kwargs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="reference_document">
+<name>reference_document</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="candidate_document">
+<name>candidate_document</name>
+</arg>
+<arg kind="VAR_NAMED" required="false" repr="**kwargs">
+<name>kwargs</name>
+</arg>
+</arguments>
+<doc>&lt;p&gt;Compares some PDF metadata/properties of &lt;code&gt;reference_document&lt;/code&gt; and &lt;code&gt;candidate_document&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;reference_document&lt;/code&gt; and &lt;code&gt;candidate_document&lt;/code&gt; shall both be path to &lt;code&gt;PDF&lt;/code&gt; files. &lt;code&gt;compare&lt;/code&gt; can be passed as an optional argument with following values:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;all&lt;/li&gt;
+&lt;li&gt;metadata&lt;/li&gt;
+&lt;li&gt;text&lt;/li&gt;
+&lt;li&gt;fonts&lt;/li&gt;
+&lt;li&gt;images&lt;/li&gt;
+&lt;li&gt;signatures&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Multiple values shall be separated by &lt;code&gt;|&lt;/code&gt; symbol e.g. &lt;code&gt;compare=text|metadata&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;The compared properties are are:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;metadata&lt;/li&gt;
+&lt;li&gt;page_count&lt;/li&gt;
+&lt;li&gt;sigflags&lt;/li&gt;
+&lt;li&gt;text&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Result is passed if all properties are equal.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;reference_document&lt;/code&gt; and &lt;code&gt;candidate_document&lt;/code&gt; are both .pdf files&lt;/p&gt;
+&lt;p&gt;Examples:&lt;/p&gt;
+&lt;table border="1"&gt;
+&lt;tr&gt;
+&lt;th&gt;Keyword&lt;/th&gt;
+&lt;th&gt;reference_document&lt;/th&gt;
+&lt;th&gt;candidate_document&lt;/th&gt;
+&lt;th&gt;comment&lt;/th&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Pdf Documents&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;#Performs a property comparison of both files&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Pdf Documents&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;compare=text&lt;/td&gt;
+&lt;td&gt;#Performs a property comparison of both files. Only text content will be compared&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;
+&lt;p&gt;compare=text&lt;/p&gt;</doc>
+<shortdoc>Compares some PDF metadata/properties of ``reference_document`` and ``candidate_document``.</shortdoc>
+</kw>
+<kw name="PDF Should Contain Strings" lineno="177">
+<arguments repr="expected_text_list, candidate_document">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="expected_text_list">
+<name>expected_text_list</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="candidate_document">
+<name>candidate_document</name>
+</arg>
+</arguments>
+<doc>&lt;p&gt;Checks if each item provided in the list &lt;code&gt;expected_text_list&lt;/code&gt; appears in the PDF File &lt;code&gt;candidate_document&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;expected_text_list&lt;/code&gt; is a list of strings, &lt;code&gt;candidate_document&lt;/code&gt; is the path to a PDF File.&lt;/p&gt;
+&lt;p&gt;Examples:&lt;/p&gt;
+&lt;table border="1"&gt;
+&lt;tr&gt;
+&lt;td&gt;@{strings}=&lt;/td&gt;
+&lt;td&gt;Create List&lt;/td&gt;
+&lt;td&gt;One String&lt;/td&gt;
+&lt;td&gt;Another String&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;PDF Should Contain Strings&lt;/td&gt;
+&lt;td&gt;${strings}&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;</doc>
+<shortdoc>Checks if each item provided in the list ``expected_text_list`` appears in the PDF File ``candidate_document``.</shortdoc>
+</kw>
+</keywords>
+<datatypes>
+</datatypes>
+</keywordspec>

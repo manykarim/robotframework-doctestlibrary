@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<keywordspec name="VisualTest" type="LIBRARY" format="HTML" scope="TEST" generated="2021-10-29T13:11:11Z" specversion="3" source="..\DocTest\VisualTest.py" lineno="22">
+<version>0.2</version>
+<doc>&lt;p&gt;Documentation for library &lt;code&gt;VisualTest&lt;/code&gt;.&lt;/p&gt;</doc>
+<tags>
+</tags>
+<inits>
+</inits>
+<keywords>
+<kw name="Compare Images" lineno="65">
+<arguments repr="reference_image, test_image, **kwargs">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="reference_image">
+<name>reference_image</name>
+</arg>
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="test_image">
+<name>test_image</name>
+</arg>
+<arg kind="VAR_NAMED" required="false" repr="**kwargs">
+<name>kwargs</name>
+</arg>
+</arguments>
+<doc>&lt;p&gt;Compares the documents/images &lt;code&gt;reference_image&lt;/code&gt; and &lt;code&gt;test_image&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;**kwargs&lt;/code&gt; can be used to add settings for &lt;code&gt;placeholder_file&lt;/code&gt;, &lt;code&gt;contains_barcodes&lt;/code&gt;, &lt;code&gt;check_text_content&lt;/code&gt;, &lt;code&gt;move_tolerance&lt;/code&gt;, &lt;code&gt;get_pdf_content&lt;/code&gt;, &lt;code&gt;watermark_file&lt;/code&gt;&lt;/p&gt;
+&lt;p&gt;Result is passed if no visual differences are detected.&lt;/p&gt;
+&lt;p&gt;&lt;code&gt;reference_image&lt;/code&gt; and &lt;code&gt;test_image&lt;/code&gt; may be .pdf, .ps, .pcl or image files&lt;/p&gt;
+&lt;p&gt;Examples:&lt;/p&gt;
+&lt;table border="1"&gt;
+&lt;tr&gt;
+&lt;th&gt;Keyword&lt;/th&gt;
+&lt;th&gt;reference_image&lt;/th&gt;
+&lt;th&gt;test_image&lt;/th&gt;
+&lt;th&gt;**kwargs&lt;/th&gt;
+&lt;th&gt;comment&lt;/th&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;td&gt;#Performs a pixel comparison of both files&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf (not existing)&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;td&gt;#Will always return passed and save the candidate.pdf as reference.pdf&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;placeholder_file=mask.json&lt;/td&gt;
+&lt;td&gt;#Performs a pixel comparison of both files and excludes some areas defined in mask.json&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;contains_barcodes=${true}&lt;/td&gt;
+&lt;td&gt;#Identified barcodes in documents and excludes those areas from visual comparison. The barcode data will be checked instead&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;check_text_content${true}&lt;/td&gt;
+&lt;td&gt;#In case of visual differences, the text content in the affected areas will be identified using OCR. If text content it equal, the test is considered passed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;move_tolerance=10&lt;/td&gt;
+&lt;td&gt;#In case of visual differences, it is checked if difference is caused only by moved areas. If the move distance is within 10 pixels the test is considered as passed. Else it is failed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;check_text_content=${true} get_pdf_content=${true}&lt;/td&gt;
+&lt;td&gt;#In case of visual differences, the text content in the affected areas will be read directly from  PDF (not OCR). If text content it equal, the test is considered passed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;watermark_file=watermark.pdf&lt;/td&gt;
+&lt;td&gt;#Provides a watermark file as an argument. In case of visual differences, watermark content will be subtracted&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;watermark_file=${CURDIR}${/}watermarks&lt;/td&gt;
+&lt;td&gt;#Provides a watermark folder as an argument. In case of visual differences, all watermarks in folder will be subtracted&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;Compare Images&lt;/td&gt;
+&lt;td&gt;reference.pdf&lt;/td&gt;
+&lt;td&gt;candidate.pdf&lt;/td&gt;
+&lt;td&gt;move_tolerance=10 get_pdf_content=${true}&lt;/td&gt;
+&lt;td&gt;#In case of visual differences, it is checked if difference is caused only by moved areas. Move distance is identified directly from PDF data. If the move distance is within 10 pixels the test is considered as passed. Else it is failed&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;</doc>
+<shortdoc>Compares the documents/images ``reference_image`` and ``test_image``.</shortdoc>
+</kw>
+<kw name="Get Text From Document" lineno="530">
+<arguments repr="image">
+<arg kind="POSITIONAL_OR_NAMED" required="true" repr="image">
+<name>image</name>
+</arg>
+</arguments>
+<doc>&lt;p&gt;Gets Text Content from documents/images &lt;code&gt;image&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;Text content is returned as a list of strings. None if no text is identified.&lt;/p&gt;
+&lt;p&gt;Examples:&lt;/p&gt;
+&lt;table border="1"&gt;
+&lt;tr&gt;
+&lt;td&gt;${text}&lt;/td&gt;
+&lt;td&gt;Get Text From Document| reference.pdf&lt;/td&gt;
+&lt;td&gt;#Gets Text Content from .pdf&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;${text}&lt;/td&gt;
+&lt;td&gt;Get Text From Document| reference.jpg&lt;/td&gt;
+&lt;td&gt;#Gets Text Content from .jpg&lt;/td&gt;
+&lt;td&gt;&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr&gt;
+&lt;td&gt;List Should Contain Value&lt;/td&gt;
+&lt;td&gt;${text}&lt;/td&gt;
+&lt;td&gt;Test String&lt;/td&gt;
+&lt;td&gt;#Checks if list contains a specific string&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/table&gt;</doc>
+<shortdoc>Gets Text Content from documents/images ``image``.</shortdoc>
+</kw>
+</keywords>
+<datatypes>
+</datatypes>
+</keywordspec>
