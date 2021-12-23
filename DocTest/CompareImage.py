@@ -415,7 +415,7 @@ def east_detect(image):
 
     # load the pre-trained EAST model for text detection
     script_dir = os.path.dirname(__file__)
-    rel_east_model_path = "data/frozen_east_text_detection.pb"
+    rel_east_model_path = "frozen_east_text_detection.pb"
     abs_east_model_path = os.path.join(script_dir, rel_east_model_path)
 
     # check if file abs_east_model_path exists
