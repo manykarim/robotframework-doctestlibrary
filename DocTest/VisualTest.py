@@ -34,7 +34,7 @@ class VisualTest(object):
     LINE_TYPE = 2
     REFERENCE_LABEL = "Expected Result (Reference)"
     CANDIDATE_LABEL = "Actual Result (Candidate)"
-    PDF_RENDERING_ENGINE = "pymupdf"
+    OCR_ENGINE = "tesseract"
 
     def __init__(self, **kwargs):
         self.threshold = kwargs.pop('threshold', 0.0000)
@@ -42,7 +42,7 @@ class VisualTest(object):
         self.DPI = int(kwargs.pop('DPI', 200))
         self.take_screenshots = bool(kwargs.pop('take_screenshots', False))
         self.show_diff = bool(kwargs.pop('show_diff', False))
-        self.pdf_rendering_engine = kwargs.pop('pdf_rendering_engine', self.PDF_RENDERING_ENGINE)
+        self.ocr_engine = kwargs.pop('ocr_engine', self.OCR_ENGINE)
         self.watermark_file = kwargs.pop('watermark_file', None)
         self.screenshot_format = kwargs.pop('screenshot_format', 'jpg')
         if not (self.screenshot_format == 'jpg' or self.screenshot_format == 'png'):
@@ -104,9 +104,9 @@ class VisualTest(object):
         self.DPI = int(kwargs.pop('DPI', self.DPI))
         watermark_file = kwargs.pop('watermark_file', self.watermark_file)
         ignore_watermarks = os.getenv('IGNORE_WATERMARKS', False)
-        pdf_rendering_engine = kwargs.pop('pdf_rendering_engine', self.pdf_rendering_engine)
+        ocr_engine = kwargs.pop('ocr_engine', self.ocr_engine)
 
-        compare_options = {'get_pdf_content':get_pdf_content, 'ignore_watermarks':ignore_watermarks,'check_text_content':check_text_content,'contains_barcodes':contains_barcodes, 'force_ocr':force_ocr, 'move_tolerance':move_tolerance, 'watermark_file':watermark_file}
+        compare_options = {'get_pdf_content':get_pdf_content, 'ignore_watermarks':ignore_watermarks,'check_text_content':check_text_content,'contains_barcodes':contains_barcodes, 'force_ocr':force_ocr, 'move_tolerance':move_tolerance, 'watermark_file':watermark_file, 'ocr_engine':ocr_engine}
 
         if self.reference_run and (os.path.isfile(test_image) == True):
             shutil.copyfile(test_image, reference_image)
@@ -120,8 +120,8 @@ class VisualTest(object):
             raise AssertionError('The candidate file does not exist: {}'.format(test_image))
 
         with futures.ThreadPoolExecutor(max_workers=2) as parallel_executor:
-            reference_future = parallel_executor.submit(CompareImage, reference_image, placeholder_file=placeholder_file, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, force_ocr=force_ocr, mask=mask, pdf_rendering_engine=pdf_rendering_engine)
-            candidate_future = parallel_executor.submit(CompareImage, test_image, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, pdf_rendering_engine=pdf_rendering_engine)
+            reference_future = parallel_executor.submit(CompareImage, reference_image, placeholder_file=placeholder_file, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, force_ocr=force_ocr, mask=mask, ocr_engine=ocr_engine)
+            candidate_future = parallel_executor.submit(CompareImage, test_image, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI)
             reference_compare_image = reference_future.result()
             candidate_compare_image = candidate_future.result()
         

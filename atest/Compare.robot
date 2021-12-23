@@ -12,6 +12,9 @@ Compare two Farm images
 Compare two Farm images with date pattern
     Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    placeholder_file=testdata/pattern_mask.json
 
+Compare two Farm images with date pattern and east detection
+    Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    placeholder_file=testdata/pattern_mask.json    ocr_engine=east
+
 Compare two different PDF Files
     Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_changed.pdf
 

@@ -15,7 +15,7 @@ import os
 from io import BytesIO
 import tempfile
 from skimage.util import img_as_ubyte
-import imutils
+from imutils.object_detection import non_max_suppression
 import numpy as np
 import sys
 from DocTest.PdfDoc import PdfDoc
@@ -26,6 +26,9 @@ try:
     from pylibdmtx import pylibdmtx
 except ImportError:
     logging.debug('Failed to import pylibdmtx', exc_info=True)
+import urllib
+
+EAST_CONFIDENCE=0.5
 
 class CompareImage(object):
 
@@ -34,8 +37,6 @@ class CompareImage(object):
     PYTESSERACT_CONFIDENCE=20
     EAST_CONFIDENCE=0
     MINIMUM_OCR_RESOLUTION = 300
-    PDF_RENDERING_ENGINE = "pymupdf"
-
     
     def __init__(self, image, **kwargs):
         tic = time.perf_counter()
@@ -45,8 +46,8 @@ class CompareImage(object):
         self.contains_barcodes = kwargs.pop('contains_barcodes', False)
         self.get_pdf_content = kwargs.pop('get_pdf_content', False)
         self.force_ocr = kwargs.pop('force_ocr', False)
+        self.ocr_engine = kwargs.pop('ocr_engine', 'tesseract')
         self.DPI = int(kwargs.pop('DPI', 200))
-        self.pdf_rendering_engine = kwargs.pop('pdf_rendering_engine', self.PDF_RENDERING_ENGINE)
         self.image = str(image)
         self.path, self.filename= split(image)
         self.filename_without_extension, self.extension = splitext(self.filename)
@@ -135,86 +136,9 @@ class CompareImage(object):
                 self.opencv_images[0] = cv2.resize(self.opencv_images[0], dim, interpolation = cv2.INTER_CUBIC)
 
     def get_text_content_with_east(self):
-        script_dir = os.path.dirname(__file__)
-        rel_east_model_path = "data/frozen_east_text_detection.pb"
-        abs_east_model_path = os.path.join(script_dir, rel_east_model_path)
-        net = cv2.dnn.readNet(abs_east_model_path)
-        inpWidth=320
-        inpHeight=320
-        confThreshold=0
-        nmsThreshold=0
         for frame in self.opencv_images:
-            blob = cv2.dnn.blobFromImage(frame, 1.0, (inpWidth, inpHeight), (123.68, 116.78, 103.94), True, False)
-            outputLayers = []
-            outputLayers.append("feature_fusion/Conv_7/Sigmoid")
-            outputLayers.append("feature_fusion/concat_3")
-            net.setInput(blob)
-            output = net.forward(outputLayers)
-            scores = output[0]
-            geometry = output[1]
-            # [boxes, confidences] = decode(scores, geometry, confThreshold)
-            # indices = cv2.dnn.NMSBoxesRotated(boxes, confidences, confThreshold, nmsThreshold)
-
-            print(geometry)
-            print(scores)
-
-            # grab the number of rows and columns from the scores volume, then
-            # initialize our set of bounding box rectangles and corresponding
-            # confidence scores
-            (numRows, numCols) = scores.shape[2:4]
-            rects = []
-            confidences = []
-            # loop over the number of rows
-            for y in range(0, numRows):
-                # extract the scores (probabilities), followed by the geometrical
-                # data used to derive potential bounding box coordinates that
-                # surround text
-                scoresData = scores[0, 0, y]
-                xData0 = geometry[0, 0, y]
-                xData1 = geometry[0, 1, y]
-                xData2 = geometry[0, 2, y]
-                xData3 = geometry[0, 3, y]
-                anglesData = geometry[0, 4, y]
-                # loop over the number of columns
-                for x in range(0, numCols):
-                    # if our score does not have sufficient probability, ignore it
-                    if scoresData[x] < self.EAST_CONFIDENCE:
-                        continue
-                    # compute the offset factor as our resulting feature maps will
-                    # be 4x smaller than the input image
-                    (offsetX, offsetY) = (x * 4.0, y * 4.0)
-                    # extract the rotation angle for the prediction and then
-                    # compute the sin and cosine
-                    angle = anglesData[x]
-                    cos = np.cos(angle)
-                    sin = np.sin(angle)
-                    # use the geometry volume to derive the width and height of
-                    # the bounding box
-                    h = xData0[x] + xData2[x]
-                    w = xData1[x] + xData3[x]
-                    # compute both the starting and ending (x, y)-coordinates for
-                    # the text prediction bounding box
-                    endX = int(offsetX + (cos * xData1[x]) + (sin * xData2[x]))
-                    endY = int(offsetY - (sin * xData1[x]) + (cos * xData2[x]))
-                    startX = int(endX - w)
-                    startY = int(endY - h)
-                    # add the bounding box coordinates and probability score to
-                    # our respective lists
-                    rects.append((startX, startY, endX, endY))
-                    confidences.append(scoresData[x])
-            # apply non-maxima suppression to suppress weak, overlapping bounding
-            # boxes
-            boxes = non_max_suppression(np.array(rects), probs=confidences)
-            # loop over the bounding boxes
-            for (startX, startY, endX, endY) in boxes:
-                # scale the bounding box coordinates based on the respective
-                # ratios
-                startX = int(startX * rW)
-                startY = int(startY * rH)
-                endX = int(endX * rW)
-                endY = int(endY * rH)
-                # draw the bounding box on the image
-                cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+            text = east_detect(frame)
+            self.text_content.append(text)
 
     def identify_placeholders(self):
         if self.placeholder_file is not None:
@@ -246,14 +170,18 @@ class CompareImage(object):
                     # print(pattern)
 
                     if self.mupdfdoc is None or self.force_ocr is True:
-                        # self.get_text_content_with_east()
-                        self.get_ocr_text_data()
+                        if self.ocr_engine == 'tesseract':
+                            self.get_ocr_text_data()
+                        elif self.ocr_engine == 'east':
+                            self.get_text_content_with_east()
+                        else:
+                            self.get_ocr_text_data()
                         for i in range(len(self.opencv_images)):
                             d = self.text_content[i]
                             keys = list(d.keys())
                             n_boxes = len(d['text'])
                             for j in range(n_boxes):
-                                if int(d['conf'][j]) > self.PYTESSERACT_CONFIDENCE:
+                                if 'conf' not in keys or int(d['conf'][j]) > self.PYTESSERACT_CONFIDENCE:
                                     if re.match(pattern, d['text'][j]):
                                         (x, y, w, h) = (d['left'][j], d['top'][j], d['width'][j], d['height'][j])
                                         if self.rerendered_for_ocr:
@@ -452,6 +380,163 @@ class CompareImage(object):
         except:
             raise AssertionError("File could not be converted by ImageMagick to OpenCV Image: {}".format(self.image))
 
+
+def east_detect(image):
+    padding = 0.1
+    layerNames = [
+        "feature_fusion/Conv_7/Sigmoid",
+        "feature_fusion/concat_3"]
+    text_content={}
+    orig = image.copy()
+    (origH, origW) = image.shape[:2]
+
+    if len(image.shape) == 2:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+
+    #Saving a original image and shape
+    orig = image.copy()
+    (origH, origW) = image.shape[:2]
+
+    # set the new height and width to default 320 by using args #dictionary.  
+    (newW, newH) = (960, 960)
+
+    #Calculate the ratio between original and new image for both height and weight. 
+    #This ratio will be used to translate bounding box location on the original image. 
+    rW = origW / float(newW)
+    rH = origH / float(newH)
+
+    # resize the original image to new dimensions
+    image = cv2.resize(image, (newW, newH))
+    (H, W) = image.shape[:2]
+
+    # construct a blob from the image to forward pass it to EAST model
+    blob = cv2.dnn.blobFromImage(image, 1.0, (W, H),
+        (123.68, 116.78, 103.94), swapRB=True, crop=False)
+
+    # load the pre-trained EAST model for text detection
+    script_dir = os.path.dirname(__file__)
+    rel_east_model_path = "data/frozen_east_text_detection.pb"
+    abs_east_model_path = os.path.join(script_dir, rel_east_model_path)
+
+    # check if file abs_east_model_path exists
+    if os.path.isfile(abs_east_model_path) is False:
+        # Download from url https://raw.githubusercontent.com/oyyd/frozen_east_text_detection.pb/master/frozen_east_text_detection.pb
+        print("Downloading frozen_east_text_detection.pb from url")
+        url = "https://raw.githubusercontent.com/oyyd/frozen_east_text_detection.pb/master/frozen_east_text_detection.pb"
+        urllib.request.urlretrieve(url, abs_east_model_path)
+
+    net = cv2.dnn.readNet(abs_east_model_path)
+
+    # The following two layer need to pulled from EAST model for achieving this. 
+    layerNames = [
+        "feature_fusion/Conv_7/Sigmoid",
+        "feature_fusion/concat_3"]
+    
+    #Forward pass the blob from the image to get the desired output layers
+    net.setInput(blob)
+    (scores, geometry) = net.forward(layerNames)
+
+    # Find predictions and  apply non-maxima suppression
+    (boxes, confidence_val) = predictions(scores, geometry)
+    boxes = non_max_suppression(np.array(boxes), probs=confidence_val)
+
+    ##Text Detection and Recognition 
+
+    # initialize the list of results
+    results = {}
+    results["text"] = []
+    results["left"] = []
+    results["top"] = []
+    results["width"] = []
+    results["height"] = []
+
+
+    # loop over the bounding boxes to find the coordinate of bounding boxes
+    for (startX, startY, endX, endY) in boxes:
+        # scale the coordinates based on the respective ratios in order to reflect bounding box on the original image
+        startX = int(startX * rW)-10
+        startY = int(startY * rH)-10
+        endX = int(endX * rW)+10
+        endY = int(endY * rH)+10
+
+        if (startX < 0):
+            startX = 0
+        if (startY < 0):
+            startY = 0
+        if (endX > origW):
+            endX = origW
+        if (endY > origH):
+            endY = origH
+        
+
+        #extract the region of interest
+        r = orig[startY:endY, startX:endX]
+
+        #configuration setting to convert image to string.  
+        configuration = ("-l eng --oem 1 --psm 8")
+        ##This will recognize the text from the image of bounding box
+        text = pytesseract.image_to_string(r, config=configuration)
+
+        # append bbox coordinate and associated text to the list of results 
+        results["left"].append(abs(startX))
+        results["top"].append(abs(startY))
+        results["width"].append(abs(endX-startX))
+        results["height"].append(abs(endY-startY))
+        results["text"].append(text)
+
+    # #Display the image with bounding box and recognized text
+    # orig_image = orig.copy()
+
+    # # Moving over the results and display on the image
+    # for i in range(len(results["text"])):
+    #     cv2.rectangle(orig_image, (results["left"][i], results["top"][i]), (results["left"][i]+results["width"][i], results["top"][i]+results["height"][i]), (0, 255, 0), 2)
+    #     cv2.putText(orig_image, results["text"][i], (results["left"][i], results["top"][i]), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    # cv2.imwrite("east_text_recognized.jpg", orig_image)
+    return results
+    
+# Returns a bounding box and probability score if it is more than minimum confidence
+def predictions(prob_score, geo):
+    (numR, numC) = prob_score.shape[2:4]
+    boxes = []
+    confidence_val = []
+
+    # loop over rows
+    for y in range(0, numR):
+        scoresData = prob_score[0, 0, y]
+        x0 = geo[0, 0, y]
+        x1 = geo[0, 1, y]
+        x2 = geo[0, 2, y]
+        x3 = geo[0, 3, y]
+        anglesData = geo[0, 4, y]
+
+        # loop over the number of columns
+        for i in range(0, numC):
+            if scoresData[i] < EAST_CONFIDENCE:
+                continue
+
+            (offX, offY) = (i * 4.0, y * 4.0)
+
+            # extracting the rotation angle for the prediction and computing the sine and cosine
+            angle = anglesData[i]
+            cos = np.cos(angle)
+            sin = np.sin(angle)
+
+            # using the geo volume to get the dimensions of the bounding box
+            h = x0[i] + x2[i]
+            w = x1[i] + x3[i]
+
+            # compute start and end for the text pred bbox
+            endX = int(offX + (cos * x1[i]) + (sin * x2[i]))
+            endY = int(offY - (sin * x1[i]) + (cos * x2[i]))
+            startX = int(endX - w)
+            startY = int(endY - h)
+
+            boxes.append((startX, startY, endX, endY))
+            confidence_val.append(scoresData[i])
+
+    # return bounding boxes and associated confidence_val
+    return (boxes, confidence_val)
+
 def make_text(words):
     """Return textstring output of get_text("words").
     Word items are sorted for reading sequence left to right,
@@ -468,4 +553,3 @@ def make_text(words):
     lines = list(line_dict.items())
     lines.sort()  # sort vertically
     return "\n".join([" ".join(line[1]) for line in lines])
-

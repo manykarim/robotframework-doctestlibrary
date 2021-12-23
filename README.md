@@ -235,6 +235,17 @@ Take diff screenshots to highlight differences
 Library    DocTest.VisualTest   show_diff=${true}    DPI=300
 ```
 
+### Experimental usage of Open CV East Text Detection to improve OCR
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest
+
+*** Test Cases ***
+Compare two Farm images with date pattern and east detection
+    Compare Images    Reference.jpg    Candidate.jpg    placeholder_file=masks.json    ocr_engine=east
+```
+
 ### Check content of PDF files
 
 ```RobotFramework

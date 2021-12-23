@@ -17,6 +17,12 @@ def test_image_text_mask(testdata_dir):
     img_with_mask = img.get_image_with_placeholders()
     assert img != img_with_mask
 
+def test_image_text_mask_with_east(testdata_dir):
+    img = CompareImage(testdata_dir / 'Beach_date.png', placeholder_file=testdata_dir / 'pattern_mask.json', ocr_engine='east')
+    assert len(img.placeholders)>=1
+    img_with_mask = img.get_image_with_placeholders()
+    assert img != img_with_mask
+
 def test_image_barcode_mask(testdata_dir):
     pass
 

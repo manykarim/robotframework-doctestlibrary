@@ -7,21 +7,21 @@ def test_single_png(testdata_dir):
     img = CompareImage(testdata_dir / 'text_big.png')
     assert len(img.opencv_images)==1
     assert type(img.opencv_images)==list
-    type(img.opencv_images[0])==numpy.ndarray
+    assert type(img.opencv_images[0])==numpy.ndarray
 
 def test_single_pdf(testdata_dir):
     img = CompareImage(testdata_dir / 'sample_1_page.pdf')
     assert len(img.opencv_images)==1
     assert type(img.opencv_images)==list
-    type(img.opencv_images[0])==numpy.ndarray
+    assert type(img.opencv_images[0])==numpy.ndarray
     pass
 
 def test_multipage_pdf(testdata_dir):
     img = CompareImage(testdata_dir / 'sample.pdf')
     assert len(img.opencv_images)==2
     assert type(img.opencv_images)==list
-    type(img.opencv_images[0])==numpy.ndarray
-    type(img.opencv_images[1])==numpy.ndarray
+    assert type(img.opencv_images[0])==numpy.ndarray
+    assert type(img.opencv_images[1])==numpy.ndarray
     pass
 
 def test_huge_pdf(testdata_dir):
@@ -48,3 +48,8 @@ def test_corrupt_image(testdata_dir):
 def test_corrupt_pdf(testdata_dir):
     with pytest.raises(AssertionError):
         img = CompareImage(testdata_dir / 'corrupt_pdf.pdf')
+
+def test_image_text_content_with_east(testdata_dir):
+    img = CompareImage(testdata_dir / 'Beach_date.png')
+    img.get_text_content_with_east()
+    assert any('01-Jan-2021' in s for s in img.text_content[0]['text'])
