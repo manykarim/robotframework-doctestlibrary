@@ -435,11 +435,18 @@ class VisualTest(object):
                         # self.add_screenshot_to_log(search_area_reference)
                         # self.add_screenshot_to_log(diff_area_candidate)
                         # self.add_screenshot_to_log(diff_area_reference)
-                        positions_in_compare_image = self.find_partial_image_position(search_area_candidate, diff_area_reference)
+                        try:
+                            positions_in_compare_image = self.find_partial_image_position(search_area_candidate, diff_area_reference)
+                        except:
+                            print("Error in finding position in compare image")
+                            images_are_equal=False
+                            detected_differences.append(True)
+                            continue
                         #positions_in_compare_image = self.find_partial_image_position(candidate, diff_area_reference)
                         if (np.mean(diff_area_reference) == 255) or (np.mean(diff_area_candidate) == 255):
                             images_are_equal=False
                             detected_differences.append(True)
+                            
                             print("Image section contains only white background")
 
                             self.add_screenshot_to_log(np.concatenate((cv2.copyMakeBorder(diff_area_reference, top=2, bottom=2, left=2, right=2, borderType=cv2.BORDER_CONSTANT, value=[0,0,0]), cv2.copyMakeBorder(diff_area_candidate, top=2, bottom=2, left=2, right=2, borderType=cv2.BORDER_CONSTANT, value=[0,0,0])), axis=1), "_diff_area_concat")
