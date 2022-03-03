@@ -310,11 +310,25 @@ Get Text Content And Compare
     List Should Contain Value    ${text}    Test String
 ```
 
+### Using pabot to run tests in parallel
 
+Document Testing can be run in parallel using [pabot](https://pabot.org/).  
+However, you need to pass the additional arguments `--artifacts` and `--artifactsinsubfolders` to the `pabot` command, to move the screenshots to the correct subfolder.  
+Otherwise the screenshots will not be visible in the `log.html`
+
+```
+pabot --testlevelsplit --processes 8 --artifacts png,jpg,pdf,xml --artifactsinsubfolders /path/to/your/tests/
+```
+
+### Visual Testing of Web Applications
+
+I experimented a bit and tried to use this library for Visual Testing of Web Applications.  
+Please have a look at this pilot example [here](https://github.com/manykarim/robotframework-doctestlibrary/blob/main/atest/Browser.robot)
 
 # Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development instructions.
+Feel free to create issues or pull requests.  
+I'm always happy for any feedback.
 
 ## Core team
 
