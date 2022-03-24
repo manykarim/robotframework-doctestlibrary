@@ -209,11 +209,15 @@ class CompareImage(object):
                                 for block in tdict['blocks']:
                                     if block['type'] == 0:
                                         for line in block['lines']:
-                                            if search_pattern.match(line['spans'][0]['text']):
-                                                (x, y, w, h) = (line['bbox'][0]*self.DPI/72, line['bbox'][1]*self.DPI/72,(line['bbox'][2]-line['bbox'][0])*self.DPI/72, (line['bbox'][3]-line['bbox'][1])*self.DPI/72)
-                                                text_pattern_mask = {"page":i+1, "x":x-xoffset, "y":y-yoffset, "height":h+2*yoffset, "width":w+2*xoffset}
-                                                self.placeholders.append(text_pattern_mask)       
-                        
+                                            try:
+                                                if search_pattern.match(line['spans'][0]['text']):
+                                                    (x, y, w, h) = (line['bbox'][0]*self.DPI/72, line['bbox'][1]*self.DPI/72,(line['bbox'][2]-line['bbox'][0])*self.DPI/72, (line['bbox'][3]-line['bbox'][1])*self.DPI/72)
+                                                    text_pattern_mask = {"page":i+1, "x":x-xoffset, "y":y-yoffset, "height":h+2*yoffset, "width":w+2*xoffset}
+                                                    self.placeholders.append(text_pattern_mask)
+                                            except:
+                                                print("Error while processing text line")
+                                                print(line)
+                                                
                 elif (placeholder_type == 'coordinates'):
                     # print("Coordinate placeholder identified:")
                     # print(placeholder)
