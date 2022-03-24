@@ -216,8 +216,7 @@ class CompareImage(object):
                                                     self.placeholders.append(text_pattern_mask)
                                             except:
                                                 print("Error while processing text line")
-                                                print(line)
-                                                
+
                 elif (placeholder_type == 'coordinates'):
                     # print("Coordinate placeholder identified:")
                     # print(placeholder)
