@@ -13,7 +13,7 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/manykarim/robotframework-doctestlibrary",
     packages=find_packages(),
-    install_requires=['PyMuPDF', 'imutils', 'numpy', 'opencv-python-headless', 'parsimonious', 'pytesseract', 'robotframework', 'scikit-image', 'Wand', 'pylibdmtx', 'pdfminer.six', 'deepdiff'],
+    install_requires=['PyMuPDF==1.19.5', 'imutils', 'numpy', 'opencv-python-headless', 'parsimonious', 'pytesseract', 'robotframework', 'scikit-image', 'Wand', 'pylibdmtx', 'pdfminer.six', 'deepdiff'],
     dependency_links=['https://github.com/tesseract-ocr/tesseract', 'https://www.ghostscript.com/download/gsdnld.html' , 'https://www.ghostscript.com/download/gpcldnld.html', 'https://imagemagick.org/script/download.php'],
     zip_safe=False
 )
