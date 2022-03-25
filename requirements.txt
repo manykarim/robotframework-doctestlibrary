@@ -3,11 +3,11 @@ numpy
 opencv-python-headless
 parsimonious
 pytesseract
-robotframework<5
+robotframework
 scikit-image
 Wand
 pylibdmtx
 pdfminer.six
 deepdiff
-PyMuPDF
+PyMuPDF==1.19.5
 allure-robotframework
