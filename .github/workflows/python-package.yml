@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.7, 3.8, 3.9]
+        python-version: [3.8]
 
     steps:
     - uses: actions/checkout@v2
@@ -57,12 +57,12 @@ jobs:
         mkdir -p allure-results
         mkdir -p reports/allure-reports
         robot --pythonpath ./:DocTest --outputdir reports atest/Compare.robot atest/PdfContent.robot
-    - name: Create Keyword Documentation
-      continue-on-error: true
-      run: |
-        libdoc --pythonpath ./:DocTest DocTest/VisualTest.py docs/VisualTest.html
-        libdoc --pythonpath ./:DocTest DocTest/PdfTest.py docs/PdfTestTest.html
-        libdoc --pythonpath ./:DocTest DocTest/PrintJobTests.py docs/PrintJobTest.html
+#    - name: Create Keyword Documentation
+#      continue-on-error: true
+#      run: |
+#        libdoc --pythonpath ./:DocTest DocTest/VisualTest.py docs/VisualTest.html
+#        libdoc --pythonpath ./:DocTest DocTest/PdfTest.py docs/PdfTestTest.html
+#        libdoc --pythonpath ./:DocTest DocTest/PrintJobTests.py docs/PrintJobTest.html
 #    - name: Create Allure report
 #      continue-on-error: true
 #      run: |
