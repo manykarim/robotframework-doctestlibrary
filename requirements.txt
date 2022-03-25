@@ -3,7 +3,7 @@ numpy
 opencv-python-headless
 parsimonious
 pytesseract
-robotframework
+robotframework<5
 scikit-image
 Wand
 pylibdmtx
