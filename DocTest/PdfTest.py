@@ -1,5 +1,4 @@
 from inspect import signature
-from DocTest.PdfDoc import PdfDoc
 from pprint import pprint
 from deepdiff import DeepDiff
 from robot.api.deco import keyword, library
@@ -104,11 +103,11 @@ class PdfTest(object):
                 differences_detected=True
                 print("Different rotation")
                 pprint(diff, width=200)
-            diff = DeepDiff(ref_page['mediabox'], cand_page['mediabox'])
-            if diff != {}:
-                differences_detected=True
-                print("Different mediabox")
-                pprint(diff, width=200)
+            # diff = DeepDiff(ref_page['mediabox'], cand_page['mediabox'])
+            # if diff != {}:
+            #     differences_detected=True
+            #     print("Different mediabox")
+            #     pprint(diff, width=200)
             if 'text' in compare or 'all' in compare:
                 diff = DeepDiff(ref_page['text'], cand_page['text'])
                 if diff != {}:

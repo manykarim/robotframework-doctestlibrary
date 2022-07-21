@@ -1,3 +1,4 @@
+
 # robotframework-doctestlibrary
 ----
 [Robot Framework](https://robotframework.org) DocTest library.
@@ -10,7 +11,6 @@ Powered by
 - Ghostscript (only needed for rendering .ps and .pcl files)
 - PyWand (only needed for rendering .ps and .pcl files)
 - Tesseract OCR
-- pdfminer (will be removed)
 - parsimonious (only needed for parsing .pcl and .ps files for)
 - pymupdf
 - The knowledge of stackoverflow.com
@@ -76,7 +76,7 @@ Otherwise it will not be possible to render .pcl files successfully for visual c
 ### Add tesseract, ghostscript and imagemagick to system path in windows (only needed for OCR, `.pcl` and `.ps` support)
 * C:\Program Files\ImageMagick-7.0.10-Q16-HDRI
 * C:\Program Files\Tesseract-OCR
-* C:\Program Files\gs\gs9.53.1\bin
+* C:\Program Files\gs\gs9.53.1in
 * C:\Program Files\gs\ghostpcl-9.53.1-win64
 
 (The folder names and versions on your system might be different)
