@@ -24,15 +24,6 @@ jobs:
           virtualenvs-in-project: false
           virtualenvs-path: ~/.virtualenvs
           installer-parallel: true
-
-      - name: Cache poetry virtualenv
-        uses: actions/cache@v1
-        id: cache
-        with:
-          path: ~/.virtualenvs
-          key: poetry-${{ hashFiles('**/poetry.lock') }}
-          restore-keys: |
-            poetry-${{ hashFiles('**/poetry.lock') }}
       - name: Install dependencies
         run: |
           poetry install
@@ -46,8 +37,6 @@ jobs:
           cp ${archive_name}/gpcl6* ${archive_name}/pcl6
           sudo cp ${archive_name}/* /usr/bin
           sudo cp policy.xml /etc/ImageMagick-6/
-        if: steps.cache.outputs.cache-hit != 'true'
-
       - name: Run tests
         run: |
           poetry run invoke tests
