@@ -10,7 +10,6 @@ import uuid
 import numpy as np
 from pathlib import Path
 from robot.libraries.BuiltIn import BuiltIn
-from DocTest.PdfDoc import PdfDoc
 import re
 from concurrent import futures
 from robot.api.deco import keyword, library
