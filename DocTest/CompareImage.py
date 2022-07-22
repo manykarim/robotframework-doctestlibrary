@@ -18,7 +18,6 @@ from skimage.util import img_as_ubyte
 from imutils.object_detection import non_max_suppression
 import numpy as np
 import sys
-from DocTest.PdfDoc import PdfDoc
 from concurrent import futures
 import fitz
 import logging
