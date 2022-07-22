@@ -16,17 +16,8 @@ jobs:
         uses: actions/setup-python@v1
         with:
           python-version: 3.8
-
-      - name: Install and configure Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: false
-          virtualenvs-path: ~/.virtualenvs
-          installer-parallel: true
-      - name: Install dependencies
+      - name: Install Packages and Binaries
         run: |
-          poetry install
           sudo apt-get update
           sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b allure
           export release_name=gs952
@@ -37,6 +28,24 @@ jobs:
           cp ${archive_name}/gpcl6* ${archive_name}/pcl6
           sudo cp ${archive_name}/* /usr/bin
           sudo cp policy.xml /etc/ImageMagick-6/
+      - name: Install and configure Poetry
+        uses: snok/install-poetry@v1
+        with:
+          virtualenvs-create: true
+          virtualenvs-in-project: false
+          virtualenvs-path: ~/.virtualenvs
+          installer-parallel: true
+      - name: Cache poetry virtualenv
+        uses: actions/cache@v1
+        id: cache
+        with:
+          path: ~/.virtualenvs
+          key: poetry-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            poetry-${{ hashFiles('**/poetry.lock') }}
+      - name: Install dependencies
+        run: poetry install
+        if: steps.cache.outputs.cache-hit != 'true'
       - name: Run tests
         run: |
           poetry run invoke tests
