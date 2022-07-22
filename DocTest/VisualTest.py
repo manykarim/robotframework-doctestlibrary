@@ -156,7 +156,7 @@ class VisualTest(object):
                         candidate_pdf_content = candidate_compare_image.mupdfdoc[i]
                     except:
                         reference_pdf_content = reference_compare_image.mupdfdoc[0]
-                        candidate_pdf_content = reference_compare_image.mupdfdoc[0]
+                        candidate_pdf_content = candidate_compare_image.mupdfdoc[0]
                 else:
                     reference_pdf_content = None
                     candidate_pdf_content = None
