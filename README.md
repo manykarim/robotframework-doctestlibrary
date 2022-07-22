@@ -61,8 +61,8 @@ Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries
  * `apt-get install libdmtx0b`
 * Windows
  * https://github.com/UB-Mannheim/tesseract/wiki
- * https://www.ghostscript.com/download/gsdnld.html
- * https://www.ghostscript.com/download/gpcldnld.html
+ * https://ghostscript.com/releases/gsdnld.html
+ * https://ghostscript.com/releases/gpcldnld.html
  * https://imagemagick.org/script/download.php
 
 
