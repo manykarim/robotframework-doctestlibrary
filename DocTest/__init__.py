@@ -4,7 +4,6 @@ try:
     __version__ = metadata.version("robotframework-doctestlibrary")
 except metadata.PackageNotFoundError:
     pass
-
 """
 # robotframework-doctestlibrary
 ----
