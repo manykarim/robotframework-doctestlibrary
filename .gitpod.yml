@@ -1,0 +1,18 @@
+---
+# List the start up tasks. Learn more https://www.gitpod.io/docs/config-start-tasks/
+tasks:
+  - init: |
+      sudo apt-get update
+      sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b allure
+      sudo cp policy.xml /etc/ImageMagick-6/
+      poetry install
+    command: |
+      poetry run invoke tests
+image: gitpod/workspace-full-vnc
+vscode:
+  extensions:
+    - ms-python.python
+    - d-biehl.robotcode
+    - eamodio.gitlens
+    - dbaeumer.vscode-eslint
+    - ritwickdey.LiveServer
