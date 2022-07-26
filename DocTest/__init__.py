@@ -1,9 +1,3 @@
-from importlib import metadata
-
-try:
-    __version__ = metadata.version("robotframework-doctestlibrary")
-except metadata.PackageNotFoundError:
-    pass
 """
 # robotframework-doctestlibrary
 ----
@@ -52,8 +46,11 @@ I recommend to use `pip` as it will also install a required binary `libdmtx-64.d
 * Install via setup.py
   <br>`python setup.py install`
 
-## Install dependencies
+### Installation via `poetry`
 
+* `poetry install`
+
+## Install dependencies
 
 Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries
 <br>Hint: Since `0.2.0` Ghostscript, GhostPCL and ImageMagick are only needed for rendering `.ps` and `.pcl`files.
@@ -80,10 +77,10 @@ The executable for GhostPCL `gpcl6win64.exe` needs to be renamed to `pcl6.exe`
 Otherwise it will not be possible to render .pcl files successfully for visual comparison.
 
 ### Add tesseract, ghostscript and imagemagick to system path in windows (only needed for OCR, `.pcl` and `.ps` support)
-* C:\Program Files\ImageMagick-7.0.10-Q16-HDRI
-* C:\Program Files\Tesseract-OCR
-* C:\Program Files\gs\gs9.53.1\bin
-* C:\Program Files\gs\ghostpcl-9.53.1-win64
+* C:\\Program Files\\ImageMagick-7.0.10-Q16-HDRI
+* C:\\Program Files\\Tesseract-OCR
+* C:\\Program Files\\gs\\gs9.53.1\\bin
+* C:\\Program Files\\gs\\ghostpcl-9.53.1-win64
 
 (The folder names and versions on your system might be different)
 
@@ -124,7 +121,16 @@ Afterwards you can, e.g., start the container and run the povided examples like 
 * Linux
   * `docker run -t -v $PWD:/opt/test -w /opt/test robotframework-doctest robot atest/Compare.robot`
 
+## Gitpod.io
+
+Try out the library using [Gitpod](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)
+
 # Updates
+
+## Now built with poetry
+With version 0.3.0 the library is now built with poetry.
+Some refactoring and small cleanup were done, without changing the functionality.
+
 ## Hello PyMuPDF
 With version `0.2.0` the PDF Rendering and PDF content reading is done via `PyMuPDF` (instead of `Ghostscript` and `ImageMagick`/`PyWand`).
 <br>
@@ -346,3 +352,9 @@ In order of appearance.
 
 This project is community driven and becomes a reality only through the work of all the people who contribute.
 """
+from importlib import metadata
+
+try:
+    __version__ = metadata.version("robotframework-doctestlibrary")
+except metadata.PackageNotFoundError:
+    pass
