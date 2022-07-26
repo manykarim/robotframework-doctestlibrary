@@ -49,6 +49,8 @@ def libdoc(context):
         "python",
         "-m",
         "robot.libdoc",
+        "-n VisualTest",
+        f"-v {VERSION}",
         source,
         target,
     ]
@@ -59,6 +61,8 @@ def libdoc(context):
         "python",
         "-m",
         "robot.libdoc",
+        "-n PdfTest",
+        f"-v {VERSION}",
         source,
         target,
     ]
@@ -69,6 +73,8 @@ def libdoc(context):
         "python",
         "-m",
         "robot.libdoc",
+        "-n PrintJobTest",
+        f"-v {VERSION}",
         source,
         target,
     ]
