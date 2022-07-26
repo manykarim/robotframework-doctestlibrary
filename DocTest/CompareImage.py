@@ -1,7 +1,5 @@
 from skimage import io, measure, metrics, util, img_as_ubyte
 from os.path import splitext, split
-from wand.image import Image
-from wand.color import Color
 from decimal import *
 from skimage.draw import rectangle
 import json
@@ -10,7 +8,6 @@ import re
 import cv2
 import pytesseract
 from pytesseract import Output
-from wand.image import Image
 import os
 from io import BytesIO
 import tempfile
@@ -357,6 +354,8 @@ class CompareImage(object):
             resolution = self.DPI
         tic = time.perf_counter()
         try:
+            from wand.image import Image
+            from wand.color import Color
             with(Image(filename=self.image, resolution=resolution)) as source:
 
                 toc = time.perf_counter()
