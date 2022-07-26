@@ -1,3 +1,4 @@
+
 # robotframework-doctestlibrary
 ----
 [Robot Framework](https://robotframework.org) DocTest library.
@@ -10,7 +11,6 @@ Powered by
 - Ghostscript (only needed for rendering .ps and .pcl files)
 - PyWand (only needed for rendering .ps and .pcl files)
 - Tesseract OCR
-- pdfminer (will be removed)
 - parsimonious (only needed for parsing .pcl and .ps files for)
 - pymupdf
 - The knowledge of stackoverflow.com
@@ -46,8 +46,11 @@ I recommend to use `pip` as it will also install a required binary `libdmtx-64.d
 * Install via setup.py
   <br>`python setup.py install`
 
-## Install dependencies
+### Installation via `poetry`
 
+* `poetry install`
+
+## Install dependencies
 
 Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries
 <br>Hint: Since `0.2.0` Ghostscript, GhostPCL and ImageMagick are only needed for rendering `.ps` and `.pcl`files.
@@ -118,7 +121,16 @@ Afterwards you can, e.g., start the container and run the povided examples like 
 * Linux
   * `docker run -t -v $PWD:/opt/test -w /opt/test robotframework-doctest robot atest/Compare.robot`
 
+## Gitpod.io
+
+Try out the library using [Gitpod](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)
+
 # Updates
+
+## Now built with poetry
+With version 0.3.0 the library is now built with poetry.
+Some refactoring and small cleanup were done, without changing the functionality.
+
 ## Hello PyMuPDF
 With version `0.2.0` the PDF Rendering and PDF content reading is done via `PyMuPDF` (instead of `Ghostscript` and `ImageMagick`/`PyWand`).
 <br>

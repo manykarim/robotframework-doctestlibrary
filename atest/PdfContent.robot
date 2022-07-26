@@ -2,13 +2,20 @@
 Library    DocTest.PdfTest
 
 *** Test Cases ***
-This text exists in the PDF File
+This text list exists in the PDF File
     @{strings}=    Create List    THE TEST SHIPPER    TEST CONSIGNEE
     PDF Should Contain Strings    ${strings}    testdata/sample.pdf
 
-This text does NOT exist in the PDF File
+This text list does NOT exist in the PDF File
     @{strings}=    Create List    THE TEST SHIPPER    THIS STRING DOES NOT EXIST IN THIS DOJO
     Run Keyword And Expect Error    Some expected texts were not found in document    PDF Should Contain Strings    ${strings}    testdata/sample.pdf
+
+This single string exists in the PDF File
+    PDF Should Contain Strings    THE TEST SHIPPER    testdata/sample.pdf
+
+This single string does NOT exist in the PDF File
+    Run Keyword And Expect Error    Some expected texts were not found in document    PDF Should Contain Strings    THIS STRING DOES NOT EXIST IN THIS DOJO    testdata/sample.pdf
+
 
 Compare two equal PDF Files without signature
     Compare Pdf Documents    testdata/sample.pdf    testdata/sample.pdf

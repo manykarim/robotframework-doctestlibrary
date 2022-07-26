@@ -7,7 +7,5 @@ robotframework
 scikit-image
 Wand
 pylibdmtx
-pdfminer.six
 deepdiff
-PyMuPDF==1.19.5
-allure-robotframework
+PyMuPDF

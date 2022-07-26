@@ -10,7 +10,6 @@ import uuid
 import numpy as np
 from pathlib import Path
 from robot.libraries.BuiltIn import BuiltIn
-from DocTest.PdfDoc import PdfDoc
 import re
 from concurrent import futures
 from robot.api.deco import keyword, library
@@ -156,7 +155,7 @@ class VisualTest(object):
                         candidate_pdf_content = candidate_compare_image.mupdfdoc[i]
                     except:
                         reference_pdf_content = reference_compare_image.mupdfdoc[0]
-                        candidate_pdf_content = reference_compare_image.mupdfdoc[0]
+                        candidate_pdf_content = candidate_compare_image.mupdfdoc[0]
                 else:
                     reference_pdf_content = None
                     candidate_pdf_content = None

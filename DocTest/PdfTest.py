@@ -1,5 +1,4 @@
 from inspect import signature
-from DocTest.PdfDoc import PdfDoc
 from pprint import pprint
 from deepdiff import DeepDiff
 from robot.api.deco import keyword, library
@@ -104,11 +103,11 @@ class PdfTest(object):
                 differences_detected=True
                 print("Different rotation")
                 pprint(diff, width=200)
-            diff = DeepDiff(ref_page['mediabox'], cand_page['mediabox'])
-            if diff != {}:
-                differences_detected=True
-                print("Different mediabox")
-                pprint(diff, width=200)
+            # diff = DeepDiff(ref_page['mediabox'], cand_page['mediabox'])
+            # if diff != {}:
+            #     differences_detected=True
+            #     print("Different mediabox")
+            #     pprint(diff, width=200)
             if 'text' in compare or 'all' in compare:
                 diff = DeepDiff(ref_page['text'], cand_page['text'])
                 if diff != {}:
@@ -146,7 +145,9 @@ class PdfTest(object):
 
     @keyword
     def check_text_content(self, expected_text_list, candidate_document):
-        """Checks if each item provided in the list ``expected_text_list`` appears in the PDF File ``candidate_document``.
+        """*DEPRECATED!!* Use keyword `PDF Should Contain Strings` instead.
+        
+        Checks if each item provided in the list ``expected_text_list`` appears in the PDF File ``candidate_document``.
         
         ``expected_text_list`` is a list of strings, ``candidate_document`` is the path to a PDF File.
         
@@ -177,15 +178,19 @@ class PdfTest(object):
     def PDF_should_contain_strings(self, expected_text_list, candidate_document):
         """Checks if each item provided in the list ``expected_text_list`` appears in the PDF File ``candidate_document``.
         
-        ``expected_text_list`` is a list of strings, ``candidate_document`` is the path to a PDF File.
+        ``expected_text_list`` is a list of strings or a single string, ``candidate_document`` is the path to a PDF File.
         
         Examples:
 
         | @{strings}= | Create List | One String | Another String |
         | PDF Should Contain Strings | ${strings} | candidate.pdf |
+        | PDF Should Contain Strings | One String | candidate.pdf |
         
         """
         doc = fitz.open(candidate_document)
+        # if expected_text_list is a string, convert it to a list
+        if isinstance(expected_text_list, str):
+            expected_text_list = [expected_text_list]
         missing_text_list = []
         all_texts_were_found = None
         for text_item in expected_text_list:
