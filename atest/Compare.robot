@@ -67,3 +67,6 @@ Compare Text Content from PDF
 Compare Text Content from Image
     ${text}     Get Text From Document    testdata/Beach_date.png
     List Should Contain Value   ${text}     123456789
+
+Compare Images And Resize With Different Shapes
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg    resize_candidate=True

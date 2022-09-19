@@ -104,8 +104,9 @@ class VisualTest(object):
         watermark_file = kwargs.pop('watermark_file', self.watermark_file)
         ignore_watermarks = os.getenv('IGNORE_WATERMARKS', False)
         ocr_engine = kwargs.pop('ocr_engine', self.ocr_engine)
+        resize_candidate = kwargs.pop('resize_candidate', False)
 
-        compare_options = {'get_pdf_content':get_pdf_content, 'ignore_watermarks':ignore_watermarks,'check_text_content':check_text_content,'contains_barcodes':contains_barcodes, 'force_ocr':force_ocr, 'move_tolerance':move_tolerance, 'watermark_file':watermark_file, 'ocr_engine':ocr_engine}
+        compare_options = {'get_pdf_content':get_pdf_content, 'ignore_watermarks':ignore_watermarks,'check_text_content':check_text_content,'contains_barcodes':contains_barcodes, 'force_ocr':force_ocr, 'move_tolerance':move_tolerance, 'watermark_file':watermark_file, 'ocr_engine':ocr_engine, 'resize_candidate':resize_candidate}
 
         if self.reference_run and (os.path.isfile(test_image) == True):
             shutil.copyfile(test_image, reference_image)
@@ -264,16 +265,21 @@ class VisualTest(object):
 
     def check_for_differences(self, reference, candidate, i, detected_differences, compare_options, reference_pdf_content=None, candidate_pdf_content=None):
         images_are_equal = True
+
+        if reference.shape[0] != candidate.shape[0] or reference.shape[1] != candidate.shape[1]:
+            if compare_options['resize_candidate']:
+                candidate = cv2.resize(candidate, (reference.shape[1], reference.shape[0]))
+            else:
+                self.add_screenshot_to_log(reference, "_reference_page_" + str(i+1))
+                self.add_screenshot_to_log(candidate, "_candidate_page_" + str(i+1))
+                raise AssertionError(f'The compared images have different dimensions:\nreference:{reference.shape}\ncandidate:{candidate.shape}')
+
         with futures.ThreadPoolExecutor(max_workers=2) as parallel_executor:
             grayA_future = parallel_executor.submit(cv2.cvtColor, reference, cv2.COLOR_BGR2GRAY)
             grayB_future = parallel_executor.submit(cv2.cvtColor, candidate, cv2.COLOR_BGR2GRAY)
             grayA = grayA_future.result()
             grayB = grayB_future.result()
 
-        if reference.shape[0] != candidate.shape[0] or reference.shape[1] != candidate.shape[1]:
-            self.add_screenshot_to_log(reference, "_reference_page_" + str(i+1))
-            self.add_screenshot_to_log(candidate, "_candidate_page_" + str(i+1))
-            raise AssertionError(f'The compared images have different dimensions:\nreference:{reference.shape}\ncandidate:{candidate.shape}')
         
         # compute the Structural Similarity Index (SSIM) between the two
         # images, ensuring that the difference image is returned
