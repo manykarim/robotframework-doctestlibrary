@@ -22,7 +22,7 @@ class VisualTest(object):
 
     ROBOT_LIBRARY_VERSION = 0.2
     BORDER_FOR_MOVE_TOLERANCE_CHECK = 0
-    DPI = 200
+    #DPI = 200
     WATERMARK_WIDTH = 25
     WATERMARK_HEIGHT = 30
     WATERMARK_CENTER_OFFSET = 3/100
@@ -35,15 +35,15 @@ class VisualTest(object):
     CANDIDATE_LABEL = "Actual Result (Candidate)"
     OCR_ENGINE = "tesseract"
 
-    def __init__(self, **kwargs):
-        self.threshold = kwargs.pop('threshold', 0.0000)
+    def __init__(self, threshold=0.0000, DPI=200, take_screenshots=False, show_diff=False, ocr_engine=OCR_ENGINE, watermark_file=None, screenshot_format='jpg' ,**kwargs):
+        self.threshold = threshold
         self.SCREENSHOT_DIRECTORY = Path("screenshots/")
-        self.DPI = int(kwargs.pop('DPI', 200))
-        self.take_screenshots = bool(kwargs.pop('take_screenshots', False))
-        self.show_diff = bool(kwargs.pop('show_diff', False))
-        self.ocr_engine = kwargs.pop('ocr_engine', self.OCR_ENGINE)
-        self.watermark_file = kwargs.pop('watermark_file', None)
-        self.screenshot_format = kwargs.pop('screenshot_format', 'jpg')
+        self.DPI = int(DPI)
+        self.take_screenshots = bool(take_screenshots)
+        self.show_diff = bool(show_diff)
+        self.ocr_engine = ocr_engine
+        self.watermark_file = watermark_file
+        self.screenshot_format = screenshot_format
         if not (self.screenshot_format == 'jpg' or self.screenshot_format == 'png'):
              self.screenshot_format == 'jpg'
 
@@ -52,16 +52,18 @@ class VisualTest(object):
             self.OUTPUT_DIRECTORY = built_in.get_variable_value('${OUTPUT DIR}')
             self.reference_run = built_in.get_variable_value('${REFERENCE_RUN}', False)
             self.PABOTQUEUEINDEX = built_in.get_variable_value('${PABOTQUEUEINDEX}')
-            os.makedirs(self.OUTPUT_DIRECTORY/self.SCREENSHOT_DIRECTORY, exist_ok=True)
+            # Disabled folder creation for now, as it caused problems in library import
+            # os.makedirs(self.OUTPUT_DIRECTORY/self.SCREENSHOT_DIRECTORY, exist_ok=True)
         except:
             print("Robot Framework is not running")
             self.OUTPUT_DIRECTORY = Path.cwd()
-            os.makedirs(self.OUTPUT_DIRECTORY / self.SCREENSHOT_DIRECTORY, exist_ok=True)
+            # Disabled folder creation for now, as it caused problems in library import
+            # os.makedirs(self.OUTPUT_DIRECTORY / self.SCREENSHOT_DIRECTORY, exist_ok=True)
             self.reference_run = False
             self.PABOTQUEUEINDEX = None
     
     @keyword    
-    def compare_images(self, reference_image, test_image, **kwargs):
+    def compare_images(self, reference_image, test_image, placeholder_file=None, mask=None, check_text_content=False, move_tolerance=None, contains_barcodes=False, get_pdf_content=False, force_ocr=False, DPI=None, watermark_file=None, ignore_watermarks=None, ocr_engine=None, resize_candidate=False,  **kwargs):
         """Compares the documents/images ``reference_image`` and ``test_image``.
 
         ``**kwargs`` can be used to add settings for ``placeholder_file``, ``contains_barcodes``, ``check_text_content``, ``move_tolerance``, ``get_pdf_content``, ``watermark_file``
@@ -93,18 +95,16 @@ class VisualTest(object):
         compare_collection = []
         detected_differences = []
 
-        placeholder_file = kwargs.pop('placeholder_file', None)
-        mask = kwargs.pop('mask', None)
-        check_text_content = kwargs.pop('check_text_content', False)
-        move_tolerance = kwargs.pop('move_tolerance', None)
-        contains_barcodes = kwargs.pop('contains_barcodes', False)
-        get_pdf_content = kwargs.pop('get_pdf_content', False)
-        force_ocr = kwargs.pop('force_ocr', False)
-        self.DPI = int(kwargs.pop('DPI', self.DPI))
-        watermark_file = kwargs.pop('watermark_file', self.watermark_file)
-        ignore_watermarks = os.getenv('IGNORE_WATERMARKS', False)
-        ocr_engine = kwargs.pop('ocr_engine', self.ocr_engine)
-        resize_candidate = kwargs.pop('resize_candidate', False)
+        if DPI is None:
+            DPI = self.DPI
+        else:
+            self.DPI = int(DPI)
+        if watermark_file is None:
+            watermark_file = self.watermark_file
+        if ignore_watermarks is None:
+            ignore_watermarks = os.getenv('IGNORE_WATERMARKS', False)
+        if ocr_engine is None:
+            ocr_engine = self.ocr_engine
 
         compare_options = {'get_pdf_content':get_pdf_content, 'ignore_watermarks':ignore_watermarks,'check_text_content':check_text_content,'contains_barcodes':contains_barcodes, 'force_ocr':force_ocr, 'move_tolerance':move_tolerance, 'watermark_file':watermark_file, 'ocr_engine':ocr_engine, 'resize_candidate':resize_candidate}
 
@@ -208,19 +208,16 @@ class VisualTest(object):
 
     def add_screenshot_to_log(self, image, suffix):
         screenshot_name = str(str(uuid.uuid1()) + suffix + '.{}'.format(self.screenshot_format))
-        
         if self.PABOTQUEUEINDEX is not None:
             rel_screenshot_path = str(self.SCREENSHOT_DIRECTORY / '{}-{}'.format(self.PABOTQUEUEINDEX, screenshot_name))
         else:
             rel_screenshot_path = str(self.SCREENSHOT_DIRECTORY / screenshot_name)
-            
         abs_screenshot_path = str(self.OUTPUT_DIRECTORY/self.SCREENSHOT_DIRECTORY/screenshot_name)
-        
+        os.makedirs(os.path.dirname(abs_screenshot_path), exist_ok=True)
         if self.screenshot_format == 'jpg':
             cv2.imwrite(abs_screenshot_path, image, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
         else:
             cv2.imwrite(abs_screenshot_path, image)
-
         print("*HTML* "+ "<a href='" + rel_screenshot_path + "' target='_blank'><img src='" + rel_screenshot_path + "' style='width:50%; height: auto;'/></a>")
 
     def find_partial_image_position(self, img, template, threshold = 0.1):
@@ -229,7 +226,6 @@ class VisualTest(object):
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
         h, w = template.shape[0:2]
-
         template_blur = cv2.GaussianBlur(template_gray, (3, 3), 0)
         template_thresh = cv2.threshold(template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
 
