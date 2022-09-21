@@ -18,7 +18,7 @@ def utests(context):
         "pytest",
         f"{ROOT}/utest",
     ]
-    subprocess.run(" ".join(cmd), shell=True, check=False)
+    subprocess.run(" ".join(cmd), shell=True, check=True)
 
 @task
 def atests(context):
@@ -33,10 +33,16 @@ def atests(context):
         f"{ROOT}/atest/Compare.robot",
         f"{ROOT}/atest/PdfContent.robot",
     ]
-    subprocess.run(" ".join(cmd), shell=True, check=False)
+    subprocess.run(" ".join(cmd), shell=True, check=True)
 
 @task(utests, atests)
 def tests(context):
+    subprocess.run("coverage combine", shell=True, check=False)
+    subprocess.run("coverage report", shell=True, check=False)
+    subprocess.run("coverage html", shell=True, check=False)
+
+@task
+def coverage_report(context):
     subprocess.run("coverage combine", shell=True, check=False)
     subprocess.run("coverage report", shell=True, check=False)
     subprocess.run("coverage html", shell=True, check=False)
