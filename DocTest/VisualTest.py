@@ -88,19 +88,19 @@ class VisualTest(object):
         | ``ocr_engine`` | Use ``tesseract`` or ``east`` for Text Detection and OCR |
         | ``resize_candidate`` | Allow visual comparison, even of documents have different sizes |
         | ``**kwargs`` | Everything else |
-
+        
 
         Examples:
-        | `Compare Images` | reference.pdf | candidate.pdf |                              | #Performs a pixel comparison of both files |
-        | `Compare Images` | reference.pdf (not existing)  | candidate.pdf |              | #Will always return passed and save the candidate.pdf as reference.pdf |
-        | `Compare Images` | reference.pdf | candidate.pdf | placeholder_file=mask.json   | #Performs a pixel comparison of both files and excludes some areas defined in mask.json |
-        | `Compare Images` | reference.pdf | candidate.pdf | contains_barcodes=${true}    | #Identified barcodes in documents and excludes those areas from visual comparison. The barcode data will be checked instead |
-        | `Compare Images` | reference.pdf | candidate.pdf | check_text_content${true}    | #In case of visual differences, the text content in the affected areas will be identified using OCR. If text content it equal, the test is considered passed |
-        | `Compare Images` | reference.pdf | candidate.pdf | move_tolerance=10            | #In case of visual differences, it is checked if difference is caused only by moved areas. If the move distance is within 10 pixels the test is considered as passed. Else it is failed |
-        | `Compare Images` | reference.pdf | candidate.pdf | check_text_content=${true} get_pdf_content=${true} | #In case of visual differences, the text content in the affected areas will be read directly from  PDF (not OCR). If text content it equal, the test is considered passed |
-        | `Compare Images` | reference.pdf | candidate.pdf | watermark_file=watermark.pdf   | #Provides a watermark file as an argument. In case of visual differences, watermark content will be subtracted |
-        | `Compare Images` | reference.pdf | candidate.pdf | watermark_file=${CURDIR}${/}watermarks   | #Provides a watermark folder as an argument. In case of visual differences, all watermarks in folder will be subtracted |
-        | Compare Images | reference.pdf | candidate.pdf | move_tolerance=10 get_pdf_content=${true} | #In case of visual differences, it is checked if difference is caused only by moved areas. Move distance is identified directly from PDF data. If the move distance is within 10 pixels the test is considered as passed. Else it is failed |
+        | `Compare Images`   reference.pdf   candidate.pdf                                  #Performs a pixel comparison of both files
+        | `Compare Images`   reference.pdf (not existing)    candidate.pdf                  #Will always return passed and save the candidate.pdf as reference.pdf
+        | `Compare Images`   reference.pdf   candidate.pdf   placeholder_file=mask.json     #Performs a pixel comparison of both files and excludes some areas defined in mask.json
+        | `Compare Images`   reference.pdf   candidate.pdf   contains_barcodes=${true}      #Identified barcodes in documents and excludes those areas from visual comparison. The barcode data will be checked instead
+        | `Compare Images`   reference.pdf   candidate.pdf   check_text_content${true}      #In case of visual differences, the text content in the affected areas will be identified using OCR. If text content it equal, the test is considered passed
+        | `Compare Images`   reference.pdf   candidate.pdf   move_tolerance=10              #In case of visual differences, it is checked if difference is caused only by moved areas. If the move distance is within 10 pixels the test is considered as passed. Else it is failed
+        | `Compare Images`   reference.pdf   candidate.pdf   check_text_content=${true}   get_pdf_content=${true}   #In case of visual differences, the text content in the affected areas will be read directly from  PDF (not OCR). If text content it equal, the test is considered passed
+        | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=watermark.pdf     #Provides a watermark file as an argument. In case of visual differences, watermark content will be subtracted
+        | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=${CURDIR}${/}watermarks     #Provides a watermark folder as an argument. In case of visual differences, all watermarks in folder will be subtracted
+        | `Compare Images`   reference.pdf   candidate.pdf   move_tolerance=10   get_pdf_content=${true}   #In case of visual differences, it is checked if difference is caused only by moved areas. Move distance is identified directly from PDF data. If the move distance is within 10 pixels the test is considered as passed. Else it is failed
 
 
         """
