@@ -19,7 +19,12 @@ jobs:
       - name: Install Packages and Binaries
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b allure
+          echo "Install Dependencies via apt"
+          sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b
+          echo "Download Tesseract Models"
+          wget -O /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/eng.traineddata
+          wget -O /usr/share/tesseract-ocr/4.00/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/osd.traineddata
+          echo "Download Ghostscript and GhostPCL"
           export release_name=gs952
           export archive_name=ghostpcl-9.52-linux-x86_64
           wget https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/${release_name}/${archive_name}.tgz
