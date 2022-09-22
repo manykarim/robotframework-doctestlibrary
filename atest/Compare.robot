@@ -12,6 +12,15 @@ Compare two Farm images
 Compare two Farm images with date pattern
     Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    placeholder_file=testdata/pattern_mask.json
 
+Compare two Farm images with area mask as list
+    ${top_mask}    Create Dictionary    page=1    type=area    location=top    percent=10
+    ${bottom_mask}    Create Dictionary    page=all    type=area    location=bottom    percent=10
+    ${masks}    Create List    ${top_mask}    ${bottom_mask}
+    Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    mask=${masks}
+
+Compare two Farm images with area mask as string
+    Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    mask=top:10;bottom:10
+
 Compare two Farm images with date pattern and east detection
     Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    placeholder_file=testdata/pattern_mask.json    ocr_engine=east
 

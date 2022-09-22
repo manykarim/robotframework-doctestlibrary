@@ -141,6 +141,7 @@ class CompareImage(object):
             self.text_content.append(text)
 
     def identify_placeholders(self):
+        placeholders = None
         if self.placeholder_file is not None:
             try:
                 with open(self.placeholder_file, 'r') as f:
@@ -152,13 +153,32 @@ class CompareImage(object):
                 print("Unexpected error:", sys.exc_info()[0])
                 raise
         elif self.mask is not None:
-            try:
-                placeholders = json.loads(self.mask)
-            except:
-                print('The mask {} could not be read as JSON'.format(self.mask))
-        if isinstance(placeholders, list) is not True:
-            placeholders = [placeholders]
+            if isinstance(self.mask, dict):
+                placeholders = self.mask
+            elif isinstance(self.mask, list):
+                placeholders = self.mask
+            elif isinstance(self.mask, str):
+                try:
+                    placeholders = json.loads(self.mask)
+                except:
+                    print('The mask {} could not be read as JSON'.format(self.mask))
+                    # Split the mask at ;
+                    mask_list = self.mask.split(';')
+                    for mask in mask_list:
+                        if len(mask) > 0:
+                            # Split the mask at : but only once
+                            location, percent = mask.split(':',1)
+                            # Check if location is top, bottom, left, right
+                            if location in ['top', 'bottom', 'left', 'right']:
+                                if percent.isnumeric():
+                                    if placeholders is None:
+                                        placeholders = []
+                                    placeholders.append({'page': 'all', 'type': 'area', 'location': location, 'percent': percent})
+                                else:
+                                    print('The mask {} is not valid. The percent value is not a number'.format(mask))
         if (placeholders is not None):
+            if isinstance(placeholders, list) is not True:
+                placeholders = [placeholders]
             for placeholder in placeholders:
                 placeholder_type = str(placeholder.get('type'))
                 if (placeholder_type == 'pattern' or placeholder_type == 'line_pattern' or placeholder_type == 'word_pattern'):
@@ -220,26 +240,32 @@ class CompareImage(object):
                     page = placeholder.get('page', 'all')
                     unit = placeholder.get('unit', 'px')
                     if unit == 'px':
-                        x, y, h, w = (placeholder['x'], placeholder['y'], placeholder['height'], placeholder['width'])                    
+                        x, y, h, w = (int(placeholder['x']), int(placeholder['y']), int(placeholder['height']), int(placeholder['width']))                    
                     elif unit == 'mm':
                         constant = self.DPI / 25.4
-                        x, y, h, w = (int(placeholder['x']*constant), int(placeholder['y']*constant), int(placeholder['height']*constant), int(placeholder['width']*constant))
+                        x, y, h, w = (int(float(placeholder['x'])*constant), int(float(placeholder['y'])*constant), int(float(placeholder['height'])*constant), int(float(placeholder['width'])*constant))
                     elif unit == 'cm':
                         constant = self.DPI / 2.54
-                        x, y, h, w = (int(placeholder['x']*constant), int(placeholder['y']*constant), int(placeholder['height']*constant), int(placeholder['width']*constant))
+                        x, y, h, w = x, y, h, w = (int(float(placeholder['x'])*constant), int(float(placeholder['y'])*constant), int(float(placeholder['height'])*constant), int(float(placeholder['width'])*constant))
                     placeholder_coordinates = {"page":page, "x":x, "y":y, "height":h, "width":w}
                     self.placeholders.append(placeholder_coordinates)
 
                 elif (placeholder_type == 'area'):
                     page = placeholder.get('page', 'all')
                     location = placeholder.get('location', None)
-                    percent = placeholder.get('percent', 10)
+                    percent = int(placeholder.get('percent', 10))
                     if page == 'all':
                         image_height = self.opencv_images[0].shape[0]
                         image_width = self.opencv_images[0].shape[1]
-                    else:
+                    elif page.isnumeric():
+                        page = int(page)
                         image_height = self.opencv_images[page-1].shape[0]
                         image_width = self.opencv_images[page-1].shape[1]
+                    else:
+                        print("Invalid page number, will apply to all pages")
+                        page = 'all'
+                        image_height = self.opencv_images[0].shape[0]
+                        image_width = self.opencv_images[0].shape[1]
                     if location == 'top':
                         height = int(image_height * percent / 100)
                         width = image_width

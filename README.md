@@ -179,6 +179,19 @@ Compare two Images and ignore parts by using masks
 
 Compare two PDF Docments and ignore parts by using masks
     Compare Images    Reference.jpg    Candidate.jpg    placeholder_file=masks.json
+
+Compare two Farm images with date pattern
+    Compare Images    Reference.jpg    Candidate.jpg    placeholder_file=testdata/pattern_mask.json
+
+Compare two Farm images with area mask as list
+    ${top_mask}    Create Dictionary    page=1    type=area    location=top    percent=10
+    ${bottom_mask}    Create Dictionary    page=all    type=area    location=bottom    percent=10
+    ${masks}    Create List    ${top_mask}    ${bottom_mask}
+    Compare Images    Reference.jpg    Candidate.jpg    mask=${masks}
+
+Compare two Farm images with area mask as string
+    Compare Images    Reference.jpg    Candidate.jpg    mask=top:10;bottom:10
+
 ```
 #### Different Mask Types to Ignore Parts When Comparing
 ##### Areas, Coordinates, Text Patterns

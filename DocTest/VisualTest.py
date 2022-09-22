@@ -1,3 +1,4 @@
+from typing import Union
 from DocTest.CompareImage import CompareImage
 from skimage import metrics
 import imutils
@@ -67,7 +68,7 @@ class VisualTest(object):
             self.PABOTQUEUEINDEX = None
 
     @keyword
-    def compare_images(self, reference_image: str, test_image: str, placeholder_file: str=None, mask: str=None, check_text_content: bool=False, move_tolerance: int=None, contains_barcodes: bool=False, get_pdf_content: bool=False, force_ocr: bool=False, DPI: int=None, watermark_file: str=None, ignore_watermarks: bool=None, ocr_engine: str=None, resize_candidate: bool=False,  **kwargs):
+    def compare_images(self, reference_image: str, test_image: str, placeholder_file: str=None, mask: Union[str, dict, list]=None, check_text_content: bool=False, move_tolerance: int=None, contains_barcodes: bool=False, get_pdf_content: bool=False, force_ocr: bool=False, DPI: int=None, watermark_file: str=None, ignore_watermarks: bool=None, ocr_engine: str=None, resize_candidate: bool=False,  **kwargs):
         """Compares the documents/images ``reference_image`` and ``test_image``.
 
         Result is passed if no visual differences are detected.
@@ -76,7 +77,7 @@ class VisualTest(object):
         | ``reference_image`` | Path of the Reference Image/Document, your expected result. May be .pdf, .ps, .pcl or image files |
         | ``test_image`` | Path of the Candidate Image/Document, that's the one you want to test. May be .pdf, .ps, .pcl or image files |
         | ``placeholder_file`` | Path to a ``.json`` which defines areas that shall be ignored for comparison. Those parts will be replaced with solid placeholders  |
-        | ``mask`` | Same purpose as ``placeholder_file`` but instead of a file path, this is a ``json`` string which defines the areas to be ignored  |
+        | ``mask`` | Same purpose as ``placeholder_file`` but instead of a file path, this is either ``json`` , a ``dict`` , a ``list`` or a ``string`` which defines the areas to be ignored  |
         | ``check_text_content`` | In case of visual differences: Is it acceptable, if only the text content in the different areas is equal |
         | ``move_tolerance`` | In case of visual differences: Is is acceptable, if only parts in the different areas are moved by ``move_tolerance`` pixels  |
         | ``contains_barcodes`` | Shall the image be scanned for barcodes and shall their content be checked (currently only data matrices are supported) |
@@ -101,8 +102,19 @@ class VisualTest(object):
         | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=watermark.pdf     #Provides a watermark file as an argument. In case of visual differences, watermark content will be subtracted
         | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=${CURDIR}${/}watermarks     #Provides a watermark folder as an argument. In case of visual differences, all watermarks in folder will be subtracted
         | `Compare Images`   reference.pdf   candidate.pdf   move_tolerance=10   get_pdf_content=${true}   #In case of visual differences, it is checked if difference is caused only by moved areas. Move distance is identified directly from PDF data. If the move distance is within 10 pixels the test is considered as passed. Else it is failed
+        
+        Special Examples with ``mask``:
+        | `Compare Images`   reference.pdf   candidate.pdf   mask={"page": "all", type: "coordinate", "x": 0, "y": 0, "width": 100, "height": 100}     #Excludes a rectangle from comparison
 
+        | ${top_mask}    Create Dictionary    page=1    type=area    location=top    percent=10
+        | ${bottom_mask}    Create Dictionary    page=all    type=area    location=bottom    percent=10
+        | ${masks}    Create List    ${top_mask}    ${bottom_mask}
+        | `Compare Images`     reference.pdf    candidate.pdf    mask=${masks}      #Excludes an area and a rectangle from comparison
 
+        | ${mask}    Create Dictionary    page=1    type=coordinate    x=0    y=0    width=100    height=100
+        | `Compare Images`    reference.pdf    candidate.pdf    mask=${mask}    #Excludes a rectangle from comparison
+
+        | `Compare Images`    reference.pdf    candidate.pdf    mask=top:10;bottom:10   #Excludes two areas top and bottom with 10% from comparison
         """
         #print("Execute comparison")
         #print('Resolution for image comparison is: {}'.format(self.DPI))
