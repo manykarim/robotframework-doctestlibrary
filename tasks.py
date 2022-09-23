@@ -30,6 +30,7 @@ def atests(context):
         "-m",
         "robot",
         "--loglevel=TRACE:DEBUG",
+        "--listener RobotStackTracer",
         f"{ROOT}/atest/Compare.robot",
         f"{ROOT}/atest/PdfContent.robot",
     ]
