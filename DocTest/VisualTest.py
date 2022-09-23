@@ -416,7 +416,11 @@ class VisualTest(object):
                                         f"The shape of watermark and image are different. Continue with next item")
                                     print(
                                         f"Document: {thresh.shape}\nMask: {mask_inv.shape}")
-                                    continue
+                                    print("Watermark will be resized to document size")
+                                    mask_inv = cv2.resize(
+                                        mask_inv, thresh.shape[0:2][::-1])
+                                    result = cv2.bitwise_and(
+                                        thresh, thresh, mask=mask_inv)
                                 if self.show_diff:
                                     print(f"The diff after watermark removal")
                                     self.add_screenshot_to_log(
