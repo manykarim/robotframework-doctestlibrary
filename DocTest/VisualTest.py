@@ -333,16 +333,22 @@ class VisualTest(object):
             grayA = grayA_future.result()
             grayB = grayB_future.result()
 
-        # compute the Structural Similarity Index (SSIM) between the two
-        # images, ensuring that the difference image is returned
-        (score, diff) = metrics.structural_similarity(
-            grayA, grayB, gaussian_weights=True, full=True)
-        score = abs(1-score)
 
         if self.take_screenshots:
             # Not necessary to take screenshots for every successful comparison
             self.add_screenshot_to_log(np.concatenate(
                 (reference, candidate), axis=1), "_page_" + str(i+1) + "_compare_concat")
+        
+        absolute_diff = cv2.absdiff(grayA, grayB)
+        #if absolute difference is 0, images are equal
+        if np.sum(absolute_diff) == 0:
+            return
+
+        # compute the Structural Similarity Index (SSIM) between the two
+        # images, ensuring that the difference image is returned
+        (score, diff) = metrics.structural_similarity(
+            grayA, grayB, gaussian_weights=True, full=True)
+        score = abs(1-score)
 
         if (score > self.threshold):
 
@@ -350,7 +356,7 @@ class VisualTest(object):
 
             thresh = cv2.threshold(diff, 0, 255,
                                    cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-
+            absolute_diff = cv2.absdiff(grayA, grayB)
             reference_with_rect, candidate_with_rect, cnts = self.get_images_with_highlighted_differences(
                 thresh, reference.copy(), candidate.copy(), extension=int(os.getenv('EXTENSION', 2)))
             blended_images = self.overlay_two_images(
@@ -400,32 +406,23 @@ class VisualTest(object):
                                     print(
                                         f'Watermark file {single_watermark} could not be loaded. Continue with next item.')
                                     continue
+                                # Check if alpha channel is present and remove it
+                                if watermark.shape[2] == 4:
+                                    watermark = watermark[:, :, :3]
                                 watermark_gray = cv2.cvtColor(
                                     watermark, cv2.COLOR_BGR2GRAY)
-                                watermark_gray = (
-                                    watermark_gray * 255).astype("uint8")
-                                mask = cv2.threshold(
-                                    watermark_gray, 10, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-                                mask = cv2.dilate(mask, None, iterations=1)
+                                #watermark_gray = (watermark_gray * 255).astype("uint8")
+                                mask = cv2.threshold(watermark_gray, 10, 255, cv2.THRESH_BINARY)[1]   
+                                # Check if width or height of mask and reference are not equal
+                                if (mask.shape[0] != reference.shape[0] or mask.shape[1] != reference.shape[1]):
+                                    # Resize mask to match thresh
+                                    mask = cv2.resize(mask, (reference.shape[1], reference.shape[0]))
+
                                 mask_inv = cv2.bitwise_not(mask)
-                                if thresh.shape[0:2] == mask_inv.shape[0:2]:
-                                    result = cv2.bitwise_and(
-                                        thresh, thresh, mask=mask_inv)
-                                else:
-                                    print(
-                                        f"The shape of watermark and image are different. Continue with next item")
-                                    print(
-                                        f"Document: {thresh.shape}\nMask: {mask_inv.shape}")
-                                    print("Watermark will be resized to document size")
-                                    mask_inv = cv2.resize(
-                                        mask_inv, thresh.shape[0:2][::-1])
-                                    result = cv2.bitwise_and(
-                                        thresh, thresh, mask=mask_inv)
-                                if self.show_diff:
-                                    print(f"The diff after watermark removal")
-                                    self.add_screenshot_to_log(
-                                        result, "_page_" + str(i + 1) + "_watermark_diff")
-                                if cv2.countNonZero(result) == 0:
+                                # dilate the mask to account for slight misalignments
+                                mask_inv = cv2.dilate(mask_inv, None, iterations=2)
+                                result = cv2.subtract(absolute_diff, mask_inv)
+                                if cv2.countNonZero(cv2.subtract(absolute_diff, mask_inv)) == 0 or cv2.countNonZero(cv2.subtract(thresh, mask_inv)) == 0:
                                     images_are_equal = True
                                     print(
                                         "A watermark file was provided. After removing watermark area, both images are equal")
@@ -504,7 +501,6 @@ class VisualTest(object):
                         if images_are_equal:
                             print("Partial text content of area is the same")
                             print(diff_area_ref_words)
-                            pass
 
             if (compare_options["move_tolerance"] != None) and images_are_equal is not True:
                 move_tolerance = int(compare_options["move_tolerance"])
