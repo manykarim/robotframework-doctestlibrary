@@ -5,7 +5,8 @@ import DocTest
 from DocTest import __version__ as VERSION
 
 ROOT = pathlib.Path(__file__).parent.resolve().as_posix()
-
+utests_completed_process = None
+atests_completed_process = None
 
 @task
 def utests(context):
@@ -18,7 +19,8 @@ def utests(context):
         "pytest",
         f"{ROOT}/utest",
     ]
-    subprocess.run(" ".join(cmd), shell=True, check=True)
+    global utests_completed_process  
+    utests_completed_process = subprocess.run(" ".join(cmd), shell=True, check=False)
 
 @task
 def atests(context):
@@ -34,13 +36,16 @@ def atests(context):
         f"{ROOT}/atest/Compare.robot",
         f"{ROOT}/atest/PdfContent.robot",
     ]
-    subprocess.run(" ".join(cmd), shell=True, check=True)
+    global atests_completed_process
+    atests_completed_process = subprocess.run(" ".join(cmd), shell=True, check=False)
 
 @task(utests, atests)
 def tests(context):
     subprocess.run("coverage combine", shell=True, check=False)
     subprocess.run("coverage report", shell=True, check=False)
     subprocess.run("coverage html", shell=True, check=False)
+    if utests_completed_process.returncode != 0 or atests_completed_process.returncode != 0:
+        raise Exception("Tests failed")
 
 @task
 def coverage_report(context):
