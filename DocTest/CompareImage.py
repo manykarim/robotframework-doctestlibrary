@@ -77,23 +77,22 @@ class CompareImage(object):
             resolution = self.DPI
         tic = time.perf_counter()
         try:
-            with(fitz.open(self.image)) as doc:
-                self.mupdfdoc = fitz.open(self.image)
-                toc = time.perf_counter()
-                print(f"Rendering document to PyMuPDF Image performed in {toc - tic:0.4f} seconds")
-                #split pages
-                tic = time.perf_counter()
-                for i, page in enumerate(self.mupdfdoc.pages()):
-                    zoom = resolution/72
-                    mat = fitz.Matrix(zoom, zoom)
-                    pix = page.get_pixmap(matrix = mat)
-                    imgData = pix.tobytes("png")
-                    nparr = np.frombuffer(imgData, np.uint8)
-                    opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                    self.opencv_images.append(opencv_image)
-                    pass
-                toc = time.perf_counter()
-                print(f"Conversion from PyMuPDF Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+            self.mupdfdoc = fitz.open(self.image)
+            toc = time.perf_counter()
+            print(f"Rendering document to PyMuPDF Image performed in {toc - tic:0.4f} seconds")
+            #split pages
+            tic = time.perf_counter()
+            for i, page in enumerate(self.mupdfdoc.pages()):
+                zoom = resolution/72
+                mat = fitz.Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix = mat)
+                imgData = pix.tobytes("png")
+                nparr = np.frombuffer(imgData, np.uint8)
+                opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                self.opencv_images.append(opencv_image)
+                pass
+            toc = time.perf_counter()
+            print(f"Conversion from PyMuPDF Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
         except:
             raise AssertionError("File could not be converted by ImageMagick to OpenCV Image: {}".format(self.image))
 
