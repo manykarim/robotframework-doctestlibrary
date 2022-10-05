@@ -19,12 +19,12 @@ from concurrent import futures
 import fitz
 import logging
 from DocTest.Ocr import EastTextExtractor
+from DocTest.Downloader import is_url, download_file_from_url
 
 try:
     from pylibdmtx import pylibdmtx
 except ImportError:
     logging.debug('Failed to import pylibdmtx', exc_info=True)
-import urllib
 
 EAST_CONFIDENCE=0.5
 
@@ -46,8 +46,11 @@ class CompareImage(object):
         self.force_ocr = kwargs.pop('force_ocr', False)
         self.ocr_engine = kwargs.pop('ocr_engine', 'tesseract')
         self.DPI = int(kwargs.pop('DPI', 200))
-        self.image = str(image)
-        self.path, self.filename= split(image)
+        if is_url(image):
+            self.image = download_file_from_url(image)
+        else:
+            self.image = str(image)
+        self.path, self.filename= split(self.image)
         self.filename_without_extension, self.extension = splitext(self.filename)
         self.opencv_images = []
         self.placeholders = []
@@ -74,23 +77,22 @@ class CompareImage(object):
             resolution = self.DPI
         tic = time.perf_counter()
         try:
-            with(fitz.open(self.image)) as doc:
-                self.mupdfdoc = fitz.open(self.image)
-                toc = time.perf_counter()
-                print(f"Rendering document to PyMuPDF Image performed in {toc - tic:0.4f} seconds")
-                #split pages
-                tic = time.perf_counter()
-                for i, page in enumerate(self.mupdfdoc.pages()):
-                    zoom = resolution/72
-                    mat = fitz.Matrix(zoom, zoom)
-                    pix = page.get_pixmap(matrix = mat)
-                    imgData = pix.tobytes("png")
-                    nparr = np.frombuffer(imgData, np.uint8)
-                    opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                    self.opencv_images.append(opencv_image)
-                    pass
-                toc = time.perf_counter()
-                print(f"Conversion from PyMuPDF Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+            self.mupdfdoc = fitz.open(self.image)
+            toc = time.perf_counter()
+            print(f"Rendering document to PyMuPDF Image performed in {toc - tic:0.4f} seconds")
+            #split pages
+            tic = time.perf_counter()
+            for i, page in enumerate(self.mupdfdoc.pages()):
+                zoom = resolution/72
+                mat = fitz.Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix = mat)
+                imgData = pix.tobytes("png")
+                nparr = np.frombuffer(imgData, np.uint8)
+                opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                self.opencv_images.append(opencv_image)
+                pass
+            toc = time.perf_counter()
+            print(f"Conversion from PyMuPDF Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
         except:
             raise AssertionError("File could not be converted by ImageMagick to OpenCV Image: {}".format(self.image))
 
