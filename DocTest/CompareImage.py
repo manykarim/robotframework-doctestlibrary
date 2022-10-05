@@ -19,12 +19,12 @@ from concurrent import futures
 import fitz
 import logging
 from DocTest.Ocr import EastTextExtractor
+from DocTest.Downloader import is_url, download_file_from_url
 
 try:
     from pylibdmtx import pylibdmtx
 except ImportError:
     logging.debug('Failed to import pylibdmtx', exc_info=True)
-import urllib
 
 EAST_CONFIDENCE=0.5
 
@@ -46,8 +46,11 @@ class CompareImage(object):
         self.force_ocr = kwargs.pop('force_ocr', False)
         self.ocr_engine = kwargs.pop('ocr_engine', 'tesseract')
         self.DPI = int(kwargs.pop('DPI', 200))
-        self.image = str(image)
-        self.path, self.filename= split(image)
+        if is_url(image):
+            self.image = download_file_from_url(image)
+        else:
+            self.image = str(image)
+        self.path, self.filename= split(self.image)
         self.filename_without_extension, self.extension = splitext(self.filename)
         self.opencv_images = []
         self.placeholders = []
