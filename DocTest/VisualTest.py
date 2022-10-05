@@ -74,8 +74,8 @@ class VisualTest(object):
         Result is passed if no visual differences are detected.
 
         | =Arguments= | =Description= |
-        | ``reference_image`` | Path of the Reference Image/Document, your expected result. May be .pdf, .ps, .pcl or image files |
-        | ``test_image`` | Path of the Candidate Image/Document, that's the one you want to test. May be .pdf, .ps, .pcl or image files |
+        | ``reference_image`` | Path or URL of the Reference Image/Document, your expected result. May be .pdf, .ps, .pcl or image files |
+        | ``test_image`` | Path or URL of the Candidate Image/Document, that's the one you want to test. May be .pdf, .ps, .pcl or image files |
         | ``placeholder_file`` | Path to a ``.json`` which defines areas that shall be ignored for comparison. Those parts will be replaced with solid placeholders  |
         | ``mask`` | Same purpose as ``placeholder_file`` but instead of a file path, this is either ``json`` , a ``dict`` , a ``list`` or a ``string`` which defines the areas to be ignored  |
         | ``check_text_content`` | In case of visual differences: Is it acceptable, if only the text content in the different areas is equal |
