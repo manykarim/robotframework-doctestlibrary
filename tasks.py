@@ -35,6 +35,7 @@ def atests(context):
         "--listener RobotStackTracer",
         f"{ROOT}/atest/Compare.robot",
         f"{ROOT}/atest/PdfContent.robot",
+        f"{ROOT}/atest/PrintJobs.robot",
     ]
     global atests_completed_process
     atests_completed_process = subprocess.run(" ".join(cmd), shell=True, check=False)
