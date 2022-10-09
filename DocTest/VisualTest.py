@@ -89,7 +89,7 @@ class VisualTest(object):
         | ``ignore_watermarks`` | Ignores a very special watermark in the middle of the document |
         | ``ocr_engine`` | Use ``tesseract`` or ``east`` for Text Detection and OCR |
         | ``resize_candidate`` | Allow visual comparison, even of documents have different sizes |
-        | ``blur`` | Blur the image before comparison to reduce visual difference caused by noise|
+        | ``blur`` | Blur the image before comparison to reduce visual difference caused by noise |
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
         | ``**kwargs`` | Everything else |
         
