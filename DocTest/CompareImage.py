@@ -21,11 +21,6 @@ import logging
 from DocTest.Ocr import EastTextExtractor
 from DocTest.Downloader import is_url, download_file_from_url
 
-try:
-    from pylibdmtx import pylibdmtx
-except ImportError:
-    logging.debug('Failed to import pylibdmtx', exc_info=True)
-
 EAST_CONFIDENCE=0.5
 
 class CompareImage(object):
@@ -287,10 +282,12 @@ class CompareImage(object):
                         placeholder_coordinates = {"page":page, "x":image_width - width, "y":0, "height":height, "width":width}
                     self.placeholders.append(placeholder_coordinates)
 
-
-
-
     def identify_barcodes(self):
+        try:
+            from pylibdmtx import pylibdmtx
+        except:
+            logging.debug('Failed to import pylibdmtx', exc_info=True)
+            return
         for i in range(len(self.opencv_images)):
             print("Identify barcodes")
             image_height = self.opencv_images[i].shape[0]
