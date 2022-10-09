@@ -41,6 +41,7 @@ class VisualTest(object):
         self.threshold = threshold
         self.SCREENSHOT_DIRECTORY = Path("screenshots/")
         self.DPI = int(DPI)
+        self.DPI_on_lib_init = int(DPI)
         self.take_screenshots = bool(take_screenshots)
         self.show_diff = bool(show_diff)
         self.ocr_engine = ocr_engine
@@ -126,7 +127,7 @@ class VisualTest(object):
         detected_differences = []
 
         if DPI is None:
-            self.DPI = self.DPI_DEFAULT
+            self.DPI = self.DPI_on_lib_init
         else:
             self.DPI = int(DPI)
         if watermark_file is None:
