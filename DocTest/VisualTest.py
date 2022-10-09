@@ -24,7 +24,7 @@ class VisualTest(object):
 
     ROBOT_LIBRARY_VERSION = 0.2
     BORDER_FOR_MOVE_TOLERANCE_CHECK = 0
-    #DPI = 200
+    DPI_DEFAULT = 200
     WATERMARK_WIDTH = 25
     WATERMARK_HEIGHT = 30
     WATERMARK_CENTER_OFFSET = 3/100
@@ -37,10 +37,11 @@ class VisualTest(object):
     CANDIDATE_LABEL = "Actual Result (Candidate)"
     OCR_ENGINE = "tesseract"
 
-    def __init__(self, threshold: float =0.0000, DPI: int =200, take_screenshots: bool =False, show_diff: bool =False, ocr_engine: str =OCR_ENGINE, watermark_file: str =None, screenshot_format: str ='jpg', **kwargs):
+    def __init__(self, threshold: float =0.0000, DPI: int =DPI_DEFAULT, take_screenshots: bool =False, show_diff: bool =False, ocr_engine: str =OCR_ENGINE, watermark_file: str =None, screenshot_format: str ='jpg', **kwargs):
         self.threshold = threshold
         self.SCREENSHOT_DIRECTORY = Path("screenshots/")
         self.DPI = int(DPI)
+        self.DPI_on_lib_init = int(DPI)
         self.take_screenshots = bool(take_screenshots)
         self.show_diff = bool(show_diff)
         self.ocr_engine = ocr_engine
@@ -68,7 +69,7 @@ class VisualTest(object):
             self.PABOTQUEUEINDEX = None
 
     @keyword
-    def compare_images(self, reference_image: str, test_image: str, placeholder_file: str=None, mask: Union[str, dict, list]=None, check_text_content: bool=False, move_tolerance: int=None, contains_barcodes: bool=False, get_pdf_content: bool=False, force_ocr: bool=False, DPI: int=None, watermark_file: str=None, ignore_watermarks: bool=None, ocr_engine: str=None, resize_candidate: bool=False,  **kwargs):
+    def compare_images(self, reference_image: str, test_image: str, placeholder_file: str=None, mask: Union[str, dict, list]=None, check_text_content: bool=False, move_tolerance: int=None, contains_barcodes: bool=False, get_pdf_content: bool=False, force_ocr: bool=False, DPI: int=None, watermark_file: str=None, ignore_watermarks: bool=None, ocr_engine: str=None, resize_candidate: bool=False, blur: bool=False , threshold: float =None ,**kwargs):
         """Compares the documents/images ``reference_image`` and ``test_image``.
 
         Result is passed if no visual differences are detected.
@@ -88,6 +89,8 @@ class VisualTest(object):
         | ``ignore_watermarks`` | Ignores a very special watermark in the middle of the document |
         | ``ocr_engine`` | Use ``tesseract`` or ``east`` for Text Detection and OCR |
         | ``resize_candidate`` | Allow visual comparison, even of documents have different sizes |
+        | ``blur`` | Blur the image before comparison to reduce visual difference caused by noise|
+        | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
         | ``**kwargs`` | Everything else |
         
 
@@ -124,7 +127,7 @@ class VisualTest(object):
         detected_differences = []
 
         if DPI is None:
-            DPI = self.DPI
+            self.DPI = self.DPI_on_lib_init
         else:
             self.DPI = int(DPI)
         if watermark_file is None:
@@ -133,9 +136,11 @@ class VisualTest(object):
             ignore_watermarks = os.getenv('IGNORE_WATERMARKS', False)
         if ocr_engine is None:
             ocr_engine = self.ocr_engine
+        if threshold is None:
+            threshold = self.threshold
 
         compare_options = {'get_pdf_content': get_pdf_content, 'ignore_watermarks': ignore_watermarks, 'check_text_content': check_text_content, 'contains_barcodes': contains_barcodes,
-                           'force_ocr': force_ocr, 'move_tolerance': move_tolerance, 'watermark_file': watermark_file, 'ocr_engine': ocr_engine, 'resize_candidate': resize_candidate}
+                           'force_ocr': force_ocr, 'move_tolerance': move_tolerance, 'watermark_file': watermark_file, 'ocr_engine': ocr_engine, 'resize_candidate': resize_candidate, 'blur': blur, 'threshold': threshold}
 
         if self.reference_run and (os.path.isfile(test_image) == True):
             shutil.copyfile(test_image, reference_image)
@@ -333,7 +338,14 @@ class VisualTest(object):
             grayA = grayA_future.result()
             grayB = grayB_future.result()
 
-
+        # Blur images if blur=True
+        if compare_options['blur']:
+            kernel_size = int(grayA.shape[1]/50)
+            # must be odd if median
+            kernel_size += kernel_size%2-1
+            grayA = cv2.GaussianBlur(grayA, (kernel_size, kernel_size), 1.5)
+            grayB = cv2.GaussianBlur(grayB, (kernel_size, kernel_size), 1.5)
+        
         if self.take_screenshots:
             # Not necessary to take screenshots for every successful comparison
             self.add_screenshot_to_log(np.concatenate(
@@ -350,7 +362,7 @@ class VisualTest(object):
             grayA, grayB, gaussian_weights=True, full=True)
         score = abs(1-score)
 
-        if (score > self.threshold):
+        if (score > compare_options['threshold']):
 
             diff = (diff * 255).astype("uint8")
 

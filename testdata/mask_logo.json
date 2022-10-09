@@ -1,0 +1,12 @@
+[
+    {
+        "page": 1,
+        "name": "Logo",
+        "type": "coordinates",
+        "x": 31,
+        "y": 31,
+        "height": 14,
+        "width": 84,
+        "unit": "mm"
+        }
+]
