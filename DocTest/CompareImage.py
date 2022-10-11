@@ -99,9 +99,16 @@ class CompareImage(object):
             self.text_content.append(text)
         return self.text_content
 
-    def get_ocr_text_data(self):
+    def get_ocr_text_data(self, ocr_config: str='--psm 12', ocr_lang: str='eng'):
         self.increase_resolution_for_ocr()
         for i in range(len(self.opencv_images)):
+            text_list = []
+            left_list = []
+            top_list = []
+            width_list = []
+            height_list = []
+            conf_list = []
+
             # print("Parse Image using tesseract")
             cv_image = self.opencv_images[i]
             #rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
@@ -110,8 +117,23 @@ class CompareImage(object):
             #ret, threshold_image = cv2.threshold(cv_image,127,255,cv2.THRESH_BINARY)
             #threshold_image = cv2.adaptiveThreshold(img_grey, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 2)
             #d = pytesseract.image_to_data(threshold_image, output_type=Output.DICT, config='--dpi {}'.format(self.MINIMUM_OCR_RESOLUTION))
-            d = pytesseract.image_to_data(threshold_image, output_type=Output.DICT, config='--psm 12')
-            self.text_content.append(d)
+            ocr_config = ocr_config + f' -l {ocr_lang}'
+            d = pytesseract.image_to_data(threshold_image, output_type=Output.DICT, config=ocr_config)
+            # remove items from d with confidence lower than PYTESSERACT_CONFIDENCE
+            n_boxes = len(d['text'])
+
+            # For each detected part
+            for j in range(n_boxes):
+
+                # If the prediction accuracy greater than %50
+                if int(d['conf'][j]) > self.PYTESSERACT_CONFIDENCE:
+                    text_list.append(d['text'][j])
+                    left_list.append(d['left'][j])
+                    top_list.append(d['top'][j])
+                    width_list.append(d['width'][j])
+                    height_list.append(d['height'][j])
+                    conf_list.append(d['conf'][j])
+            self.text_content.append({'text': text_list, 'left': left_list, 'top': top_list, 'width': width_list, 'height': height_list, 'conf': conf_list})
 
     def increase_resolution_for_ocr(self):
         # experimental: IF OCR is used and DPI is lower than self.MINIMUM_OCR_RESOLUTION DPI, re-render with self.MINIMUM_OCR_RESOLUTION DPI
