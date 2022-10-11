@@ -140,6 +140,8 @@ class EastTextExtractor:
                     
             # remove all control characters from text
             text = remove_control_characters(text)
+            # strip all whitespace characters
+            text = text.strip()
             #text = re.sub(r"[^a-zA-Z0-9 !§$%&/()\\-]", "", text).strip()
 
             # add the bounding box coordinates and OCR'd text to the list
