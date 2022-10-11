@@ -697,7 +697,7 @@ class VisualTest(object):
                     text = None
             elif ocr_engine == "east":
                 try:
-                    self.get_text_content_with_east()
+                    img.get_text_content_with_east()
                     text = [x for x in img.text_content[0]['text'] if x]
                 except:
                     text = None
