@@ -9,6 +9,8 @@ import urllib
 import re
 import unicodedata
 
+PYTESSERACT_CONFIDENCE=20
+
 def remove_control_characters(s):
     return "".join(ch for ch in s if unicodedata.category(ch)[0]!="C")
 
@@ -32,9 +34,6 @@ class EastTextExtractor:
                        max_iterations=20,
                        **kwargs):
         loaded_image = image
-        (origH, origW) = loaded_image.shape[:2]
-        gray_image = cv2.cvtColor(loaded_image, cv2.COLOR_BGR2GRAY)
-        threshold_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
 
         image, width, height, ratio_width, ratio_height = self._resize_image(
             loaded_image, width, height
@@ -125,22 +124,32 @@ class EastTextExtractor:
             endY = int(endY * ratio_height)
 
             # extract the actual padded ROI
-            roi = loaded_image[startY:endY, startX:endX]           
+            roi = loaded_image[startY:endY, startX:endX]
+            gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            threshold_roi = cv2.threshold(gray_roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
             
             # extract the OCR text from the ROI
             config = ("-l eng --oem 1 --psm 7")
-            text = pytesseract.image_to_string(roi, config=config)
+            #text = pytesseract.image_to_string(roi, config=config)
+            data = pytesseract.image_to_data(threshold_roi, output_type=pytesseract.Output.DICT, config=config)
+            # Get the text content of data which has a higher confidence than 60
+            text = ""
+            for i in range(len(data['text'])):
+                if int(data['conf'][i]) > PYTESSERACT_CONFIDENCE:
+                    text += data['text'][i] + " "
+                    
             # remove all control characters from text
             text = remove_control_characters(text)
             #text = re.sub(r"[^a-zA-Z0-9 !§$%&/()\\-]", "", text).strip()
 
             # add the bounding box coordinates and OCR'd text to the list
             # of results
-            results['text'].append(text)
-            results['left'].append(startX)
-            results['top'].append(startY)
-            results['width'].append(endX - startX)
-            results['height'].append(endY - startY)
+            if len(text) > 0:
+                results['text'].append(text)
+                results['left'].append(startX)
+                results['top'].append(startY)
+                results['width'].append(endX - startX)
+                results['height'].append(endY - startY)
         return results
 
 
