@@ -76,7 +76,6 @@ Compare Text Content from PDF
 Compare Text Content from Image
     ${text}     Get Text From Document    testdata/Beach_date.png
     List Should Contain Value   ${text}     123456789
-    List Should Contain Value   ${text}     SOUVENIR
     List Should Contain Value   ${text}     01-Jan-2021
 
 
