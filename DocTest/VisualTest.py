@@ -661,13 +661,14 @@ class VisualTest(object):
                 detected_differences.append(True)
 
     @keyword
-    def get_text_from_document(self, image: str):
+    def get_text_from_document(self, image: str, ocr_engine: str="tesseract"):
         """Gets Text Content from documents/images ``image``.
 
         Text content is returned as a list of strings. None if no text is identified.
 
         | =Arguments= | =Description= |
         | ``image`` | Path of the Image/Document from which the text content shall be retrieved |
+        | ``ocr_engine`` | OCR Engine to be used. Options are ``tesseract`` and ``east``.  Default is ``tesseract``. |
 
         Examples:
         | ${text} | `Get Text From Document` | reference.pdf | #Gets Text Content from .pdf |
@@ -687,11 +688,19 @@ class VisualTest(object):
                             if line['spans'][0]['text']:
                                 text.append(line['spans'][0]['text'])
         else:
-            try:
-                img.get_ocr_text_data()
-                text = [x for x in img.text_content[0]['text'] if x]
-            except:
-                text = None
+            if ocr_engine == "tesseract":
+                try:
+                    img.get_ocr_text_data()
+                    # if confidence is higher than 20, add to text list
+                    text = [x for x in img.text_content[0]['text'] if x]
+                except:
+                    text = None
+            elif ocr_engine == "east":
+                try:
+                    img.get_text_content_with_east()
+                    text = [x for x in img.text_content[0]['text'] if x]
+                except:
+                    text = None
         return text
 
 
