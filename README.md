@@ -4,6 +4,15 @@
 [Robot Framework](https://robotframework.org) DocTest library.
 Simple Automated Visual Document Testing.
 
+See keyword documentation for
+
+- [Visual Document Tests](https://manykarim.github.io/robotframework-doctestlibrary/VisualTest.html)
+- [Print Job Tests](https://manykarim.github.io/robotframework-doctestlibrary/PrintJobTest.html)
+- [Pdf Tests (very basic)](https://manykarim.github.io/robotframework-doctestlibrary/PdfTest.html)
+
+
+See [Talk from RoboCon2021](https://www.youtube.com/watch?v=qmpwlQoJ-nE) for a short demo and some background.
+
 Powered by
 - Open CV
 - scikit-image
@@ -15,54 +24,51 @@ Powered by
 - pymupdf
 - The knowledge of stackoverflow.com
 
-See keyword documentation for
-
-- [Visual Document Tests](https://manykarim.github.io/robotframework-doctestlibrary/VisualTest.html)
-- [Print Job Tests](https://manykarim.github.io/robotframework-doctestlibrary/PrintJobTest.html)
-- [Pdf Tests (very basic)](https://manykarim.github.io/robotframework-doctestlibrary/PdfTest.html)
-
-
-See [Talk from RoboCon2021](https://www.youtube.com/watch?v=qmpwlQoJ-nE) for a short demo and some background.
-
 # Installation instructions
+
+`pip install --upgrade robotframework-doctestlibrary`
 
 Only Python 3.X or newer is supported. Tested with Python 3.8/3.9/3.10
 
-In general, an installation via `pip` or `setup.py` is possible.
-
-I recommend to use `pip` as it will also install a required binary `libdmtx-64.dll` (for windows) automatically.  
+In general, an installation via `pip` or `poetry` is possible.
 
 ## Install robotframework-doctestlibrary
 
-### Installation via `pip`
+### Installation via `pip` from PyPI (recommended)
 
 * `pip install --upgrade robotframework-doctestlibrary`
 
 
-### Installation via `setup.py`
+### Installation via `pip` from GitHub
 
-* Clone the robotframework-doctestlibrary
-  <br>`git clone https://github.com/manykarim/robotframework-doctestlibrary.git`
-* Install via setup.py
-  <br>`python setup.py install`
+* `pip install git+https://github.com/manykarim/robotframework-doctestlibrary.git`  
+
+or
+
+* `git clone https://github.com/manykarim/robotframework-doctestlibrary.git`
+* `cd robotframework-doctestlibrary`
+* `pip install -e .`
 
 ### Installation via `poetry`
 
+* `git clone https://github.com/manykarim/robotframework-doctestlibrary.git`
+* `cd robotframework-doctestlibrary`
 * `poetry install`
 
 ## Install dependencies
 
 Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries
 <br>Hint: Since `0.2.0` Ghostscript, GhostPCL and ImageMagick are only needed for rendering `.ps` and `.pcl`files.
-<br> Rendering and content parsing of `.pdf` is done via MuPDF
+<br> Rendering and content parsing of `.pdf` is done via `MuPDF`
 <br>In the future there might be a separate pypi package for `.pcl` and `.ps` files to get rid of those dependencies.
 
-* Linux
- * `apt-get install imagemagick`
- * `apt-get install tesseract-ocr`
- * `apt-get install ghostscript`
- * `apt-get install libdmtx0b`
-* Windows
+Linux
+```bash
+apt-get install imagemagick tesseract-ocr ghostscript libdmtx0b
+```
+
+
+Windows
  * https://github.com/UB-Mannheim/tesseract/wiki
  * https://ghostscript.com/releases/gsdnld.html
  * https://ghostscript.com/releases/gpcldnld.html
@@ -122,40 +128,17 @@ Afterwards you can, e.g., start the container and run the povided examples like 
   * `docker run -t -v $PWD:/opt/test -w /opt/test robotframework-doctest robot atest/Compare.robot`
 
 ## Gitpod.io
-
+[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)  
 Try out the library using [Gitpod](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)
-
-# Updates
-
-## Now built with poetry
-With version 0.3.0 the library is now built with poetry.
-Some refactoring and small cleanup were done, without changing the functionality.
-
-## Hello PyMuPDF
-With version `0.2.0` the PDF Rendering and PDF content reading is done via `PyMuPDF` (instead of `Ghostscript` and `ImageMagick`/`PyWand`).
-<br>
-Due to that change `PyMuPDF` was added to the dependencies and needs to be installed (e.g. via `pip`)
-<br>
-For the time being, `Ghostscript` and `ImageMagick`/`PyWand` will be kept as dependencies, as they are needed for rendering `.pcl`and `.ps` files.
-<br>
-But both might be removed in the future which will simplify the installation.
-
-##PDF Content Checks
-Thanks to `PyMuPDF` it was possible to implement more content checks for `.PDF` files.
-
-* Text Content
-* Digital Signatures
-* Metadata
-* Images
-* Used Fonts
-
-Each content type can also be compared separately.
-<br>
-Have a look at [PDF Content Tests](./atest/PdfContent.robot)
 
 # Examples
 
-Check the `/atest/Compare.robot` test suite for some examples.
+Have a look at  
+* [Visual Comparison Tests](./atest/Compare.robot)
+* [PDF Content Tests](./atest/PdfContent.robot)
+* [Print Job Tests](./atest/PrintJobs.robot)
+
+for more examples.
 
 ### Testing with [Robot Framework](https://robotframework.org)
 ```RobotFramework
@@ -360,6 +343,7 @@ I'm always happy for any feedback.
 In order of appearance.
 
   * Many Kasiriha
+  * April Wang
 
 ## Contributors
 
