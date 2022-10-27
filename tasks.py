@@ -3,6 +3,10 @@ import subprocess
 from invoke import task
 import DocTest
 from DocTest import __version__ as VERSION
+import inspect
+
+if not hasattr(inspect, 'getargspec'):
+    inspect.getargspec = inspect.getfullargspec
 
 ROOT = pathlib.Path(__file__).parent.resolve().as_posix()
 utests_completed_process = None
