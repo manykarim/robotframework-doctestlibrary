@@ -41,14 +41,6 @@ jobs:
           virtualenvs-in-project: false
           virtualenvs-path: ~/.virtualenvs
           installer-parallel: true
-      - name: Cache poetry virtualenv
-        uses: actions/cache@v1
-        id: cache
-        with:
-          path: ~/.virtualenvs
-          key: poetry-${{ hashFiles('**/poetry.lock') }}
-          restore-keys: |
-            poetry-${{ hashFiles('**/poetry.lock') }}
       - name: Install dependencies
         run: poetry install
         if: steps.cache.outputs.cache-hit != 'true'
