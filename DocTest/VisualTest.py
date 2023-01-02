@@ -17,6 +17,7 @@ from robot.api.deco import keyword, library
 import fitz
 import json
 import math
+from DocTest.Downloader import is_url, download_file_from_url
 
 
 @library
@@ -142,16 +143,21 @@ class VisualTest(object):
         compare_options = {'get_pdf_content': get_pdf_content, 'ignore_watermarks': ignore_watermarks, 'check_text_content': check_text_content, 'contains_barcodes': contains_barcodes,
                            'force_ocr': force_ocr, 'move_tolerance': move_tolerance, 'watermark_file': watermark_file, 'ocr_engine': ocr_engine, 'resize_candidate': resize_candidate, 'blur': blur, 'threshold': threshold}
 
-        if self.reference_run and (os.path.isfile(test_image) == True):
-            shutil.copyfile(test_image, reference_image)
-            print('A new reference file was saved: {}'.format(reference_image))
+        if self.reference_run is True:
+            if os.path.isfile(test_image) == True:
+                shutil.copyfile(test_image, reference_image)
+                print('A new reference file was saved: {}'.format(reference_image))
+            elif is_url(test_image) == True:
+                tmp_file = download_file_from_url(test_image)
+                shutil.copyfile(tmp_file, reference_image)
+                print('A new reference file was saved: {}'.format(reference_image))
             return
 
-        if (os.path.isfile(reference_image) is False):
+        if (os.path.isfile(reference_image) is False) and (is_url(reference_image) is False):
             raise AssertionError(
                 'The reference file does not exist: {}'.format(reference_image))
 
-        if (os.path.isfile(test_image) is False):
+        if (os.path.isfile(test_image) is False) and (is_url(test_image) is False):
             raise AssertionError(
                 'The candidate file does not exist: {}'.format(test_image))
 
