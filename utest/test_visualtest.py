@@ -27,6 +27,12 @@ def test_compare_two_different_images_from_url():
     with pytest.raises(AssertionError):
         visual_tester.compare_images(ref_image, test_image)
 
+def test_compare_two_equal_images_from_url():
+    visual_tester = VisualTest()
+    ref_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/testdata/Beach_left.jpg'
+    test_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/testdata/Beach_left.jpg'
+    visual_tester.compare_images(ref_image, test_image)
+
 def test_compare_birthday_image_with_noise(testdata_dir):
     visual_tester = VisualTest()
     ref_image=str(testdata_dir / 'birthday_1080.png')
