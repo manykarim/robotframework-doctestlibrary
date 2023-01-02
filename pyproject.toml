@@ -13,7 +13,7 @@ readme = "./README.md"
 homepage = "https://github.com/manykarim/robotframework-doctestlibrary"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<3.11"
+python = ">=3.8,<3.12"
 PyMuPDF = "*"
 imutils = "*"
 numpy = "*"
