@@ -61,15 +61,7 @@ class EastTextExtractor:
             end_y = int((y + h) * ratio_height)
             # ROI to be recognized
             roi = loaded_image[start_y:end_y, start_x:end_x]
-            # # convert to grayscale
-            # roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            # # Apply adaptive threshold to get image with only black and white
-            # roi = cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 2)
             
-            # Recognize text with tesseract for python
-            text = pytesseract.image_to_string(roi, config='--psm 6')
-
-            cv2.imwrite('roi.png', roi)
             # recognizing text
             config = '-l eng --oem 1 --psm 7'
             text = pytesseract.image_to_string(roi, config=config)
@@ -81,79 +73,6 @@ class EastTextExtractor:
             results['width'].append(end_x - start_x)
             results['height'].append(end_y - start_y)
 
-
-        # # # applying non-max suppression to get boxes depicting text regions
-        # # boxes = non_max_suppression(np.array(rectangles), probs=confidences)
-
-        # results = {'text':[], 'left':[], 'top':[], 'width':[], 'height':[]}
-
-        # # loop over the indices only if the `indices` list is not empty
-        # if len(indexes) > 0:
-        # # loop over the indicesa
-        #     for i in indexes.flatten():
-        #         box = rectangles[i]
-        #         start_x = box[0]
-        #         start_y = box[1]
-        #         end_x = box[2]
-        #         end_y = box[3]
-        #         start_x = int(start_x * ratio_width)
-        #         start_y = int(start_y * ratio_height)
-        #         end_x = int(end_x * ratio_width)
-        #         end_y = int(end_y * ratio_height)
-        #         # ROI to be recognized
-        #         roi = loaded_image[start_y:end_y, start_x:end_x]
-        #         # convert to grayscale
-        #         roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        #         # Apply adaptive threshold to get image with only black and white
-        #         roi = cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 1)
-        #         cv2.imwrite('roi.png', roi)
-        #         # recognizing text
-        #         config = '-l eng --oem 1 --psm 7'
-        #         text = pytesseract.image_to_string(roi, config=config)
-
-        #         # collating results
-        #         results['text'].append(text)
-        #         results['left'].append(start_x)
-        #         results['top'].append(start_y)
-        #         results['width'].append(end_x - start_x)
-        #         results['height'].append(end_y - start_y)
-
-
-        # # text recognition main loop
-        # for (start_x, start_y, end_x, end_y) in boxes:
-        #     start_x = int(start_x * ratio_width)
-        #     start_y = int(start_y * ratio_height)
-        #     end_x = int(end_x * ratio_width)
-        #     end_y = int(end_y * ratio_height)
-
-        #     padding = percentage / 100
-        #     dx = int((end_x - start_x) * padding)
-        #     dy = int((end_y - start_y) * padding)
-
-        #     start_x = max(0, start_x - dx)
-        #     start_y = max(0, start_y - dy)
-        #     end_x = min(orig_w, end_x + (dx*2))
-        #     end_y = min(orig_h, end_y + (dy*2))
-
-        #     # ROI to be recognized
-        #     roi = loaded_image[start_y:end_y, start_x:end_x]
-        #     # convert to grayscale
-        #     roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        #     # Apply adaptive threshold to get image with only black and white
-        #     roi = cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 1)
-        #     cv2.imwrite('roi.png', roi)
-        #     # recognizing text
-        #     config = '-l eng --oem 1 --psm 7'
-        #     text = pytesseract.image_to_string(roi, config=config)
-
-        #     # collating results
-        #     results['text'].append(text)
-        #     results['left'].append(start_x)
-        #     results['top'].append(start_y)
-        #     results['width'].append(end_x - start_x)
-        #     results['height'].append(end_y - start_y)
-
-       
         return results
 
 
