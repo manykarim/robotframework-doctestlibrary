@@ -22,15 +22,15 @@ def test_get_text_from_pdf_does_not_match(testdata_dir):
 
 def test_compare_two_different_images_from_url():
     visual_tester = VisualTest()
-    ref_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/testdata/Beach_left.jpg'
-    test_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/testdata/Beach_right.jpg'
-    with pytest.raises(AssertionError):
+    ref_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/utest/testdata/birthday_left.png'
+    test_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/utest/testdata/birthday_right.png'
+    with pytest.raises(AssertionError, match='The compared images are different.'):
         visual_tester.compare_images(ref_image, test_image)
 
 def test_compare_two_equal_images_from_url():
     visual_tester = VisualTest()
-    ref_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/testdata/Beach_left.jpg'
-    test_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/testdata/Beach_left.jpg'
+    ref_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/utest/testdata/birthday_left.png'
+    test_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/utest/testdata/birthday_left_copy.png'
     visual_tester.compare_images(ref_image, test_image)
 
 def test_compare_birthday_image_with_noise(testdata_dir):

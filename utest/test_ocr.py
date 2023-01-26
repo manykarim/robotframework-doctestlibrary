@@ -29,6 +29,18 @@ def test_text_on_colored_background(testdata_dir):
     assert "01-Jan-2021" in img.text_content[0]['text']
     assert "123456789" in img.text_content[0]['text']
 
+def test_image_text_content_with_east(testdata_dir):
+    img = CompareImage(testdata_dir / 'birthday_1080_date_id.png')
+    img.get_text_content_with_east()
+    assert any('01-Jan-2021' in s for s in img.text_content[0]['text'])
+    assert any('ABCDEFGHI' in s for s in img.text_content[0]['text'])
+
+def test_image_text_content_with_pytesseract(testdata_dir):
+    img = CompareImage(testdata_dir / 'birthday_1080_date_id.png')
+    img.get_ocr_text_data()
+    assert "01-Jan-2021" in img.text_content[0]['text']
+    assert "ABCDEFGHI" in img.text_content[0]['text']
+
 @pytest.mark.skip(reason="Currently, tesseract is not so good at recognizing bright text")
 def test_white_text_on_dark_background(testdata_dir):
     img = CompareImage(testdata_dir / 'whitetext_blackbackground.png')
