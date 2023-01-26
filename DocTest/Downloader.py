@@ -25,8 +25,8 @@ def download_file_from_url(url, directory=None, filename=None):
     if directory is None:
         directory = tempfile.gettempdir()
     if filename is None:
-        filename = str(uuid.uuid4())
-    file_path = os.path.join(directory, filename)    
+        filename = str(uuid.uuid4()) + '.' + url.split('.')[-1]
+    file_path = os.path.join(directory, filename)
     urllib.request.urlretrieve(url, file_path)
     return file_path
 
