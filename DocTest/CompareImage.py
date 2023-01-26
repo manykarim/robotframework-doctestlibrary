@@ -99,7 +99,7 @@ class CompareImage(object):
             self.text_content.append(text)
         return self.text_content
 
-    def get_ocr_text_data(self, ocr_config: str='--psm 12', ocr_lang: str='eng'):
+    def get_ocr_text_data(self, ocr_config: str='--psm 11', ocr_lang: str='eng'):
         self.increase_resolution_for_ocr()
         for i in range(len(self.opencv_images)):
             text_list = []
@@ -109,18 +109,12 @@ class CompareImage(object):
             height_list = []
             conf_list = []
 
-            # print("Parse Image using tesseract")
             cv_image = self.opencv_images[i]
-            #rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
-            gray_image = cv2.cvtColor(self.opencv_images[i], cv2.COLOR_BGR2GRAY)
+            gray_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
             threshold_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-            #ret, threshold_image = cv2.threshold(cv_image,127,255,cv2.THRESH_BINARY)
-            #threshold_image = cv2.adaptiveThreshold(img_grey, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 2)
-            #d = pytesseract.image_to_data(threshold_image, output_type=Output.DICT, config='--dpi {}'.format(self.MINIMUM_OCR_RESOLUTION))
             ocr_config = ocr_config + f' -l {ocr_lang}'
             d = pytesseract.image_to_data(threshold_image, output_type=Output.DICT, config=ocr_config)
-            # remove items from d with confidence lower than PYTESSERACT_CONFIDENCE
-            n_boxes = len(d['text'])
+            n_boxes = len(d['text'])         
 
             # For each detected part
             for j in range(n_boxes):
