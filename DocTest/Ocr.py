@@ -27,131 +27,133 @@ class EastTextExtractor:
                        width=480,
                        height=480,
                        numbers=True,
-                       confThreshold=0.4,
-                       nmsThreshold=0.4,
+                       confThreshold=0.2,
+                       nmsThreshold=0.1,
                        percentage=10.0,
                        min_boxes=1,
                        max_iterations=20,
                        **kwargs):
         loaded_image = image
+        orig_h, orig_w = image.shape[:2]
 
         image, width, height, ratio_width, ratio_height = self._resize_image(
             loaded_image, width, height
         )
         scores, geometry = self._compute_scores_geometry(image, width, height)
 
-        (numRows, numCols) = scores.shape[2:4]
-        rects = []
-        confidences = []
+        # decoding results from the model
+        rectangles, confidences = box_extractor(scores, geometry, confThreshold)
+        
+        # find countur of all rectangles
 
+        mask = np.zeros((height, width), dtype=np.uint8)
+        for i in range(len(rectangles)):
+            x1, y1, x2, y2 = rectangles[i]
+            cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
 
-
-        # loop over the number of rows
-        for y in range(0, numRows):
-            # extract the scores (probabilities), followed by the geometrical
-            # data used to derive potential bounding box coordinates that
-            # surround text
-            scoresData = scores[0, 0, y]
-            xData0 = geometry[0, 0, y]
-            xData1 = geometry[0, 1, y]
-            xData2 = geometry[0, 2, y]
-            xData3 = geometry[0, 3, y]
-            anglesData = geometry[0, 4, y]
-
-            # loop over the number of columns
-            for x in range(0, numCols):
-                # if our score does not have sufficient probability, ignore it
-                if scoresData[x] < confThreshold:
-                    continue
-
-                # compute the offset factor as our resulting feature maps will
-                # be 4x smaller than the input image
-                (offsetX, offsetY) = (x * 4.0, y * 4.0)
-
-                # extract the rotation angle for the prediction and then
-                # compute the sin and cosine
-                angle = anglesData[x]
-                cos = np.cos(angle)
-                sin = np.sin(angle)
-
-                # use the geometry volume to derive the width and height of
-                # the bounding box
-                h = xData0[x] + xData2[x]
-                w = xData1[x] + xData3[x]
-
-                # compute both the starting and ending (x, y)-coordinates for
-                # the text prediction bounding box
-                endX = int(offsetX + (cos * xData1[x]) + (sin * xData2[x]))
-                endY = int(offsetY - (sin * xData1[x]) + (cos * xData2[x]))
-                startX = int(endX - w)
-                startY = int(endY - h)
-
-                # extend startX, but not lower than 0
-                
-                startX = max(0,int(startX - (percentage / 100) * w))
-                # extend endX
-                endX = min(width, int(endX + (percentage / 100) * w))
-                # extend startY
-                startY = max(0, int(startY - (percentage / 100) * h))
-                # extend endY
-                endY = min(height, int(endY + (percentage / 100) * h))
-
-                # add the bounding box coordinates and probability score to
-                # our respective lists
-                rects.append((startX, startY, endX, endY))
-                confidences.append(scoresData[x])
-
-        # apply non-maxima suppression to suppress weak, overlapping bounding
-        # boxes
-        boxes = non_max_suppression(np.array(rects), probs=None)
-
-
-        # results is dictionary with keys: left, top, width, height, text
-        results = {}
-        results['text'] = []
-        results['left'] = []
-        results['top'] = []
-        results['width'] = []
-        results['height'] = []
-        rotated_boxes = []
-        # loop over the bounding boxes
-        for (startX, startY, endX, endY) in boxes:
-            # scale the bounding box coordinates based on the respective
-            # ratios
-            startX = int(startX * ratio_width)
-            startY = int(startY * ratio_height)
-            endX = int(endX * ratio_width)
-            endY = int(endY * ratio_height)
-
-            # extract the actual padded ROI
-            roi = loaded_image[startY:endY, startX:endX]
-            gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            threshold_roi = cv2.threshold(gray_roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        results = {'text':[], 'left':[], 'top':[], 'width':[], 'height':[]}
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            start_x = int(x * ratio_width)
+            start_y = int(y * ratio_height)
+            end_x = int((x + w) * ratio_width)
+            end_y = int((y + h) * ratio_height)
+            # ROI to be recognized
+            roi = loaded_image[start_y:end_y, start_x:end_x]
+            # # convert to grayscale
+            # roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            # # Apply adaptive threshold to get image with only black and white
+            # roi = cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 2)
             
-            # extract the OCR text from the ROI
-            config = ("-l eng --oem 1 --psm 7")
-            #text = pytesseract.image_to_string(roi, config=config)
-            data = pytesseract.image_to_data(threshold_roi, output_type=pytesseract.Output.DICT, config=config)
-            # Get the text content of data which has a higher confidence than 60
-            text = ""
-            for i in range(len(data['text'])):
-                if int(data['conf'][i]) > PYTESSERACT_CONFIDENCE:
-                    text += data['text'][i] + " "
-                    
-            # remove all control characters from text
-            text = remove_control_characters(text)
-            # strip all whitespace characters
-            text = text.strip()
-            #text = re.sub(r"[^a-zA-Z0-9 !§$%&/()\\-]", "", text).strip()
+            # Recognize text with tesseract for python
+            text = pytesseract.image_to_string(roi, config='--psm 6')
 
-            # add the bounding box coordinates and OCR'd text to the list
-            # of results
-            if len(text) > 0:
-                results['text'].append(text)
-                results['left'].append(startX)
-                results['top'].append(startY)
-                results['width'].append(endX - startX)
-                results['height'].append(endY - startY)
+            cv2.imwrite('roi.png', roi)
+            # recognizing text
+            config = '-l eng --oem 1 --psm 7'
+            text = pytesseract.image_to_string(roi, config=config)
+
+            # collating results
+            results['text'].append(text)
+            results['left'].append(start_x)
+            results['top'].append(start_y)
+            results['width'].append(end_x - start_x)
+            results['height'].append(end_y - start_y)
+
+
+        # # # applying non-max suppression to get boxes depicting text regions
+        # # boxes = non_max_suppression(np.array(rectangles), probs=confidences)
+
+        # results = {'text':[], 'left':[], 'top':[], 'width':[], 'height':[]}
+
+        # # loop over the indices only if the `indices` list is not empty
+        # if len(indexes) > 0:
+        # # loop over the indicesa
+        #     for i in indexes.flatten():
+        #         box = rectangles[i]
+        #         start_x = box[0]
+        #         start_y = box[1]
+        #         end_x = box[2]
+        #         end_y = box[3]
+        #         start_x = int(start_x * ratio_width)
+        #         start_y = int(start_y * ratio_height)
+        #         end_x = int(end_x * ratio_width)
+        #         end_y = int(end_y * ratio_height)
+        #         # ROI to be recognized
+        #         roi = loaded_image[start_y:end_y, start_x:end_x]
+        #         # convert to grayscale
+        #         roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        #         # Apply adaptive threshold to get image with only black and white
+        #         roi = cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 1)
+        #         cv2.imwrite('roi.png', roi)
+        #         # recognizing text
+        #         config = '-l eng --oem 1 --psm 7'
+        #         text = pytesseract.image_to_string(roi, config=config)
+
+        #         # collating results
+        #         results['text'].append(text)
+        #         results['left'].append(start_x)
+        #         results['top'].append(start_y)
+        #         results['width'].append(end_x - start_x)
+        #         results['height'].append(end_y - start_y)
+
+
+        # # text recognition main loop
+        # for (start_x, start_y, end_x, end_y) in boxes:
+        #     start_x = int(start_x * ratio_width)
+        #     start_y = int(start_y * ratio_height)
+        #     end_x = int(end_x * ratio_width)
+        #     end_y = int(end_y * ratio_height)
+
+        #     padding = percentage / 100
+        #     dx = int((end_x - start_x) * padding)
+        #     dy = int((end_y - start_y) * padding)
+
+        #     start_x = max(0, start_x - dx)
+        #     start_y = max(0, start_y - dy)
+        #     end_x = min(orig_w, end_x + (dx*2))
+        #     end_y = min(orig_h, end_y + (dy*2))
+
+        #     # ROI to be recognized
+        #     roi = loaded_image[start_y:end_y, start_x:end_x]
+        #     # convert to grayscale
+        #     roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        #     # Apply adaptive threshold to get image with only black and white
+        #     roi = cv2.adaptiveThreshold(roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 1)
+        #     cv2.imwrite('roi.png', roi)
+        #     # recognizing text
+        #     config = '-l eng --oem 1 --psm 7'
+        #     text = pytesseract.image_to_string(roi, config=config)
+
+        #     # collating results
+        #     results['text'].append(text)
+        #     results['left'].append(start_x)
+        #     results['top'].append(start_y)
+        #     results['width'].append(end_x - start_x)
+        #     results['height'].append(end_y - start_y)
+
+       
         return results
 
 
@@ -211,65 +213,7 @@ class EastTextExtractor:
             urllib.request.urlretrieve(url, data_file)
 
 
-    def _get_boxes(self, num_rows, num_cols, confidence, geometry, scores, min_boxes, max_iterations):
-        iterations = 0
-        boxes = []
-        rects = []
-        confidences = []
-        while(iterations < max_iterations):
-            for y in range(0, num_rows):
-                # extract the scores (probabilities), followed by the geometrical
-                # data used to derive potential bounding box coordinates that
-                # surround text
-                scores_data = scores[0, 0, y]
-                x_data_0 = geometry[0, 0, y]
-                x_data_1 = geometry[0, 1, y]
-                x_data_2 = geometry[0, 2, y]
-                x_data_3 = geometry[0, 3, y]
-                angles_data = geometry[0, 4, y]
-
-                # loop over the number of columns
-                for x in range(0, num_cols):
-                    # if our score does not have sufficient probability, ignore it
-                    if scores_data[x] < confidence:
-                        continue
-
-                    # compute the offset_ factor as our resulting feature maps will
-                    # be 4x smaller than the input image
-                    (offset_X, offset_Y) = (x * 4.0, y * 4.0)
-
-                    # extract the rotation angle for the prediction and then
-                    # compute the sin and cosine
-                    angle = angles_data[x]
-                    cos = np.cos(angle)
-                    sin = np.sin(angle)
-
-                    # use the geometry volume to derive the width and height of
-                    # the bounding box
-                    h = x_data_0[x] + x_data_2[x]
-                    w = x_data_1[x] + x_data_3[x]
-
-                    # compute both the start_ing and end_ing (x, y)-coordinates for
-                    # the text prediction bounding box
-                    end_X = int(offset_X + (cos * x_data_1[x]) + (sin * x_data_2[x]))
-                    end_Y = int(offset_Y - (sin * x_data_1[x]) + (cos * x_data_2[x]))
-                    start_X = int(end_X - w)
-                    start_Y = int(end_Y - h)
-
-                    # add the bounding box coordinates and probability score to
-                    # our respective lists
-                    rects.append((start_X, start_Y, end_X, end_Y))
-                    confidences.append(scores_data[x])
-
-            # apply non-maxima suppression to suppress weak, overlapping bounding
-            # boxes
-            boxes = non_max_suppression(np.array(rects), probs=confidences)
-            if len(boxes) >= min_boxes:
-                return boxes
-            else:
-                confidence /= 2
-                print('Couldn\'t find at least {min_boxes} boxe(s), halving confidence to {confidence}'.
-                      format(min_boxes=min_boxes, confidence=confidence))
+    
 
     def _extract_text(self, image, boxes, percent, numbers, ratio_width, ratio_height):
         extracted_text = []
@@ -289,3 +233,53 @@ class EastTextExtractor:
             )
 
         return extracted_text
+
+def box_extractor(scores, geometry, min_confidence):
+    """
+    Converts results from the forward pass to rectangles depicting text regions & their respective confidences
+    :param scores: scores array from the model
+    :param geometry: geometry array from the model
+    :param min_confidence: minimum confidence required to pass the results forward
+    :return: decoded rectangles & their respective confidences
+    """
+    (numRows, numCols) = scores.shape[2:4]
+    rects = []
+    confidences = []
+    # loop over the number of rows
+    for y in range(0, numRows):
+        # extract the scores (probabilities), followed by the geometrical
+        # data used to derive potential bounding box coordinates that
+        # surround text
+        scoresData = scores[0, 0, y]
+        xData0 = geometry[0, 0, y]
+        xData1 = geometry[0, 1, y]
+        xData2 = geometry[0, 2, y]
+        xData3 = geometry[0, 3, y]
+        anglesData = geometry[0, 4, y]
+        for x in range(0, numCols):
+            # if our score does not have sufficient probability, ignore it
+            if scoresData[x] < min_confidence:
+                continue
+            # compute the offset factor as our resulting feature maps will
+            # be 4x smaller than the input image
+            (offsetX, offsetY) = (x * 4.0, y * 4.0)
+            # extract the rotation angle for the prediction and then
+            # compute the sin and cosine
+            angle = anglesData[x]
+            cos = np.cos(angle)
+            sin = np.sin(angle)
+            # use the geometry volume to derive the width and height of
+            # the bounding box
+            h = xData0[x] + xData2[x]
+            w = xData1[x] + xData3[x]
+            # compute both the starting and ending (x, y)-coordinates for
+            # the text prediction bounding box
+            endX = int(offsetX + (cos * xData1[x]) + (sin * xData2[x]))
+            endY = int(offsetY - (sin * xData1[x]) + (cos * xData2[x]))
+            startX = int(endX - w)
+            startY = int(endY - h)
+            # add the bounding box coordinates and probability score to
+            # our respective lists
+            rects.append((startX, startY, endX, endY))
+            confidences.append(scoresData[x])
+    return rects, confidences
