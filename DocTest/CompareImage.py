@@ -120,7 +120,7 @@ class CompareImage(object):
             for j in range(n_boxes):
 
                 # If the prediction accuracy greater than %50
-                if int(d['conf'][j]) > self.PYTESSERACT_CONFIDENCE:
+                if int(float(d['conf'][j])) > self.PYTESSERACT_CONFIDENCE:
                     text_list.append(d['text'][j])
                     left_list.append(d['left'][j])
                     top_list.append(d['top'][j])
