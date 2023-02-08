@@ -37,8 +37,9 @@ class VisualTest(object):
     REFERENCE_LABEL = "Expected Result (Reference)"
     CANDIDATE_LABEL = "Actual Result (Candidate)"
     OCR_ENGINE = "tesseract"
+    MOVEMENT_DETECTION = "classic"
 
-    def __init__(self, threshold: float =0.0000, DPI: int =DPI_DEFAULT, take_screenshots: bool =False, show_diff: bool =False, ocr_engine: str =OCR_ENGINE, watermark_file: str =None, screenshot_format: str ='jpg', **kwargs):
+    def __init__(self, threshold: float =0.0000, DPI: int =DPI_DEFAULT, take_screenshots: bool =False, show_diff: bool =False, ocr_engine: str =OCR_ENGINE, movement_detection: str =MOVEMENT_DETECTION, watermark_file: str =None, screenshot_format: str ='jpg', **kwargs):
         self.threshold = threshold
         self.SCREENSHOT_DIRECTORY = Path("screenshots/")
         self.DPI = int(DPI)
@@ -46,6 +47,7 @@ class VisualTest(object):
         self.take_screenshots = bool(take_screenshots)
         self.show_diff = bool(show_diff)
         self.ocr_engine = ocr_engine
+        self.movement_detection = movement_detection
         self.watermark_file = watermark_file
         self.screenshot_format = screenshot_format
         if not (self.screenshot_format == 'jpg' or self.screenshot_format == 'png'):
@@ -279,12 +281,26 @@ class VisualTest(object):
         print("*HTML* " + "<a href='" + rel_screenshot_path + "' target='_blank'><img src='" +
               rel_screenshot_path + "' style='width:50%; height: auto;'/></a>")
 
-    def find_partial_image_position(self, img, template, threshold=0.1):
+    def find_partial_image_position(self, img, template, threshold=0.1, detection="classic"):
+
+        if detection == "template":
+            result = self.find_partial_image_distance_with_matchtemplate(img, template, threshold)
+            
+        elif detection == "classic":
+            result = self.find_partial_image_distance_with_classic_method(img, template, threshold)
+            
+        elif detection == "orb":
+            result = self.find_partial_image_distance_with_orb(img, template)
+
+        return result 
+
+    def find_partial_image_distance_with_classic_method(self, img, template, threshold=0.1):
         print("Find partial image position")
         rectangles = []
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
         h, w = template.shape[0:2]
+        print("Old detection")
         template_blur = cv2.GaussianBlur(template_gray, (3, 3), 0)
         template_thresh = cv2.threshold(
             template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
@@ -297,22 +313,123 @@ class VisualTest(object):
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
 
         res_temp = cv2.matchTemplate(template_gray, template_gray[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w],
-                                     cv2.TM_SQDIFF_NORMED)
+                                    cv2.TM_SQDIFF_NORMED)
         min_val_temp, max_val_temp, min_loc_temp, max_loc_temp = cv2.minMaxLoc(
             res_temp)
 
-        # loc = (np.array([min_loc[1],]), np.array([min_loc[0],]))
-        # threshold = 0.9
-        # loc = np.where( res >= threshold)
-        # for pt in zip(*loc[::-1]):
-        #     rectangles.append({"pt1":pt,"pt2":(pt[0] + w, pt[1] + h) })
-        #     #cv2.rectangle(img, pt, (pt[0] + w, pt[1] + h), (0,0,255), 2)
-
-        # Determine whether this sub image has been found
         if (min_val < threshold):
             return {"pt1": min_loc, "pt2": min_loc_temp}
         return
 
+    def find_partial_image_distance_with_matchtemplate(self, img, template, threshold=0.1):
+        print("Find partial image position")
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        h, w = template.shape[0:2]
+        print("dev detection")
+        mask = cv2.absdiff(img_gray, template_gray)
+        mask[mask > 0] = 255
+
+        # find contours in the mask and get the largest one
+        cnts, hierarchy = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # get largest contour
+        largest_contour = max(cnts, key=cv2.contourArea)
+        contour_mask = np.zeros(mask.shape, np.uint8)
+        cv2.drawContours(contour_mask, [largest_contour], -1, 255, -1)
+
+        masked_img =      cv2.bitwise_not(cv2.bitwise_and(contour_mask, cv2.bitwise_not(img_gray)))
+        masked_template = cv2.bitwise_not(cv2.bitwise_and(contour_mask, cv2.bitwise_not(template_gray)))
+        template_blur = cv2.GaussianBlur(masked_template, (3, 3), 0)
+        template_thresh = cv2.threshold(
+            template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        temp_x, temp_y, temp_w, temp_h = cv2.boundingRect(template_thresh)
+        res = cv2.matchTemplate(
+            masked_img, masked_template[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w], cv2.TM_SQDIFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+
+        res_temp = cv2.matchTemplate(masked_template, masked_template[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w],
+                                    cv2.TM_SQDIFF_NORMED)
+        min_val_temp, max_val_temp, min_loc_temp, max_loc_temp = cv2.minMaxLoc(
+            res_temp)
+
+        if (min_val < threshold):
+            return {"pt1": min_loc, "pt2": min_loc_temp}
+        return
+
+    def get_orb_keypoints_and_descriptors(self, img1, img2, edgeThreshold = 5, patchSize = 10):
+        orb = cv2.ORB_create(nfeatures=250, edgeThreshold=edgeThreshold, patchSize=patchSize)
+        img1_kp, img1_des = orb.detectAndCompute(img1, None)
+        img2_kp, img2_des = orb.detectAndCompute(img2, None)
+
+        if len(img1_kp) == 0 or len(img2_kp) == 0:
+            if patchSize > 4:
+                patchSize -= 4
+                edgeThreshold = int(patchSize/2)
+                return self.get_orb_keypoints_and_descriptors(img1, img2, edgeThreshold, patchSize)
+            else:
+                return None, None, None, None    
+
+        return img1_kp, img1_des, img2_kp, img2_des
+
+    def find_partial_image_distance_with_orb(self, img, template):
+        print("Find partial image position")
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        h, w = template.shape[0:2]
+        print("dev detection")
+        mask = cv2.absdiff(img_gray, template_gray)
+        mask[mask > 0] = 255
+
+        # find contours in the mask and get the largest one
+        cnts, hierarchy = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # get largest contour
+        largest_contour = max(cnts, key=cv2.contourArea)
+        contour_mask = np.zeros(mask.shape, np.uint8)
+
+        for cnt in cnts:
+            cv2.drawContours(contour_mask, [cnt], -1, 255, -1)
+
+        masked_img =      cv2.bitwise_not(cv2.bitwise_and(contour_mask, cv2.bitwise_not(img_gray)))
+        masked_template = cv2.bitwise_not(cv2.bitwise_and(contour_mask, cv2.bitwise_not(template_gray)))
+
+        edges_img = cv2.Canny(masked_img, 100, 200)
+        edges_template = cv2.Canny(masked_template, 100, 200)
+
+        # Find the keypoints and descriptors for the template image
+        template_keypoints, template_descriptors, target_keypoints, target_descriptors = self.get_orb_keypoints_and_descriptors(edges_template, edges_img)
+
+        if len(template_keypoints) == 0 or len(target_keypoints) == 0:
+            return
+
+        # Create a brute-force matcher
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
+        # Match the template image with the target image
+        matches = bf.match(template_descriptors, target_descriptors)
+
+        if len(matches) > 0:
+
+            # Sort the matches based on their distance
+            matches = sorted(matches, key=lambda x: x.distance)
+            best_matches = matches[:10]
+            # Estimate the transformation matrix between the two images
+            src_pts = np.float32([template_keypoints[m.queryIdx].pt for m in best_matches]).reshape(-1, 1, 2)
+            dst_pts = np.float32([target_keypoints[m.trainIdx].pt for m in best_matches]).reshape(-1, 1, 2)
+
+            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+
+            # Calculate the amount of movement between the two images
+            movement = np.sqrt(np.sum(M[:,2]**2))
+
+            self.add_screenshot_to_log(cv2.drawMatches(masked_template, template_keypoints, masked_img, target_keypoints, best_matches, None, flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS), "ORB_matches")
+            return {"distance": movement}
+
+            # Draw the matches on the target image
+            # result = cv2.drawMatches(masked_template, template_keypoints, masked_img, target_keypoints, matches[:10], None, flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS)
+
+    
     def overlay_two_images(self, image, overlay, ignore_color=[255, 255, 255]):
         ignore_color = np.asarray(ignore_color)
         mask = ~(overlay == ignore_color).all(-1)
@@ -547,7 +664,7 @@ class VisualTest(object):
                         # self.add_screenshot_to_log(diff_area_reference)
                         try:
                             positions_in_compare_image = self.find_partial_image_position(
-                                search_area_candidate, diff_area_reference)
+                                search_area_candidate, diff_area_reference, detection=self.movement_detection)
                         except:
                             print("Error in finding position in compare image")
                             images_are_equal = False
@@ -567,32 +684,53 @@ class VisualTest(object):
 
                         else:
                             if positions_in_compare_image:
+                                # if positions_in_compare_image contains a key 'distance'
+                                # then compare if the distance is within the move tolerance
+                                if 'distance' in positions_in_compare_image:
+                                    move_distance = positions_in_compare_image['distance']
+                                    if int(move_distance) > int(move_tolerance):
+                                        print("Image section moved ",
+                                            move_distance, " pixels")
+                                        print(
+                                            "This is outside of the allowed range of ", move_tolerance, " pixels")
+                                        images_are_equal = False
+                                        detected_differences.append(True)
+                                        self.add_screenshot_to_log(self.overlay_two_images(
+                                            search_area_reference, search_area_candidate), "_diff_area_blended")
+                                    else:
+                                        print("Image section moved ",
+                                            move_distance, " pixels")
+                                        print(
+                                            "This is within the allowed range of ", move_tolerance, " pixels")
+                                        self.add_screenshot_to_log(self.overlay_two_images(
+                                            search_area_reference, search_area_candidate), "_diff_area_blended")
 
-                                #pt_original = (x, y)
-                                pt_original = positions_in_compare_image['pt1']
-                                pt_compare = positions_in_compare_image['pt2']
-                                x_moved = abs(pt_original[0]-pt_compare[0])
-                                y_moved = abs(pt_original[1]-pt_compare[1])
-                                move_distance = math.sqrt(
-                                    x_moved ** 2 + y_moved ** 2)
-                                #cv2.arrowedLine(candidate_with_rect, pt_original, pt_compare, (255, 0, 0), 4)
-                                if int(move_distance) > int(move_tolerance):
-                                    print("Image section moved ",
-                                          move_distance, " pixels")
-                                    print(
-                                        "This is outside of the allowed range of ", move_tolerance, " pixels")
-                                    images_are_equal = False
-                                    detected_differences.append(True)
-                                    self.add_screenshot_to_log(self.overlay_two_images(
-                                        search_area_reference, search_area_candidate), "_diff_area_blended")
+                                if 'pt1' in positions_in_compare_image and 'pt2' in positions_in_compare_image:
 
-                                else:
-                                    print("Image section moved ",
-                                          move_distance, " pixels")
-                                    print(
-                                        "This is within the allowed range of ", move_tolerance, " pixels")
-                                    self.add_screenshot_to_log(self.overlay_two_images(
-                                        search_area_reference, search_area_candidate), "_diff_area_blended")
+                                    pt_original = positions_in_compare_image['pt1']
+                                    pt_compare = positions_in_compare_image['pt2']
+                                    x_moved = abs(pt_original[0]-pt_compare[0])
+                                    y_moved = abs(pt_original[1]-pt_compare[1])
+                                    move_distance = math.sqrt(
+                                        x_moved ** 2 + y_moved ** 2)
+                                    #cv2.arrowedLine(candidate_with_rect, pt_original, pt_compare, (255, 0, 0), 4)
+                                    if int(move_distance) > int(move_tolerance):
+                                        print("Image section moved ",
+                                            move_distance, " pixels")
+                                        print(
+                                            "This is outside of the allowed range of ", move_tolerance, " pixels")
+                                        images_are_equal = False
+                                        detected_differences.append(True)
+                                        self.add_screenshot_to_log(self.overlay_two_images(
+                                            search_area_reference, search_area_candidate), "_diff_area_blended")
+
+                                    else:
+                                        print("Image section moved ",
+                                            move_distance, " pixels")
+                                        print(
+                                            "This is within the allowed range of ", move_tolerance, " pixels")
+                                        self.add_screenshot_to_log(self.overlay_two_images(
+                                            search_area_reference, search_area_candidate), "_diff_area_blended")
 
                             else:
                                 images_are_equal = False
