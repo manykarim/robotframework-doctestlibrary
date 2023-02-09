@@ -231,6 +231,35 @@ Accept differences if text content is the same via OCR
 Accept differences if text content is the same from PDF Data
     Compare Images    Reference.pdf    Candidate.pdf    check_text_content=${true}    get_pdf_content=${true}
 ```
+
+#### Different options to detect moved parts/objects
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest   movement_detection=orb
+
+*** Test Cases ***
+Accept if parts are moved up to 20 pixels by pure visual check
+    Compare Images    Reference.jpg    Candidate.jpg    move_tolerance=20
+```	
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest   movement_detection=template
+
+*** Test Cases ***
+Accept if parts are moved up to 20 pixels by pure visual check
+    Compare Images    Reference.jpg    Candidate.jpg    move_tolerance=20
+```	
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest   movement_detection=classic
+
+*** Test Cases ***
+Accept if parts are moved up to 20 pixels by pure visual check
+    Compare Images    Reference.jpg    Candidate.jpg    move_tolerance=20
+```	
+
 ### Options for taking additional screenshots, screenshot format and render resolution
 Take additional screenshots or reference and candidate file.
 ```RobotFramework

@@ -40,6 +40,21 @@ class VisualTest(object):
     MOVEMENT_DETECTION = "classic"
 
     def __init__(self, threshold: float =0.0000, DPI: int =DPI_DEFAULT, take_screenshots: bool =False, show_diff: bool =False, ocr_engine: str =OCR_ENGINE, movement_detection: str =MOVEMENT_DETECTION, watermark_file: str =None, screenshot_format: str ='jpg', **kwargs):
+        """
+        | =Arguments= | =Description= |
+        | ``take_screenshots`` | Shall screenshots be taken also for passed comparisons.   |
+        | ``show_diff`` | Shall a diff screenshot be added showing differences in black and white  |
+        | ``screenshot_format`` | Image format of screenshots, ``jpg`` or ``png`` |
+        | ``DPI`` | Resolution in which documents are rendered before comparison, only relevant for ``pdf``, ``ps`` and ``pcl``. Images will be compared in their original resolution |
+        | ``watermark_file`` | Path to an image/document or a folder containing multiple images. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
+        | ``ocr_engine`` | Use ``tesseract`` or ``east`` for Text Detection and OCR |
+        | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
+        | ``movement_detection`` | Relevant when using ``move_tolerance`` option in ``Compare Images``. Possible options are ``classic``, ``template`` and ``orb``. They use different ways of identifying a moved object/section between two images |
+        | ``**kwargs`` | Everything else |
+
+        Those arguments will be taken as default, but some can be overwritten in the keywords.
+        """
+        
         self.threshold = threshold
         self.SCREENSHOT_DIRECTORY = Path("screenshots/")
         self.DPI = int(DPI)
