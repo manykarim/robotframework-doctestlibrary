@@ -214,7 +214,7 @@ class CompareImage(object):
                             keys = list(d.keys())
                             n_boxes = len(d['text'])
                             for j in range(n_boxes):
-                                if 'conf' not in keys or int(d['conf'][j]) > self.PYTESSERACT_CONFIDENCE:
+                                if 'conf' not in keys or int(float(d['conf'][j])) > self.PYTESSERACT_CONFIDENCE:
                                     if re.match(pattern, d['text'][j]):
                                         (x, y, w, h) = (d['left'][j], d['top'][j], d['width'][j], d['height'][j])
                                         if self.rerendered_for_ocr:
