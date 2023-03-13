@@ -4,25 +4,22 @@
 [Robot Framework](https://robotframework.org) DocTest library.
 Simple Automated Visual Document Testing.
 
-See keyword documentation for
+See **keyword documentation** for
 
 - [Visual Document Tests](https://manykarim.github.io/robotframework-doctestlibrary/VisualTest.html)
 - [Print Job Tests](https://manykarim.github.io/robotframework-doctestlibrary/PrintJobTest.html)
 - [Pdf Tests (very basic)](https://manykarim.github.io/robotframework-doctestlibrary/PdfTest.html)
 
+[![DocTest Library presentation at robocon.io 2021](https://img.youtube.com/vi/qmpwlQoJ-nE/0.jpg)](https://youtu.be/qmpwlQoJ-nE "DocTest Library presentation at robocon.io 2021")
 
-See [Talk from RoboCon2021](https://www.youtube.com/watch?v=qmpwlQoJ-nE) for a short demo and some background.
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest
 
-Powered by
-- Open CV
-- scikit-image
-- ImageMagick (only needed for rendering .ps and .pcl files)
-- Ghostscript (only needed for rendering .ps and .pcl files)
-- PyWand (only needed for rendering .ps and .pcl files)
-- Tesseract OCR
-- parsimonious (only needed for parsing .pcl and .ps files for)
-- pymupdf
-- The knowledge of stackoverflow.com
+*** Test Cases ***
+Compare two Images and highlight differences
+    Compare Images    Reference.jpg    Candidate.jpg
+```
 
 # Installation instructions
 
