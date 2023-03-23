@@ -54,14 +54,14 @@ or
 
 ## Install dependencies
 
-Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries
+Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries and barcode libraries (libdmtx, zbar) on your system.
 <br>Hint: Since `0.2.0` Ghostscript, GhostPCL and ImageMagick are only needed for rendering `.ps` and `.pcl`files.
 <br> Rendering and content parsing of `.pdf` is done via `MuPDF`
 <br>In the future there might be a separate pypi package for `.pcl` and `.ps` files to get rid of those dependencies.
 
 Linux
 ```bash
-apt-get install imagemagick tesseract-ocr ghostscript libdmtx0b
+apt-get install imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
 ```
 
 

@@ -298,21 +298,84 @@ class CompareImage(object):
                         placeholder_coordinates = {"page":page, "x":image_width - width, "y":0, "height":height, "width":width}
                     self.placeholders.append(placeholder_coordinates)
 
-    def identify_barcodes(self):
+
+    def identify_barcodes_with_opencv(self):
+        try:
+            qrcode_detector = cv2.QRCodeDetector()
+            barcode_detector = cv2.barcode.BarcodeDetector()
+        except:
+            print("OpenCV contrib package is not installed, barcode detection is not available. Make sure to install opencv-contrib-python")
+            return
+
+        for i in range(len(self.opencv_images)):
+            print("Identify barcodes")
+            image_height = self.opencv_images[i].shape[0]
+            image_width = self.opencv_images[i].shape[1]
+            # Detect QR code
+            retval, points, straight_qrcode = qrcode_detector.detectAndDecode(self.opencv_images[i])
+            if retval:
+                print("QR code detected")
+                print(retval)
+                print(points)
+                x = points[0][0]
+                y = points[0][1]
+                h = points[2][1] - points[0][1]
+                w = points[2][0] - points[0][0]
+                barcode_placeholder = {"page":i+1, "x":x, "y":y, "height":h, "width":w}
+                self.placeholders.append(barcode_placeholder)
+            # Detect barcode
+            retval, decoded_info, decoded_type, points = barcode_detector.detectAndDecode(self.opencv_images[i])
+            if retval:
+                print("Barcode detected")
+                print(retval)
+                print(points)
+                
+                for point in points:
+                    x = point[1][0]
+                    y = point[1][1]
+                    h = point[3][1] - point[1][1]
+                    w = point[3][0] - point[1][0]
+                    barcode_placeholder = {"page":i+1, "x":x, "y":y, "height":h, "width":w}
+                    self.placeholders.append(barcode_placeholder)
+
+
+    def identify_barcodes_with_zbar(self):
+        try:
+            from pyzbar import pyzbar
+        except:
+            logging.debug('Failed to import pyzbar', exc_info=True)
+            return
+        for i in range(len(self.opencv_images)):
+            print("Identify barcodes")
+            image_height = self.opencv_images[i].shape[0]
+            image_width = self.opencv_images[i].shape[1]
+            barcodes = pyzbar.decode(self.opencv_images[i])
+            #Add barcode as placehoder
+            for barcode in barcodes:
+                print(barcode)
+                x = barcode.rect.left
+                y = barcode.rect.top
+                h = barcode.rect.height
+                w = barcode.rect.width
+                value = barcode.data.decode("utf-8")
+                barcode_placeholder = {"page":i+1, "x":x, "y":y, "height":h, "width":w}
+                self.placeholders.append(barcode_placeholder)
+                self.barcodes.append({"page":i+1, "x":x, "y":y, "height":h, "width":w, "value":value})
+    
+    def identify_datamatrices(self):
         try:
             from pylibdmtx import pylibdmtx
         except:
             logging.debug('Failed to import pylibdmtx', exc_info=True)
             return
         for i in range(len(self.opencv_images)):
-            print("Identify barcodes")
+            print("Identify datamatrices")
             image_height = self.opencv_images[i].shape[0]
             try:
                 barcodes = pylibdmtx.decode(self.opencv_images[i], timeout=5000)
             except:
                 logging.debug("pylibdmtx could not be loaded",exc_info=True)
                 return
-            self.barcodes.extend(barcodes)
             #Add barcode as placehoder
             for barcode in barcodes:
                 print(barcode)
@@ -320,9 +383,16 @@ class CompareImage(object):
                 y = image_height - barcode.rect.top - barcode.rect.height
                 h = barcode.rect.height
                 w = barcode.rect.width
+                value = barcode.data.decode("utf-8")
                 barcode_mask = {"page":i+1, "x":x, "y":y, "height":h, "width":w}
                 self.placeholders.append(barcode_mask)
-        pass
+                self.barcodes.append({"page":i+1, "x":x, "y":y, "height":h, "width":w, "value":value})
+
+
+    def identify_barcodes(self):
+        #self.identify_barcodes_with_opencv()
+        self.identify_barcodes_with_zbar()
+        self.identify_datamatrices()
     
     @staticmethod
     def resize_with_aspect_ratio(image, width=None, height=None, inter=cv2.INTER_AREA):

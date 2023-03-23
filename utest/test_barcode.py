@@ -14,3 +14,7 @@ def test_single_pdf_with_barcode(testdata_dir):
 def test_single_pdf_without_barcode(testdata_dir):
     img = CompareImage(testdata_dir / 'sample_1_page.pdf', contains_barcodes=True)
     assert len(img.placeholders) == 0
+
+def test_barcode_sample_page(testdata_dir):
+    img = CompareImage(testdata_dir / 'sample_barcodes.pdf', contains_barcodes=True)
+    assert len(img.placeholders) == 12

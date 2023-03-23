@@ -862,6 +862,45 @@ class VisualTest(object):
                     text = None
         return text
 
+    @keyword
+    def get_barcodes_from_document(self, image: str, return_type: str="value"):
+        """Gets Barcodes from documents/images ``image``.
+
+        Barcode Values are returned as a list of strings as a default. None if no barcode is identified.
+        If ``return_type`` is set to ``coordinates``, the coordinates of the barcode are returned.
+        If ``return_type`` is set to ``all``, the coordinates and the value of the barcode are returned as two separate lists.
+
+        | =Arguments= | =Description= |
+        | ``image`` | Path of the Image/Document from which the barcode content shall be retrieved |
+        | ``return_type`` | Type of return value. Options are ``value``, ``coordinates`` and ``all``.  Default is ``value``. |
+
+
+        Examples:
+        | ${values} | `Get Barcodes From Document` | reference.pdf | #Gets Barcode Values from .pdf |
+        | ${values} | `Get Barcodes From Document` | reference.jpg | #Gets Barcode Values from .jpg |
+        | List Should Contain Value | ${values} | 123456789 | #Checks if list contains a specific barcode |
+        | ${coordinates} | `Get Barcodes From Document` | reference.jpg | return_type=coordinates | #Gets Barcode Coordinates from .jpg |
+        | ${barcodes} | `Get Barcodes From Document` | reference.jpg | return_type=all | #Gets Barcode Values and Coordinates from .jpg |
+
+        """
+            
+        img = CompareImage(image)
+        img.identify_barcodes()
+        if img.barcodes is None:
+            barcodes = None
+        else:
+            # Get values key from barcode dictionary
+            values = [x['value'] for x in img.barcodes]
+            # Get coordinates key from barcode dictionary
+            # Coordinates are stored as 4 key-value pairs, x, y, height and width
+            coordinates = [(x['x'], x['y'], x['height'], x['width']) for x in img.barcodes]
+            if return_type == "value":
+                barcodes = values
+            elif return_type == "coordinates":
+                barcodes = coordinates
+            elif return_type == "all":
+                barcodes = [values, coordinates]
+        return barcodes
 
 def remove_empty_textelements(lst):
     new_list = []
