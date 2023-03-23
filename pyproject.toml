@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "robotframework-doctestlibrary"
-version = "0.9.1"
+version = "0.10.0"
 description = "A library for Visual Document Testing"
 authors = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
 maintainers = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
@@ -26,6 +26,7 @@ scikit-image = "*"
 Wand = "*"
 pylibdmtx = "*"
 deepdiff = "*"
+pyzbar = "^0.1.9"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
