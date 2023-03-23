@@ -3,7 +3,7 @@
 tasks:
   - init: |
       sudo apt-get update
-      sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b allure
+      sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0 allure
       sudo cp policy.xml /etc/ImageMagick-6/
       poetry install
     command: |
