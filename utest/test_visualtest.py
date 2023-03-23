@@ -119,3 +119,22 @@ def test_moved_difference_for_pdf_on_white_background_outside_tolerance_orb(test
     cand_image=str(testdata_dir / 'sample_1_page_moved.pdf')
     with pytest.raises(AssertionError, match='The compared images are different.'):
         visual_tester.compare_images(ref_image, cand_image, move_tolerance=7)
+
+def test_get_barcode_values(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image=str(testdata_dir / 'sample_barcodes.pdf')
+    barcode_data = visual_tester.get_barcodes_from_document(ref_image)
+    assert barcode_data == ['This is a QR Code by TEC-IT', 'This is a QR Code by TEC-IT for mobile applications', '1234567890', 'ABC-1234', 'ABC-1234-/+', 'ABC-abc-1234', '0012345000065', '90311017', '0725272730706', '9780201379624', 'This is a Data Matrix by TEC-IT', 'This is a Data Matrix by TEC-IT']
+
+def test_get_barcode_coordinates(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image=str(testdata_dir / 'sample_barcodes.pdf')
+    barcode_coordinates = visual_tester.get_barcodes_from_document(ref_image, return_type='coordinates')
+    assert barcode_coordinates == [(757, 1620, 207, 207), (1198, 1598, 244, 244), (160, 1651, 122, 413), (467, 1309, 159, 663), (509, 1021, 159, 564), (485, 725, 159, 629), (312, 399, 159, 204), (1039, 399, 159, 278), (984, 93, 158, 396), (236, 90, 158, 396), (480, 2025, 183, 184), (979, 1971, 271, 272)]
+
+def test_get_barcode_all(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image=str(testdata_dir / 'sample_barcodes.pdf')
+    barcode_all = visual_tester.get_barcodes_from_document(ref_image, return_type='all')
+    assert barcode_all[0] == ['This is a QR Code by TEC-IT', 'This is a QR Code by TEC-IT for mobile applications', '1234567890', 'ABC-1234', 'ABC-1234-/+', 'ABC-abc-1234', '0012345000065', '90311017', '0725272730706', '9780201379624', 'This is a Data Matrix by TEC-IT', 'This is a Data Matrix by TEC-IT']
+    assert barcode_all[1] == [(757, 1620, 207, 207), (1198, 1598, 244, 244), (160, 1651, 122, 413), (467, 1309, 159, 663), (509, 1021, 159, 564), (485, 725, 159, 629), (312, 399, 159, 204), (1039, 399, 159, 278), (984, 93, 158, 396), (236, 90, 158, 396), (480, 2025, 183, 184), (979, 1971, 271, 272)]
