@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo apt-get update
           echo "Install Dependencies via apt"
-          sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b
+          sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
           echo "Download Tesseract Models"
           sudo wget -O /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/eng.traineddata?raw=true
           sudo wget -O /usr/share/tesseract-ocr/4.00/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/osd.traineddata?raw=true
