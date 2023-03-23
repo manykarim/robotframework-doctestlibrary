@@ -350,7 +350,6 @@ class CompareImage(object):
             image_height = self.opencv_images[i].shape[0]
             image_width = self.opencv_images[i].shape[1]
             barcodes = pyzbar.decode(self.opencv_images[i])
-            self.barcodes.extend(barcodes)
             #Add barcode as placehoder
             for barcode in barcodes:
                 print(barcode)
@@ -358,8 +357,10 @@ class CompareImage(object):
                 y = barcode.rect.top
                 h = barcode.rect.height
                 w = barcode.rect.width
+                value = barcode.data.decode("utf-8")
                 barcode_placeholder = {"page":i+1, "x":x, "y":y, "height":h, "width":w}
                 self.placeholders.append(barcode_placeholder)
+                self.barcodes.append({"page":i+1, "x":x, "y":y, "height":h, "width":w, "value":value})
     
     def identify_datamatrices(self):
         try:
@@ -375,7 +376,6 @@ class CompareImage(object):
             except:
                 logging.debug("pylibdmtx could not be loaded",exc_info=True)
                 return
-            self.barcodes.extend(barcodes)
             #Add barcode as placehoder
             for barcode in barcodes:
                 print(barcode)
@@ -383,8 +383,10 @@ class CompareImage(object):
                 y = image_height - barcode.rect.top - barcode.rect.height
                 h = barcode.rect.height
                 w = barcode.rect.width
+                value = barcode.data.decode("utf-8")
                 barcode_mask = {"page":i+1, "x":x, "y":y, "height":h, "width":w}
                 self.placeholders.append(barcode_mask)
+                self.barcodes.append({"page":i+1, "x":x, "y":y, "height":h, "width":w, "value":value})
 
 
     def identify_barcodes(self):
