@@ -876,11 +876,11 @@ class VisualTest(object):
 
 
         Examples:
-        | ${values} | `Get Barcodes From Document` | reference.pdf | #Gets Barcode Values from .pdf |
-        | ${values} | `Get Barcodes From Document` | reference.jpg | #Gets Barcode Values from .jpg |
+        | ${values} | `Get Barcodes From Document` | reference.pdf | #Gets Barcode Values from .pdf as list |
+        | ${values} | `Get Barcodes From Document` | reference.jpg | #Gets Barcode Values from .jpg as list |
         | List Should Contain Value | ${values} | 123456789 | #Checks if list contains a specific barcode |
-        | ${coordinates} | `Get Barcodes From Document` | reference.jpg | return_type=coordinates | #Gets Barcode Coordinates from .jpg |
-        | ${barcodes} | `Get Barcodes From Document` | reference.jpg | return_type=all | #Gets Barcode Values and Coordinates from .jpg |
+        | ${coordinates} | `Get Barcodes From Document` | reference.jpg | return_type=coordinates | #Gets Barcode Coordinates as dict`{'x':10, 'y':20, 'width':100, 'height':30}`|
+        | ${barcodes} | `Get Barcodes From Document` | reference.jpg | return_type=all | #Gets Barcode Values and Coordinates as list `[values, coordinates]` |
 
         """
             
@@ -893,7 +893,7 @@ class VisualTest(object):
             values = [x['value'] for x in img.barcodes]
             # Get coordinates key from barcode dictionary
             # Coordinates are stored as 4 key-value pairs, x, y, height and width
-            coordinates = [(x['x'], x['y'], x['height'], x['width']) for x in img.barcodes]
+            coordinates = [{'x':x['x'], 'y':x['y'], 'width':x['width'], 'height':x['height']} for x in img.barcodes]
             if return_type == "value":
                 barcodes = values
             elif return_type == "coordinates":

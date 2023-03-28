@@ -130,11 +130,33 @@ def test_get_barcode_coordinates(testdata_dir):
     visual_tester = VisualTest()
     ref_image=str(testdata_dir / 'sample_barcodes.pdf')
     barcode_coordinates = visual_tester.get_barcodes_from_document(ref_image, return_type='coordinates')
-    assert barcode_coordinates == [(757, 1620, 207, 207), (1198, 1598, 244, 244), (160, 1651, 122, 413), (467, 1309, 159, 663), (509, 1021, 159, 564), (485, 725, 159, 629), (312, 399, 159, 204), (1039, 399, 159, 278), (984, 93, 158, 396), (236, 90, 158, 396), (480, 2025, 183, 184), (979, 1971, 271, 272)]
+    assert barcode_coordinates == [{'x':757, 'y':1620, 'width':207, 'height':207}, 
+                                   {'x':1198, 'y':1598, 'width':244, 'height':244}, 
+                                   {'x':160, 'y':1651, 'width':413, 'height':122}, 
+                                   {'x':467, 'y':1309, 'width':663, 'height':159}, 
+                                   {'x':509, 'y':1021, 'width':564, 'height':159}, 
+                                   {'x':485, 'y':725, 'width':629, 'height':159}, 
+                                   {'x':312, 'y':399, 'width':204, 'height':159}, 
+                                   {'x':1039, 'y':399, 'width':278, 'height':159}, 
+                                   {'x':984, 'y':93, 'width':396, 'height':158}, 
+                                   {'x':236, 'y':90, 'width':396, 'height':158}, 
+                                   {'x':480, 'y':2025, 'width':184, 'height':183}, 
+                                   {'x':979, 'y':1971, 'width':272, 'height':271}]
 
 def test_get_barcode_all(testdata_dir):
     visual_tester = VisualTest()
     ref_image=str(testdata_dir / 'sample_barcodes.pdf')
     barcode_all = visual_tester.get_barcodes_from_document(ref_image, return_type='all')
     assert barcode_all[0] == ['This is a QR Code by TEC-IT', 'This is a QR Code by TEC-IT for mobile applications', '1234567890', 'ABC-1234', 'ABC-1234-/+', 'ABC-abc-1234', '0012345000065', '90311017', '0725272730706', '9780201379624', 'This is a Data Matrix by TEC-IT', 'This is a Data Matrix by TEC-IT']
-    assert barcode_all[1] == [(757, 1620, 207, 207), (1198, 1598, 244, 244), (160, 1651, 122, 413), (467, 1309, 159, 663), (509, 1021, 159, 564), (485, 725, 159, 629), (312, 399, 159, 204), (1039, 399, 159, 278), (984, 93, 158, 396), (236, 90, 158, 396), (480, 2025, 183, 184), (979, 1971, 271, 272)]
+    assert barcode_all[1] == [{'x':757, 'y':1620, 'width':207, 'height':207}, 
+                                   {'x':1198, 'y':1598, 'width':244, 'height':244}, 
+                                   {'x':160, 'y':1651, 'width':413, 'height':122}, 
+                                   {'x':467, 'y':1309, 'width':663, 'height':159}, 
+                                   {'x':509, 'y':1021, 'width':564, 'height':159}, 
+                                   {'x':485, 'y':725, 'width':629, 'height':159}, 
+                                   {'x':312, 'y':399, 'width':204, 'height':159}, 
+                                   {'x':1039, 'y':399, 'width':278, 'height':159}, 
+                                   {'x':984, 'y':93, 'width':396, 'height':158}, 
+                                   {'x':236, 'y':90, 'width':396, 'height':158}, 
+                                   {'x':480, 'y':2025, 'width':184, 'height':183}, 
+                                   {'x':979, 'y':1971, 'width':272, 'height':271}]
