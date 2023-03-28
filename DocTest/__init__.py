@@ -347,6 +347,18 @@ Get Text Content And Compare
     List Should Contain Value    ${text}    Test String
 ```
 
+### Get Barcodes From Documents or Images
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest
+
+*** Test Cases ***
+Get Text Content And Compare
+    ${text}    Get Barcodes From Document    reference.jpg
+    List Should Contain Value    ${text}    123456789
+```
+
 ### Using pabot to run tests in parallel
 
 Document Testing can be run in parallel using [pabot](https://pabot.org/).  
