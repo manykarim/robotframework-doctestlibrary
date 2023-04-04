@@ -131,8 +131,7 @@ class CompareImage(object):
 
     def increase_resolution_for_ocr(self):
         # experimental: IF OCR is used and DPI is lower than self.MINIMUM_OCR_RESOLUTION DPI, re-render with self.MINIMUM_OCR_RESOLUTION DPI
-        if (self.DPI < self.MINIMUM_OCR_RESOLUTION):
-            self.rerendered_for_ocr = True
+        if (self.DPI < self.MINIMUM_OCR_RESOLUTION):            
             print("Re-Render document for OCR at {} DPI as current resolution is only {} DPI".format(self.MINIMUM_OCR_RESOLUTION, self.DPI))
             if self.extension == '.pdf':
                 self.convert_mupdf_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
@@ -142,9 +141,17 @@ class CompareImage(object):
                 scale = self.MINIMUM_OCR_RESOLUTION / self.DPI # percent of original size
                 width = int(self.opencv_images[0].shape[1] * scale)
                 height = int(self.opencv_images[0].shape[0] * scale)
+                # Check if any page has a width or height higher than 32767 pixels
+                # If so, do not re-render as this will cause an error
+                if (width > 32767) or (height > 32767):
+                    print("Re-rendering of image for OCR not possible as one of the pages has a width or height higher than 32767 pixels")
+                    return
                 dim = (width, height)
                 # resize image
                 self.opencv_images[0] = cv2.resize(self.opencv_images[0], dim, interpolation = cv2.INTER_CUBIC)
+            self.rerendered_for_ocr = True
+
+            
 
     def get_text_content_with_east(self):
         self.increase_resolution_for_ocr()
