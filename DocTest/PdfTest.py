@@ -133,7 +133,9 @@ class PdfTest(object):
                     print("Different signatures")
                     pprint(diff, width=200)
 
-        if differences_detected:             
+        if differences_detected:
+            ref_doc = None
+            cand_doc = None             
             raise AssertionError('The compared PDF Document Data is different.')
         # if reference!=candidate:
         #     pprint(DeepDiff(reference, candidate), width=200)
@@ -172,6 +174,7 @@ class PdfTest(object):
             missing_text_list.append({'text':text_item, 'document':candidate_document})
         if all_texts_were_found is False:
             print(missing_text_list)
+            doc = None
             raise AssertionError('Some expected texts were not found in document')
     
     @keyword
@@ -205,6 +208,7 @@ class PdfTest(object):
             missing_text_list.append({'text':text_item, 'document':candidate_document})
         if all_texts_were_found is False:
             print(missing_text_list)
+            doc = None
             raise AssertionError('Some expected texts were not found in document')
 
 def is_masked(text, mask):
