@@ -245,6 +245,8 @@ class VisualTest(object):
 
             if (difference):
                 print("The compared images are different")
+                reference_compare_image.mupdfdoc = None
+                candidate_compare_image.mupdfdoc = None
                 raise AssertionError('The compared images are different.')
 
         print("The compared images are equal")
