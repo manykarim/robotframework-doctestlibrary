@@ -42,3 +42,31 @@ def test_compare_pdf_content_with_different_images(testdata_dir):
     candidate_pdf = testdata_dir / 'sample_1_page_different_text.pdf'
     with pytest.raises(AssertionError):
         pdf_tester.compare_pdf_documents(reference_pdf, candidate_pdf,  compare="images")
+
+def test_check_text_content_exists_success(testdata_dir):
+    pdf_tester = PdfTest()
+    pdf_document = testdata_dir / 'sample.pdf'
+    pdf_tester.PDF_should_contain_strings('THE TEST SHIPPER', pdf_document)
+
+def test_check_text_content_exists_failure(testdata_dir):
+    pdf_tester = PdfTest()
+    pdf_document = testdata_dir / 'sample.pdf'
+    with pytest.raises(AssertionError):
+        pdf_tester.PDF_should_contain_strings('This Text does not exist', pdf_document)
+
+def test_check_text_content_not_exists_success(testdata_dir):
+    pdf_tester = PdfTest()
+    pdf_document = testdata_dir / 'sample.pdf'
+    pdf_tester.PDF_should_not_contain_strings('This Text does not exist', pdf_document)
+
+def test_check_text_content_not_exists_list_failure(testdata_dir):
+    pdf_tester = PdfTest()
+    pdf_document = testdata_dir / 'sample.pdf'
+    with pytest.raises(AssertionError):
+        pdf_tester.PDF_should_not_contain_strings(['This Text does not exist', 'THE TEST SHIPPER'], pdf_document)
+
+def test_check_text_content_not_exists_single_failure(testdata_dir):
+    pdf_tester = PdfTest()
+    pdf_document = testdata_dir / 'sample.pdf'
+    with pytest.raises(AssertionError):
+        pdf_tester.PDF_should_not_contain_strings('THE TEST SHIPPER', pdf_document)

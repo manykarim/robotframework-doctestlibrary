@@ -195,22 +195,66 @@ class PdfTest(object):
         if isinstance(expected_text_list, str):
             expected_text_list = [expected_text_list]
         missing_text_list = []
+        found_text_list = []
         all_texts_were_found = None
         for text_item in expected_text_list:
             text_found_in_page = False
             for page in doc.pages():
                 if any(text_item in s for s in page.get_text("text").splitlines()):
                     text_found_in_page = True
+                    found_text_list.append({'text':text_item, 'document':candidate_document, 'page':page.number+1})
                     break
             if text_found_in_page:
                 continue
             all_texts_were_found = False
             missing_text_list.append({'text':text_item, 'document':candidate_document})
         if all_texts_were_found is False:
-            print(missing_text_list)
+            print(f"Missing Texts:\n{missing_text_list}")
+            print(f"Found Texts:\n{found_text_list}")
             doc = None
             raise AssertionError('Some expected texts were not found in document')
+        else:
+            doc = None
+            print(f"Found Texts:\n{found_text_list}")
 
+    @keyword
+    def PDF_should_not_contain_strings(self, expected_text_list, candidate_document):
+        """Checks if each item provided in the list ``expected_text_list`` does NOT appear in the PDF File ``candidate_document``.
+        
+        ``expected_text_list`` is a list of strings or a single string, ``candidate_document`` is the path to a PDF File.
+        
+        Examples:
+
+        | @{strings}= | Create List | One String | Another String |
+        | PDF Should Not Contain Strings | ${strings} | candidate.pdf |
+        | PDF Should Not Contain Strings | One String | candidate.pdf |
+        
+        """
+        doc = fitz.open(candidate_document)
+        # if expected_text_list is a string, convert it to a list
+        if isinstance(expected_text_list, str):
+            expected_text_list = [expected_text_list]
+        missing_text_list = []
+        found_text_list = []
+        for text_item in expected_text_list:
+            text_item_found = False
+            for page in doc.pages():
+                if any(text_item in s for s in page.get_text("text").splitlines()):
+                    text_item_found = True
+                    found_text_list.append({'text':text_item, 'document':candidate_document, 'page':page.number+1})
+                    continue
+            if text_item_found == False:
+                missing_text_list.append({'text':text_item, 'document':candidate_document})
+        if found_text_list:
+            print(f"Missing Texts:\n{missing_text_list}")
+            print(f"Found Texts:\n{found_text_list}")
+            doc = None
+            raise AssertionError('Some non-expected texts were found in document')
+        else:
+            doc = None
+            print('None of the non-expected texts were found in document')
+            print(f"Missing Texts:\n{missing_text_list}")
+    
 def is_masked(text, mask):
     if isinstance(mask, str):
         mask = [mask]
