@@ -6,6 +6,14 @@ This text list exists in the PDF File
     @{strings}=    Create List    THE TEST SHIPPER    TEST CONSIGNEE
     PDF Should Contain Strings    ${strings}    testdata/sample.pdf
 
+Some non-expected text items from list exist in the PDF File
+    @{strings}=    Create List    THE TEST SHIPPER    THIS STRING DOES NOT EXIST IN THIS DOJO 
+    Run Keyword And Expect Error    Some non-expected texts were found in document    PDF Should Not Contain Strings    ${strings}    testdata/sample.pdf
+
+No non-expected text items from list exist in the PDF File
+    @{strings}=    Create List    THIS STRING DOES NOT EXIST IN THIS DOJO    THIS ONE AS WELL 
+    PDF Should Not Contain Strings    ${strings}    testdata/sample.pdf
+
 This text list does NOT exist in the PDF File
     @{strings}=    Create List    THE TEST SHIPPER    THIS STRING DOES NOT EXIST IN THIS DOJO
     Run Keyword And Expect Error    Some expected texts were not found in document    PDF Should Contain Strings    ${strings}    testdata/sample.pdf
