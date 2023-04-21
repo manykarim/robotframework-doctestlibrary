@@ -1,4 +1,5 @@
-import tkinter as tk
+from tkinter import *
+from tkinter import ttk
 from tkinter import filedialog
 import cv2
 import json
@@ -10,19 +11,19 @@ class ImageEditor:
         self.master.title("Mask Editor")
 
         # Make resizable canvas and scrollbars
-        self.canvas_frame = tk.Frame(self.master)
-        self.canvas_frame.pack(fill=tk.BOTH, expand=True)
+        self.canvas_frame = Frame(self.master)
+        self.canvas_frame.pack(fill=BOTH, expand=True)
 
-        self.hscrollbar = tk.Scrollbar(self.canvas_frame, orient=tk.HORIZONTAL)
-        self.hscrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.hscrollbar = Scrollbar(self.canvas_frame, orient=HORIZONTAL)
+        self.hscrollbar.pack(side=BOTTOM, fill=X)
 
-        self.vscrollbar = tk.Scrollbar(self.canvas_frame, orient=tk.VERTICAL)
-        self.vscrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.vscrollbar = Scrollbar(self.canvas_frame, orient=VERTICAL)
+        self.vscrollbar.pack(side=RIGHT, fill=Y)
 
-        self.canvas = tk.Canvas(self.canvas_frame, width=800, height=600,
+        self.canvas = Canvas(self.canvas_frame, width=800, height=600,
                                 xscrollcommand=self.hscrollbar.set,
                                 yscrollcommand=self.vscrollbar.set)
-        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.canvas.pack(side=LEFT, fill=BOTH, expand=True)
 
         self.hscrollbar.config(command=self.canvas.xview)
         self.vscrollbar.config(command=self.canvas.yview)
@@ -30,8 +31,8 @@ class ImageEditor:
         self.rectangles = []
 
         # create menu bar
-        menubar = tk.Menu(self.master)
-        filemenu = tk.Menu(menubar, tearoff=0)
+        menubar = Menu(self.master)
+        filemenu = Menu(menubar, tearoff=0)
         filemenu.add_command(label="Open", command=self.load_image)
         filemenu.add_command(label="Export", command=self.export_rectangles)
         filemenu.add_command(label="Load mask", command=self.load_rectangles)
@@ -77,9 +78,9 @@ class ImageEditor:
             self.filename = filename
             self.image = cv2.imread(self.filename)
             self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
-            self.photo = tk.PhotoImage(
+            self.photo = PhotoImage(
                 data=cv2.imencode(".png", self.image)[1].tobytes())
-            self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)            
+            self.canvas.create_image(0, 0, image=self.photo, anchor=NW)            
 
     def load_rectangles(self):
         filename = filedialog.askopenfilename(title="Select a mask",
@@ -97,13 +98,13 @@ class ImageEditor:
                         x, y, x + w, y + h, outline="red")
 
     def start_rect(self, event):
-        self.rect_start = (event.x, event.y)
+        self.rect_start = (self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
         self.rect = self.canvas.create_rectangle(
-            event.x, event.y, event.x, event.y, outline="red")
+            self.canvas.canvasx(event.x), self.canvas.canvasy(event.y), self.canvas.canvasx(event.x), self.canvas.canvasy(event.y), outline="red")
 
     def draw_rect(self, event):
         self.canvas.coords(
-            self.rect, self.rect_start[0], self.rect_start[1], event.x, event.y)
+            self.rect, self.rect_start[0], self.rect_start[1], self.canvas.canvasx(event.x), self.canvas.canvasy(event.y))
 
     def end_rect(self, event):
         coords = self.canvas.coords(self.rect)
@@ -119,7 +120,7 @@ class ImageEditor:
         """
         for rect in self.rectangles:
             x, y, w, h = rect
-            if x <= event.x <= x + w and y <= event.y <= y + h:
+            if x <= self.canvas.canvasx(event.x) <= x + w and y <= self.canvas.canvasy(event.y) <= y + h:
                 self.rectangles.remove(rect)
                 break
         self.render_rectangles()
@@ -129,7 +130,7 @@ class ImageEditor:
         Render rectangles on canvas
         """
         self.canvas.delete("all")
-        self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
+        self.canvas.create_image(0, 0, image=self.photo, anchor=NW)
         for rect in self.rectangles:
             x, y, w, h = rect
             self.canvas.create_rectangle(x, y, x + w, y + h, outline="red")
@@ -166,6 +167,6 @@ class ImageEditor:
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    root = Tk()
     app = ImageEditor(root)
     root.mainloop()
