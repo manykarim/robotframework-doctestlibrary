@@ -3,16 +3,30 @@ from tkinter import filedialog
 import cv2
 import json
 
+
 class ImageEditor:
     def __init__(self, master):
         self.master = master
         self.master.title("Mask Editor")
 
-        # Make resizable canvas
-        self.canvas = tk.Canvas(self.master, width=800, height=600)
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        # Make resizable canvas and scrollbars
+        self.canvas_frame = tk.Frame(self.master)
+        self.canvas_frame.pack(fill=tk.BOTH, expand=True)
 
-        
+        self.hscrollbar = tk.Scrollbar(self.canvas_frame, orient=tk.HORIZONTAL)
+        self.hscrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self.vscrollbar = tk.Scrollbar(self.canvas_frame, orient=tk.VERTICAL)
+        self.vscrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.canvas = tk.Canvas(self.canvas_frame, width=800, height=600,
+                                xscrollcommand=self.hscrollbar.set,
+                                yscrollcommand=self.vscrollbar.set)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.hscrollbar.config(command=self.canvas.xview)
+        self.vscrollbar.config(command=self.canvas.yview)
+
         self.rectangles = []
 
         # create menu bar
@@ -32,7 +46,29 @@ class ImageEditor:
         # bind right click to delete rectangle
         self.canvas.bind("<Button-3>", self.delete_rect)
 
+        # bind resize event
+        self.canvas.bind("<Configure>", self.on_canvas_resize)
 
+        # bind mousewheel to scrollbars
+        self.canvas.bind("<MouseWheel>", self.on_mousewheel)
+
+        # bind horizontal mousewheel to canvas
+        self.canvas.bind("<Shift-MouseWheel>", self.on_shift_mousewheel)
+
+
+
+    def on_mousewheel(self, event):
+        """Scroll canvas on mousewheel event"""
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def on_shift_mousewheel(self, event):
+        """Scroll canvas horizontally on shift+mousewheel event"""
+        self.canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
+
+
+    def on_canvas_resize(self, event):
+        """Adjust scrollbars when canvas size changes"""
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def load_image(self):
         filename = filedialog.askopenfilename(title="Select an image",
@@ -41,8 +77,9 @@ class ImageEditor:
             self.filename = filename
             self.image = cv2.imread(self.filename)
             self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
-            self.photo = tk.PhotoImage(data=cv2.imencode(".png", self.image)[1].tobytes())
-            self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)
+            self.photo = tk.PhotoImage(
+                data=cv2.imencode(".png", self.image)[1].tobytes())
+            self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)            
 
     def load_rectangles(self):
         filename = filedialog.askopenfilename(title="Select a mask",
@@ -56,15 +93,17 @@ class ImageEditor:
                     w = rect["width"]
                     h = rect["height"]
                     self.rectangles.append((x, y, w, h))
-                    self.canvas.create_rectangle(x, y, x + w, y + h, outline="red")
+                    self.canvas.create_rectangle(
+                        x, y, x + w, y + h, outline="red")
 
     def start_rect(self, event):
         self.rect_start = (event.x, event.y)
-        self.rect = self.canvas.create_rectangle(event.x, event.y, event.x, event.y, outline="red")
-
+        self.rect = self.canvas.create_rectangle(
+            event.x, event.y, event.x, event.y, outline="red")
 
     def draw_rect(self, event):
-        self.canvas.coords(self.rect, self.rect_start[0], self.rect_start[1], event.x, event.y)
+        self.canvas.coords(
+            self.rect, self.rect_start[0], self.rect_start[1], event.x, event.y)
 
     def end_rect(self, event):
         coords = self.canvas.coords(self.rect)
@@ -73,7 +112,7 @@ class ImageEditor:
         w = abs(coords[0] - coords[2])
         h = abs(coords[1] - coords[3])
         self.rectangles.append((x, y, w, h))
-    
+
     def delete_rect(self, event):
         """"
         Delete the rectangle that was clicked on
@@ -84,7 +123,7 @@ class ImageEditor:
                 self.rectangles.remove(rect)
                 break
         self.render_rectangles()
-    
+
     def render_rectangles(self):
         """
         Render rectangles on canvas
@@ -94,7 +133,7 @@ class ImageEditor:
         for rect in self.rectangles:
             x, y, w, h = rect
             self.canvas.create_rectangle(x, y, x + w, y + h, outline="red")
-        
+
     def export_rectangles(self):
         """"
         Save rectangles to JSON file
@@ -108,7 +147,8 @@ class ImageEditor:
         "width": 84
         """
         filename = filedialog.asksaveasfilename(title="Export Rectangles",
-                                                filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
+                                                filetypes=(
+                                                    ("JSON files", "*.json"), ("All files", "*.*")),
                                                 defaultextension=".json")
         if filename:
             with open(filename, "w") as f:
@@ -123,6 +163,7 @@ class ImageEditor:
                                        "height": h,
                                        "width": w})
                 json.dump(rectangles, f, indent=4)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
