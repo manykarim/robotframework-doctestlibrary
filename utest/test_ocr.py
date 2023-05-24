@@ -41,6 +41,29 @@ def test_image_text_content_with_pytesseract(testdata_dir):
     assert "01-Jan-2021" in img.text_content[0]['text']
     assert "ABCDEFGHI" in img.text_content[0]['text']
 
+def test_image_text_content_with_pytesseract_custom_options_01(testdata_dir):
+    img = CompareImage(testdata_dir / 'text_small.png')
+    img.get_ocr_text_data(ocr_config='--psm 11', increase_resolution=True)
+    assert any('ABCDEFGHI' in s for s in img.text_content[0]['text'])
+    assert any('abcdefghi' in s for s in img.text_content[0]['text'])
+    assert any('1234567890' in s for s in img.text_content[0]['text'])
+
+def test_image_text_content_with_pytesseract_custom_options_02(testdata_dir):
+    img = CompareImage(testdata_dir / 'text_small.png')
+    img.get_ocr_text_data(ocr_config='--psm 6', increase_resolution=True)
+    assert any('ABCDEFGHI' in s for s in img.text_content[0]['text'])
+    assert any('abcdefghi' in s for s in img.text_content[0]['text'])
+    assert any('1234567890' in s for s in img.text_content[0]['text'])
+
+def test_image_text_content_with_pytesseract_custom_options_03(testdata_dir):
+    img = CompareImage(testdata_dir / 'text_small.png')
+    img.get_ocr_text_data(increase_resolution=False)
+    assert any('abcdefghi' in s for s in img.text_content[0]['text'])
+    assert any('1234567890' in s for s in img.text_content[0]['text'])
+    with pytest.raises(AssertionError):
+        assert any('ABCDEFGHI' in s for s in img.text_content[0]['text'])
+
+
 @pytest.mark.skip(reason="Currently, tesseract is not so good at recognizing bright text")
 def test_white_text_on_dark_background(testdata_dir):
     img = CompareImage(testdata_dir / 'whitetext_blackbackground.png')

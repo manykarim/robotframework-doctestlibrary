@@ -99,8 +99,9 @@ class CompareImage(object):
             self.text_content.append(text)
         return self.text_content
 
-    def get_ocr_text_data(self, ocr_config: str='--psm 11', ocr_lang: str='eng'):
-        self.increase_resolution_for_ocr()
+    def get_ocr_text_data(self, ocr_config: str='--psm 11', ocr_lang: str='eng', increase_resolution: bool=True):
+        if increase_resolution:
+            self.increase_resolution_for_ocr()
         for i in range(len(self.opencv_images)):
             text_list = []
             left_list = []
@@ -153,8 +154,9 @@ class CompareImage(object):
 
             
 
-    def get_text_content_with_east(self):
-        self.increase_resolution_for_ocr()
+    def get_text_content_with_east(self, increase_resolution: bool=True):
+        if increase_resolution:
+            self.increase_resolution_for_ocr()
         self.east_text_extractor = EastTextExtractor()
         for frame in self.opencv_images:
             text = self.east_text_extractor.get_image_text(frame)
