@@ -39,7 +39,7 @@ class VisualTest(object):
     OCR_ENGINE = "tesseract"
     MOVEMENT_DETECTION = "classic"
 
-    def __init__(self, threshold: float =0.0000, DPI: int =DPI_DEFAULT, take_screenshots: bool =False, show_diff: bool =False, ocr_engine: str =OCR_ENGINE, movement_detection: str =MOVEMENT_DETECTION, watermark_file: str =None, screenshot_format: str ='jpg', **kwargs):
+    def __init__(self, threshold: float =0.0000, DPI: int =DPI_DEFAULT, take_screenshots: bool =False, show_diff: bool =False, ocr_engine: str =OCR_ENGINE, movement_detection: str =MOVEMENT_DETECTION, watermark_file: str =None, screenshot_format: str ='jpg', embed_screenshots: bool =False ,  **kwargs):
         """
         | =Arguments= | =Description= |
         | ``take_screenshots`` | Shall screenshots be taken also for passed comparisons.   |
@@ -50,6 +50,7 @@ class VisualTest(object):
         | ``ocr_engine`` | Use ``tesseract`` or ``east`` for Text Detection and OCR |
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
         | ``movement_detection`` | Relevant when using ``move_tolerance`` option in ``Compare Images``. Possible options are ``classic``, ``template`` and ``orb``. They use different ways of identifying a moved object/section between two images |
+        | ``embed_screenshots`` | Embed screenshots in log.html instead of saving them as files |
         | ``**kwargs`` | Everything else |
 
         Those arguments will be taken as default, but some can be overwritten in the keywords.
@@ -67,7 +68,7 @@ class VisualTest(object):
         self.screenshot_format = screenshot_format
         if not (self.screenshot_format == 'jpg' or self.screenshot_format == 'png'):
             self.screenshot_format == 'jpg'
-
+        self.embed_screenshots = embed_screenshots
         built_in = BuiltIn()
         try:
             self.OUTPUT_DIRECTORY = built_in.get_variable_value(
@@ -279,24 +280,35 @@ class VisualTest(object):
         return x, y, w, h
 
     def add_screenshot_to_log(self, image, suffix):
-        screenshot_name = str(str(uuid.uuid1()) + suffix +
-                              '.{}'.format(self.screenshot_format))
-        if self.PABOTQUEUEINDEX is not None:
-            rel_screenshot_path = str(
-                self.SCREENSHOT_DIRECTORY / '{}-{}'.format(self.PABOTQUEUEINDEX, screenshot_name))
+        if self.embed_screenshots:
+            import base64
+            if self.screenshot_format == 'jpg':
+                _, encoded_img  = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY), 70])  # im_arr: image in Numpy one-dim array format.
+                im_b64 = base64.b64encode(encoded_img).decode()
+                print("*HTML* " + f'<img alt="screenshot" src="data:image/jpeg;base64,{im_b64}" style="width:50%; height: auto;">' )
+            else:
+                _, encoded_img  = cv2.imencode('.png', image)
+                im_b64 = base64.b64encode(encoded_img).decode()
+                print("*HTML* " + f'<img alt="screenshot" src="data:image/png;base64,{im_b64}" style="width:50%; height: auto;">' )
         else:
-            rel_screenshot_path = str(
-                self.SCREENSHOT_DIRECTORY / screenshot_name)
-        abs_screenshot_path = str(
-            self.OUTPUT_DIRECTORY/self.SCREENSHOT_DIRECTORY/screenshot_name)
-        os.makedirs(os.path.dirname(abs_screenshot_path), exist_ok=True)
-        if self.screenshot_format == 'jpg':
-            cv2.imwrite(abs_screenshot_path, image, [
-                        int(cv2.IMWRITE_JPEG_QUALITY), 70])
-        else:
-            cv2.imwrite(abs_screenshot_path, image)
-        print("*HTML* " + "<a href='" + rel_screenshot_path + "' target='_blank'><img src='" +
-              rel_screenshot_path + "' style='width:50%; height: auto;'/></a>")
+            screenshot_name = str(str(uuid.uuid1()) + suffix +
+                                '.{}'.format(self.screenshot_format))
+            if self.PABOTQUEUEINDEX is not None:
+                rel_screenshot_path = str(
+                    self.SCREENSHOT_DIRECTORY / '{}-{}'.format(self.PABOTQUEUEINDEX, screenshot_name))
+            else:
+                rel_screenshot_path = str(
+                    self.SCREENSHOT_DIRECTORY / screenshot_name)
+            abs_screenshot_path = str(
+                self.OUTPUT_DIRECTORY/self.SCREENSHOT_DIRECTORY/screenshot_name)
+            os.makedirs(os.path.dirname(abs_screenshot_path), exist_ok=True)
+            if self.screenshot_format == 'jpg':
+                cv2.imwrite(abs_screenshot_path, image, [
+                            int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            else:
+                cv2.imwrite(abs_screenshot_path, image)
+            print("*HTML* " + "<a href='" + rel_screenshot_path + "' target='_blank'><img src='" +
+                rel_screenshot_path + "' style='width:50%; height: auto;'/></a>")
 
     def find_partial_image_position(self, img, template, threshold=0.1, detection="classic"):
 

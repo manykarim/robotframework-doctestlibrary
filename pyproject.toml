@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "robotframework-doctestlibrary"
-version = "0.13.0"
+version = "0.14.0"
 description = "A library for Visual Document Testing"
 authors = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
 maintainers = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
