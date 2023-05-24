@@ -834,7 +834,7 @@ class VisualTest(object):
                 detected_differences.append(True)
 
     @keyword
-    def get_text_from_document(self, image: str, ocr_engine: str="tesseract"):
+    def get_text_from_document(self, image: str, ocr_engine: str="tesseract", ocr_config: str='--psm 11', ocr_lang: str='eng', increase_resolution: bool=True):
         """Gets Text Content from documents/images ``image``.
 
         Text content is returned as a list of strings. None if no text is identified.
@@ -842,6 +842,9 @@ class VisualTest(object):
         | =Arguments= | =Description= |
         | ``image`` | Path of the Image/Document from which the text content shall be retrieved |
         | ``ocr_engine`` | OCR Engine to be used. Options are ``tesseract`` and ``east``.  Default is ``tesseract``. |
+        | ``ocr_config`` | OCR Config to be used for tesseract. Default is ``--psm 11``. |
+        | ``ocr_lang`` | OCR Language to be used for tesseract. Default is ``eng``. |
+        | ``increase_resolution`` | Increase resolution of image to 300 DPI before OCR. Default is ``True``. |
 
         Examples:
         | ${text} | `Get Text From Document` | reference.pdf | #Gets Text Content from .pdf |
@@ -863,14 +866,14 @@ class VisualTest(object):
         else:
             if ocr_engine == "tesseract":
                 try:
-                    img.get_ocr_text_data()
+                    img.get_ocr_text_data(ocr_config, ocr_lang, increase_resolution)
                     # if confidence is higher than 20, add to text list
                     text = [x for x in img.text_content[0]['text'] if x]
                 except:
                     text = None
             elif ocr_engine == "east":
                 try:
-                    img.get_text_content_with_east()
+                    img.get_text_content_with_east(increase_resolution)
                     text = [x for x in img.text_content[0]['text'] if x]
                 except:
                     text = None
