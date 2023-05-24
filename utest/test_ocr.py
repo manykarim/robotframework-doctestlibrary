@@ -56,12 +56,19 @@ def test_image_text_content_with_pytesseract_custom_options_02(testdata_dir):
     assert any('1234567890' in s for s in img.text_content[0]['text'])
 
 def test_image_text_content_with_pytesseract_custom_options_03(testdata_dir):
-    img = CompareImage(testdata_dir / 'text_small.png')
+    img = CompareImage(testdata_dir / 'text_big.png')
     img.get_ocr_text_data(increase_resolution=False)
     assert any('abcdefghi' in s for s in img.text_content[0]['text'])
     assert any('1234567890' in s for s in img.text_content[0]['text'])
+    assert any('ABCDEFGHI' in s for s in img.text_content[0]['text'])
+
+def test_image_text_content_with_pytesseract_custom_options_04(testdata_dir):
+    img = CompareImage(testdata_dir / 'text_small.png')
+    img.get_ocr_text_data(increase_resolution=False)
+    assert len(img.text_content[0]['text']) > 0
     with pytest.raises(AssertionError):
         assert any('ABCDEFGHI' in s for s in img.text_content[0]['text'])
+
 
 
 @pytest.mark.skip(reason="Currently, tesseract is not so good at recognizing bright text")
