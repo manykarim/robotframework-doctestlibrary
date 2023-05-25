@@ -99,7 +99,7 @@ class CompareImage(object):
             self.text_content.append(text)
         return self.text_content
 
-    def get_ocr_text_data(self, ocr_config: str='--psm 11', ocr_lang: str='eng', increase_resolution: bool=True):
+    def get_ocr_text_data(self, ocr_config: str='--psm 11', ocr_lang: str='eng', increase_resolution: bool=True, confidence: int=20):
         if increase_resolution:
             self.increase_resolution_for_ocr()
         for i in range(len(self.opencv_images)):
@@ -121,7 +121,7 @@ class CompareImage(object):
             for j in range(n_boxes):
 
                 # If the prediction accuracy greater than %50
-                if int(float(d['conf'][j])) > self.PYTESSERACT_CONFIDENCE:
+                if int(float(d['conf'][j])) > confidence:
                     text_list.append(d['text'][j])
                     left_list.append(d['left'][j])
                     top_list.append(d['top'][j])

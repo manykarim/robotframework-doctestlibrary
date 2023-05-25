@@ -834,7 +834,7 @@ class VisualTest(object):
                 detected_differences.append(True)
 
     @keyword
-    def get_text_from_document(self, image: str, ocr_engine: str="tesseract", ocr_config: str='--psm 11', ocr_lang: str='eng', increase_resolution: bool=True):
+    def get_text_from_document(self, image: str, ocr_engine: str="tesseract", ocr_config: str='--psm 11', ocr_lang: str='eng', increase_resolution: bool=True, ocr_confidence: int=20):
         """Gets Text Content from documents/images ``image``.
 
         Text content is returned as a list of strings. None if no text is identified.
@@ -845,6 +845,7 @@ class VisualTest(object):
         | ``ocr_config`` | OCR Config to be used for tesseract. Default is ``--psm 11``. |
         | ``ocr_lang`` | OCR Language to be used for tesseract. Default is ``eng``. |
         | ``increase_resolution`` | Increase resolution of image to 300 DPI before OCR. Default is ``True``. |
+        | ``ocr_confidence`` | Confidence level for OCR via tesseract. Default is ``20``. |
 
         Examples:
         | ${text} | `Get Text From Document` | reference.pdf | #Gets Text Content from .pdf |
@@ -866,7 +867,7 @@ class VisualTest(object):
         else:
             if ocr_engine == "tesseract":
                 try:
-                    img.get_ocr_text_data(ocr_config, ocr_lang, increase_resolution)
+                    img.get_ocr_text_data(ocr_config, ocr_lang, increase_resolution, ocr_confidence)
                     # if confidence is higher than 20, add to text list
                     text = [x for x in img.text_content[0]['text'] if x]
                 except:
