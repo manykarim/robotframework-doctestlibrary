@@ -21,6 +21,7 @@ def utests(context):
         "-p",
         "-m",
         "pytest",
+        "--junitxml=results/pytest.xml",
         f"{ROOT}/utest",
     ]
     global utests_completed_process  
@@ -37,6 +38,7 @@ def atests(context):
         "robot",
         "--loglevel=TRACE:DEBUG",
         "--listener RobotStackTracer",
+        "-d results",
         f"{ROOT}/atest/Compare.robot",
         f"{ROOT}/atest/PdfContent.robot",
         f"{ROOT}/atest/PrintJobs.robot",
