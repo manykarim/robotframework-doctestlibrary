@@ -48,7 +48,11 @@ jobs:
         run: |
           poetry run invoke tests
       - name: Store Artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: test-results # Choose a descriptive name for your artifact
-          path: results # The path to the directory containing the artifact files
+          path: |
+            results/report.html
+            results/log.html
+            results/output.xml
+            results/pytest.xml
