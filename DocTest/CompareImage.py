@@ -59,10 +59,9 @@ class CompareImage(object):
         self.barcodes = []
         self.rerendered_for_ocr = False
         self.mupdfdoc= None
+        self.ocr_performed = False
         self.load_image_into_array()
         self.load_text_content_and_identify_masks()
-        
-    
         toc = time.perf_counter()
         print(f"Compare Image Object created in {toc - tic:0.4f} seconds")
 
@@ -129,6 +128,7 @@ class CompareImage(object):
                     height_list.append(d['height'][j])
                     conf_list.append(d['conf'][j])
             self.text_content.append({'text': text_list, 'left': left_list, 'top': top_list, 'width': width_list, 'height': height_list, 'conf': conf_list})
+        self.ocr_performed = True
 
     def increase_resolution_for_ocr(self):
         # experimental: IF OCR is used and DPI is lower than self.MINIMUM_OCR_RESOLUTION DPI, re-render with self.MINIMUM_OCR_RESOLUTION DPI
@@ -161,6 +161,7 @@ class CompareImage(object):
         for frame in self.opencv_images:
             text = self.east_text_extractor.get_image_text(frame)
             self.text_content.append(text)
+        self.ocr_performed = True
 
     def identify_placeholders(self):
         placeholders = None
@@ -212,12 +213,13 @@ class CompareImage(object):
                     # print(pattern)
 
                     if self.mupdfdoc is None or self.force_ocr is True:
-                        if self.ocr_engine == 'tesseract':
-                            self.get_ocr_text_data()
-                        elif self.ocr_engine == 'east':
-                            self.get_text_content_with_east()
-                        else:
-                            self.get_ocr_text_data()
+                        if self.ocr_performed is False:
+                            if self.ocr_engine == 'tesseract':
+                                self.get_ocr_text_data()
+                            elif self.ocr_engine == 'east':
+                                self.get_text_content_with_east()
+                            else:
+                                self.get_ocr_text_data()
                         for i in range(len(self.opencv_images)):
                             d = self.text_content[i]
                             keys = list(d.keys())
