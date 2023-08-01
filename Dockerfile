@@ -19,8 +19,8 @@ RUN apt-get update && apt-get install -y \
     gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
-RUN wget -O /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata \
-    && wget -O /usr/share/tesseract-ocr/4.00/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/raw/main/osd.traineddata
+RUN wget -O /usr/share/tesseract-ocr/5/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata \
+    && wget -O /usr/share/tesseract-ocr/5/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/raw/main/osd.traineddata
           
 RUN wget https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/${release_name}/${archive_name}.tgz \
   && tar -xvzf ${archive_name}.tgz \
