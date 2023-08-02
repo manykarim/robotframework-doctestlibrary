@@ -18,6 +18,7 @@ import fitz
 import json
 import math
 from DocTest.Downloader import is_url, download_file_from_url
+import logging
 
 
 @library
@@ -179,24 +180,16 @@ class VisualTest(object):
             raise AssertionError(
                 'The candidate file does not exist: {}'.format(test_image))
 
-        with futures.ThreadPoolExecutor(max_workers=2) as parallel_executor:
-            reference_future = parallel_executor.submit(CompareImage, reference_image, placeholder_file=placeholder_file, contains_barcodes=contains_barcodes,
-                                                        get_pdf_content=get_pdf_content, DPI=self.DPI, force_ocr=force_ocr, mask=mask, ocr_engine=ocr_engine)
-            candidate_future = parallel_executor.submit(
-                CompareImage, test_image, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI)
-            reference_compare_image = reference_future.result()
-            candidate_compare_image = candidate_future.result()
+        reference_compare_image = CompareImage(reference_image, placeholder_file=placeholder_file, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, force_ocr=force_ocr, mask=mask, ocr_engine=ocr_engine)
+        candidate_compare_image = CompareImage(test_image, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI)
+
 
         tic = time.perf_counter()
         if reference_compare_image.placeholders != []:
             candidate_compare_image.placeholders = reference_compare_image.placeholders
-            with futures.ThreadPoolExecutor(max_workers=2) as parallel_executor:
-                reference_collection_future = parallel_executor.submit(
-                    reference_compare_image.get_image_with_placeholders)
-                compare_collection_future = parallel_executor.submit(
-                    candidate_compare_image.get_image_with_placeholders)
-                reference_collection = reference_collection_future.result()
-                compare_collection = compare_collection_future.result()
+            reference_collection = reference_compare_image.get_image_with_placeholders()
+            compare_collection = candidate_compare_image.get_image_with_placeholders()
+            logging.debug("OCR Data: {}".format(reference_compare_image.text_content))
         else:
             reference_collection = reference_compare_image.opencv_images
             compare_collection = candidate_compare_image.opencv_images
@@ -216,25 +209,19 @@ class VisualTest(object):
                     compare_collection[i], "_candidate_page_" + str(i+1))
             raise AssertionError(
                 'Reference File and Candidate File have different number of pages')
-
-        check_difference_results = []
-        with futures.ThreadPoolExecutor(max_workers=8) as parallel_executor:
-            for i, (reference, candidate) in enumerate(zip(reference_collection, compare_collection)):
-                if get_pdf_content:
-                    try:
-                        reference_pdf_content = reference_compare_image.mupdfdoc[i]
-                        candidate_pdf_content = candidate_compare_image.mupdfdoc[i]
-                    except:
-                        reference_pdf_content = reference_compare_image.mupdfdoc[0]
-                        candidate_pdf_content = candidate_compare_image.mupdfdoc[0]
-                else:
-                    reference_pdf_content = None
-                    candidate_pdf_content = None
-                check_difference_results.append(parallel_executor.submit(
-                    self.check_for_differences, reference, candidate, i, detected_differences, compare_options, reference_pdf_content, candidate_pdf_content))
-        for result in check_difference_results:
-            if result.exception() is not None:
-                raise result.exception()
+        
+        for i, (reference, candidate) in enumerate(zip(reference_collection, compare_collection)):
+            if get_pdf_content:
+                try:
+                    reference_pdf_content = reference_compare_image.mupdfdoc[i]
+                    candidate_pdf_content = candidate_compare_image.mupdfdoc[i]
+                except:
+                    reference_pdf_content = reference_compare_image.mupdfdoc[0]
+                    candidate_pdf_content = candidate_compare_image.mupdfdoc[0]
+            else:
+                reference_pdf_content = None
+                candidate_pdf_content = None
+            self.check_for_differences(reference, candidate, i, detected_differences, compare_options, reference_pdf_content, candidate_pdf_content)
         if reference_compare_image.barcodes != []:
             if reference_compare_image.barcodes != candidate_compare_image.barcodes:
                 detected_differences.append(True)
@@ -482,13 +469,8 @@ class VisualTest(object):
                 raise AssertionError(
                     f'The compared images have different dimensions:\nreference:{reference.shape}\ncandidate:{candidate.shape}')
 
-        with futures.ThreadPoolExecutor(max_workers=2) as parallel_executor:
-            grayA_future = parallel_executor.submit(
-                cv2.cvtColor, reference, cv2.COLOR_BGR2GRAY)
-            grayB_future = parallel_executor.submit(
-                cv2.cvtColor, candidate, cv2.COLOR_BGR2GRAY)
-            grayA = grayA_future.result()
-            grayB = grayB_future.result()
+        grayA = cv2.cvtColor(reference, cv2.COLOR_BGR2GRAY)
+        grayB = cv2.cvtColor(candidate, cv2.COLOR_BGR2GRAY)
 
         # Blur images if blur=True
         if compare_options['blur']:
@@ -621,10 +603,10 @@ class VisualTest(object):
                             print(text_reference)
                         else:
                             images_are_equal = False
-                            detected_differences.append(True)
                             print("Partial text content is different")
                             print(text_reference +
                                   " is not equal to " + text_candidate)
+                            raise AssertionError('The compared images are different.')
                 elif compare_options["get_pdf_content"] is True:
 
                     images_are_equal = True
@@ -651,17 +633,17 @@ class VisualTest(object):
 
                         if len(diff_area_ref_words) != len(diff_area_cand_words):
                             images_are_equal = False
-                            detected_differences.append(True)
                             print("The identified pdf layout elements are different",
                                   diff_area_ref_words, diff_area_cand_words)
+                            raise AssertionError('The compared images are different.')
                         else:
 
                             if diff_area_ref_words.strip() != diff_area_cand_words.strip():
                                 images_are_equal = False
-                                detected_differences.append(True)
                                 print("Partial text content is different")
                                 print(diff_area_ref_words.strip(
                                 ), " is not equal to ", diff_area_cand_words.strip())
+                                raise AssertionError('The compared images are different.')
                         if images_are_equal:
                             print("Partial text content of area is the same")
                             print(diff_area_ref_words)
@@ -697,20 +679,17 @@ class VisualTest(object):
                         except:
                             print("Error in finding position in compare image")
                             images_are_equal = False
-                            detected_differences.append(True)
-                            continue
+                            raise AssertionError('The compared images are different.')
                         #positions_in_compare_image = self.find_partial_image_position(candidate, diff_area_reference)
                         if (np.mean(diff_area_reference) == 255) or (np.mean(diff_area_candidate) == 255):
                             images_are_equal = False
-                            detected_differences.append(True)
 
                             print("Image section contains only white background")
 
                             self.add_screenshot_to_log(np.concatenate((cv2.copyMakeBorder(diff_area_reference, top=2, bottom=2, left=2, right=2, borderType=cv2.BORDER_CONSTANT, value=[
                                                        0, 0, 0]), cv2.copyMakeBorder(diff_area_candidate, top=2, bottom=2, left=2, right=2, borderType=cv2.BORDER_CONSTANT, value=[0, 0, 0])), axis=1), "_diff_area_concat")
 
-                            #self.add_screenshot_to_log(np.concatenate((diff_area_reference, diff_area_candidate), axis=1), "_diff_area_concat")
-
+                            raise AssertionError('The compared images are different.')
                         else:
                             if positions_in_compare_image:
                                 # if positions_in_compare_image contains a key 'distance'
@@ -723,9 +702,9 @@ class VisualTest(object):
                                         print(
                                             "This is outside of the allowed range of ", move_tolerance, " pixels")
                                         images_are_equal = False
-                                        detected_differences.append(True)
                                         self.add_screenshot_to_log(self.overlay_two_images(
                                             search_area_reference, search_area_candidate), "_diff_area_blended")
+                                        raise AssertionError('The compared images are different.')
                                     else:
                                         print("Image section moved ",
                                             move_distance, " pixels")
@@ -749,9 +728,9 @@ class VisualTest(object):
                                         print(
                                             "This is outside of the allowed range of ", move_tolerance, " pixels")
                                         images_are_equal = False
-                                        detected_differences.append(True)
                                         self.add_screenshot_to_log(self.overlay_two_images(
                                             search_area_reference, search_area_candidate), "_diff_area_blended")
+                                        raise AssertionError('The compared images are different.')
 
                                     else:
                                         print("Image section moved ",
@@ -763,11 +742,11 @@ class VisualTest(object):
 
                             else:
                                 images_are_equal = False
-                                detected_differences.append(True)
                                 print(
                                     "The reference image section was not found in test image (or vice versa)")
                                 self.add_screenshot_to_log(np.concatenate((cv2.copyMakeBorder(diff_area_reference, top=2, bottom=2, left=2, right=2, borderType=cv2.BORDER_CONSTANT, value=[
                                                            0, 0, 0]), cv2.copyMakeBorder(diff_area_candidate, top=2, bottom=2, left=2, right=2, borderType=cv2.BORDER_CONSTANT, value=[0, 0, 0])), axis=1), "_diff_area_concat")
+                                raise AssertionError('The compared images are different.')
 
                 elif compare_options["get_pdf_content"] is True:
                     images_are_equal = True
@@ -793,9 +772,9 @@ class VisualTest(object):
 
                         if len(diff_area_ref_words) != len(diff_area_cand_words):
                             images_are_equal = False
-                            detected_differences.append(True)
                             print("The identified pdf layout elements are different",
                                   diff_area_ref_words, diff_area_cand_words)
+                            raise AssertionError('The compared images are different.')
                         else:
                             for ref_Item, cand_Item in zip(diff_area_ref_words, diff_area_cand_words):
                                 if ref_Item == cand_Item:
@@ -819,10 +798,9 @@ class VisualTest(object):
                                         print(
                                             "This is outside of the allowed range of ", move_tolerance, " pixels")
                                         images_are_equal = False
-                                        detected_differences.append(True)
                                         self.add_screenshot_to_log(self.overlay_two_images(
                                             diff_area_reference, diff_area_candidate), "_diff_area_blended")
-
+                                        raise AssertionError('The compared images are different.')
                                     else:
                                         print("Image section moved ", left_moved,
                                               top_moved, right_moved, bottom_moved, " pixels")
@@ -831,7 +809,7 @@ class VisualTest(object):
                                         self.add_screenshot_to_log(self.overlay_two_images(
                                             diff_area_reference, diff_area_candidate), "_diff_area_blended")
             if images_are_equal is not True:
-                detected_differences.append(True)
+                raise AssertionError('The compared images are different.')
 
     @keyword
     def get_text_from_document(self, image: str, ocr_engine: str="tesseract", ocr_config: str='--psm 11', ocr_lang: str='eng', increase_resolution: bool=True, ocr_confidence: int=20):
