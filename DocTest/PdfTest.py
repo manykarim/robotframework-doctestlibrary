@@ -4,6 +4,7 @@ from deepdiff import DeepDiff
 from robot.api.deco import keyword, library
 import fitz
 import re
+from DocTest.Downloader import is_url, download_file_from_url
 
 ROBOT_AUTO_KEYWORDS = False
 
@@ -17,7 +18,7 @@ class PdfTest(object):
     def compare_pdf_documents(self, reference_document, candidate_document, **kwargs):
         """Compares some PDF metadata/properties of ``reference_document`` and ``candidate_document``.
         
-        ``reference_document`` and ``candidate_document`` shall both be path to ``PDF`` files.
+        ``reference_document`` and ``candidate_document`` shall both be a path or an URL to ``PDF`` files.
         ``compare`` can be passed as an optional argument with following values:
 
             - all
@@ -54,6 +55,10 @@ class PdfTest(object):
         check_pdf_text = bool(kwargs.pop('check_pdf_text', False))
         compare = (kwargs.pop('compare', "all"))
         compare = [x.strip() for x in compare.split(',')]
+        if is_url(reference_document):
+            reference_document = download_file_from_url(reference_document)
+        if is_url(candidate_document):
+            candidate_document = download_file_from_url(candidate_document)
         ref_doc = fitz.open(reference_document)
         cand_doc = fitz.open(candidate_document)
         reference = {}
@@ -159,6 +164,8 @@ class PdfTest(object):
         | Check Text Content | ${strings} | candidate.pdf |
         
         """
+        if is_url(candidate_document):
+            candidate_document = download_file_from_url(candidate_document)
         doc = fitz.open(candidate_document)
         missing_text_list = []
         all_texts_were_found = None
@@ -181,7 +188,7 @@ class PdfTest(object):
     def PDF_should_contain_strings(self, expected_text_list, candidate_document):
         """Checks if each item provided in the list ``expected_text_list`` appears in the PDF File ``candidate_document``.
         
-        ``expected_text_list`` is a list of strings or a single string, ``candidate_document`` is the path to a PDF File.
+        ``expected_text_list`` is a list of strings or a single string, ``candidate_document`` is the path or URL to a PDF File.
         
         Examples:
 
@@ -190,6 +197,8 @@ class PdfTest(object):
         | PDF Should Contain Strings | One String | candidate.pdf |
         
         """
+        if is_url(candidate_document):
+            candidate_document = download_file_from_url(candidate_document)
         doc = fitz.open(candidate_document)
         # if expected_text_list is a string, convert it to a list
         if isinstance(expected_text_list, str):
@@ -221,7 +230,7 @@ class PdfTest(object):
     def PDF_should_not_contain_strings(self, expected_text_list, candidate_document):
         """Checks if each item provided in the list ``expected_text_list`` does NOT appear in the PDF File ``candidate_document``.
         
-        ``expected_text_list`` is a list of strings or a single string, ``candidate_document`` is the path to a PDF File.
+        ``expected_text_list`` is a list of strings or a single string, ``candidate_document`` is the path or URL to a PDF File.
         
         Examples:
 
@@ -230,6 +239,8 @@ class PdfTest(object):
         | PDF Should Not Contain Strings | One String | candidate.pdf |
         
         """
+        if is_url(candidate_document):
+            candidate_document = download_file_from_url(candidate_document)
         doc = fitz.open(candidate_document)
         # if expected_text_list is a string, convert it to a list
         if isinstance(expected_text_list, str):
