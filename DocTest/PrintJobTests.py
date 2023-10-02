@@ -3,7 +3,8 @@ import re
 from pathlib import Path
 from pprint import pprint
 from deepdiff import DeepDiff
-from robot.api.deco import keyword, library
+from robot.api.deco import keyword, library, not_keyword
+from DocTest.Downloader import is_url, download_file_from_url
 
 ROBOT_AUTO_KEYWORDS = False
 
@@ -157,7 +158,7 @@ class PostscriptVisitor(NodeVisitor):
             return visited_children
         return node
        
-
+@not_keyword
 def chop(text, prefix=None, suffix=None):
     if prefix!=None:
         text=re.sub(prefix, '', text)
@@ -165,9 +166,13 @@ def chop(text, prefix=None, suffix=None):
         text=re.sub(suffix, '', text)
     return text
 
-
+@keyword
 def get_pcl_print_job(filename):
+    """
+    Parses a pcl file and returns a PrintJob object.
 
+    ``filename`` is a pcl file. It can be a local file or a url.
+    """
     grammar_pcl_commands = Grammar(
         r"""
         file = command*
@@ -200,8 +205,8 @@ def get_pcl_print_job(filename):
         carriage_return = ~r"[\x0d]"
         """
     )
-
-
+    if is_url(filename):
+        filename = download_file_from_url(filename)
     with open(filename, encoding="utf8", errors="ignore") as f:
         content = f.read()
 
@@ -213,7 +218,14 @@ def get_pcl_print_job(filename):
     pclPrintJob = PrintJob('pcl', [{'property':'pcl_commands', 'value':pv.pcl_commands}])
     return pclPrintJob
 
+@keyword
 def get_postscript_print_job(filename):
+    """
+    Parses a postscript file and returns a PrintJob object.
+
+    ``filename`` is a postscript file. It can be a local file or a url.
+
+    """
     grammar_postscript_commands = Grammar(
         r"""
         file = header defaults? procedure_definitions document_setup pages+ document_trailer eof emptyline?
@@ -280,6 +292,8 @@ def get_postscript_print_job(filename):
         emptyline   = ws+
         """
     )
+    if is_url(filename):
+        filename = download_file_from_url(filename)
     with open(filename, encoding="utf8", errors="ignore") as f:
         content = f.read()
 
@@ -292,14 +306,9 @@ def get_postscript_print_job(filename):
     properties.append({'property':'pjl_commands', 'value':pv.pjl_commands})
     properties.append({'property':'pages', 'value':pv.pages})
     properties.append({'property':'trailer', 'value':pv.trailer})
-
-
     postscript_printjob = PrintJob('postscript', properties)
     return postscript_printjob
-
-
-
-        
+       
 @keyword
 def compare_print_jobs(type, reference_file, test_file):
     """Compares several print job metadata/properties of ``reference_file`` and ``test_file``.
