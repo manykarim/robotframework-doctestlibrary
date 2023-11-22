@@ -16,7 +16,11 @@ homepage = "https://github.com/manykarim/robotframework-doctestlibrary"
 python = "^3.8"
 PyMuPDF = "<1.23.0"
 imutils = "*"
-numpy = "*"
+numpy = [
+    {version = "<1.25", python = "<=3.8"},
+    {version = "*", python = ">3.8,<3.12"},
+    {version = ">1.25", python = ">=3.12"}
+]
 opencv-python-headless = "*"
 parsimonious = "*"
 pytesseract = "*"
