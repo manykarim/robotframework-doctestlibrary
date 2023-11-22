@@ -14,7 +14,7 @@ homepage = "https://github.com/manykarim/robotframework-doctestlibrary"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-PyMuPDF = "<1.23.0"
+PyMuPDF = ">=1.23.1"
 imutils = "*"
 numpy = [
     {version = "<1.25", python = "<=3.8"},
@@ -39,6 +39,7 @@ Wand = "*"
 pylibdmtx = "*"
 deepdiff = "*"
 pyzbar = "^0.1.9"
+setuptools = { version = "*", python = "^3.12" }
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
