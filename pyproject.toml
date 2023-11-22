@@ -25,7 +25,10 @@ opencv-python-headless = "*"
 parsimonious = "*"
 pytesseract = "*"
 robotframework = ">=4"
-scipy = "*"
+scipy = [
+    {version = "<1.11", python = "<=3.8"},
+    {version = "*", python = ">3.8"}
+]
 scikit-image = "*"
 Wand = "*"
 pylibdmtx = "*"
