@@ -102,7 +102,7 @@ class PostscriptVisitor(NodeVisitor):
                 return {'property':'feature', 'value':visited_children}
             else:
                 name, value = visited_children[0].children
-                name = re.sub('(%%|[\s]|:)', '', name.text)
+                name = re.sub('(%%|[\\s]|:)', '', name.text)
                 value = value.text.strip()
             return {'property':name, 'value':value}
 
@@ -112,7 +112,7 @@ class PostscriptVisitor(NodeVisitor):
 
     def visit_comments(self, node, visited_children):
         comment, value = visited_children
-        comment = re.sub('(%%|[\s]|:)', '', comment.text)
+        comment = re.sub('(%%|[\\s]|:)', '', comment.text)
         value = value.text.strip()
         return {'property':comment, 'value':value}
         pass
