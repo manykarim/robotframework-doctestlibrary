@@ -898,6 +898,55 @@ class VisualTest(object):
                 barcodes = [values, coordinates]
         return barcodes
 
+    @keyword
+    def image_should_contain_template(self, image: str, template: str, threshold: float=0.8, take_screenshots: bool=False, detection: str="template"):
+        """Verifies that ``image`` contains a ``template``.  
+
+        Returns the coordinates of the template in the image if the template is found.  
+        Can be used to find a smaller image ``template`` in a larger image ``image``.  
+        ``image`` and ``template`` can be either a path to an image or a url.  
+        The ``threshold`` can be used to set the minimum similarity between the two images.  
+        If ``take_screenshots`` is set to ``True``, screenshots of the image with the template highlighted are added to the log.  
+
+        | =Arguments= | =Description= |
+        | ``image`` | Path of the Image/Document in which the template shall be found |
+        | ``template`` | Path of the Image/Document which shall be found in the image |
+        | ``threshold`` | Minimum similarity between the two images. Default is ``0.8``. |
+        | ``take_screenshots`` | If set to ``True``, screenshots of the image with the template highlighted are added to the log. Default is ``False``. |
+        | ``detection`` | Detection method to be used. Options are ``template`` and ``orb``.  Default is ``template``. |
+
+        Examples:
+        | `Image Should Contain Template` | reference.jpg | template.jpg | #Checks if template is in image |
+        | `Image Should Contain Template` | reference.jpg | template.jpg | threshold=0.9 | #Checks if template is in image with a higher threshold |
+        | `Image Should Contain Template` | reference.jpg | template.jpg | take_screenshots=True | #Checks if template is in image and adds screenshots to log |
+        | `${coordinates}` | `Image Should Contain Template` | reference.jpg | template.jpg | #Checks if template is in image and returns coordinates of template |
+        | `Should Be Equal As Numbers` | ${coordinates['pt1'][0]} | 100 | #Checks if x coordinate of found template is 100 |
+        """
+        img = CompareImage(image).opencv_images[0]
+        template = CompareImage(template).opencv_images[0]
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        h, w = template.shape[0:2]
+
+        if detection == "template":
+            res = cv2.matchTemplate(
+                img_gray, template_gray, cv2.TM_SQDIFF_NORMED)
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            if (min_val < threshold):
+                top_left = min_loc
+                bottom_right = (top_left[0] + w, top_left[1] + h)
+                if take_screenshots:
+                    cv2.rectangle(img, top_left, bottom_right, 255, 2)
+                    self.add_screenshot_to_log(img, "image_with_template")
+                return {"pt1": top_left, "pt2": bottom_right}
+            else:
+                AssertionError('The Template was not found in the Image.')
+
+
+
+
+
+
 def remove_empty_textelements(lst):
     new_list = []
     for i, dic in enumerate(lst):

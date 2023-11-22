@@ -160,3 +160,11 @@ def test_get_barcode_all(testdata_dir):
                                    {'x':236, 'y':90, 'width':396, 'height':158}, 
                                    {'x':480, 'y':2025, 'width':184, 'height':183}, 
                                    {'x':979, 'y':1971, 'width':272, 'height':271}]
+
+def test_find_existing_partial_image_with_template(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image=str(testdata_dir / 'birthday_1080.png')
+    template_image=str(testdata_dir / 'birthday_partial_banana.png')
+    position = visual_tester.image_should_contain_template(ref_image, template_image, detection='template')
+    assert position['pt1'] == (154, 1001)
+    assert position['pt2'] == (351, 1152)
