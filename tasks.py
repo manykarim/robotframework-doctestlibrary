@@ -39,6 +39,7 @@ def atests(context):
         "--loglevel=TRACE:DEBUG",
         "--listener RobotStackTracer",
         "-d results",
+        "-x xunit.xml",
         f"{ROOT}/atest/Compare.robot",
         f"{ROOT}/atest/PdfContent.robot",
         f"{ROOT}/atest/PrintJobs.robot",
