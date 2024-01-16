@@ -63,5 +63,5 @@ jobs:
         with:
           name: xUnit Tests            # Name of the check run which will be created
           path: results/pytest.xml,results/xunit.xml    # Path to test results
-          reporter: jest-junit        # Format of test results
+          reporter: java-junit        # Format of test results
           
