@@ -50,7 +50,7 @@ jobs:
       - name: Store Artifact
         uses: actions/upload-artifact@v3
         with:
-          name: test-results # Choose a descriptive name for your artifact
+          name: test-results ${{ matrix.python-version }} # Choose a descriptive name for your artifact
           path: |
             results/report.html
             results/log.html
@@ -61,7 +61,7 @@ jobs:
         uses: dorny/test-reporter@v1
         if: success() || failure()    # run this step even if previous step failed
         with:
-          name: xUnit Tests            # Name of the check run which will be created
+          name: xUnit Tests ${{ matrix.python-version }}            # Name of the check run which will be created
           path: results/pytest.xml,results/xunit.xml    # Path to test results
-          reporter: java-junit        # Format of test results
+          reporter: swift-junit        # Format of test results
           
