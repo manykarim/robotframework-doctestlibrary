@@ -58,7 +58,7 @@ jobs:
             results/pytest.xml
             results/xunit.xml
       - name: Test Report
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@main
         if: success() || failure()    # run this step even if previous step failed
         with:
           name: xUnit Tests ${{ matrix.python-version }}            # Name of the check run which will be created
