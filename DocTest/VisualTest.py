@@ -932,7 +932,7 @@ class VisualTest(object):
             res = cv2.matchTemplate(
                 img_gray, template_gray, cv2.TM_SQDIFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            if (min_val < threshold):
+            if (min_val <= threshold):
                 top_left = min_loc
                 bottom_right = (top_left[0] + w, top_left[1] + h)
                 if take_screenshots:
