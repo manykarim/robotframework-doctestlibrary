@@ -940,7 +940,7 @@ class VisualTest(object):
                     self.add_screenshot_to_log(img, "image_with_template")
                 return {"pt1": top_left, "pt2": bottom_right}
             else:
-                AssertionError('The Template was not found in the Image.')
+                raise AssertionError('The Template was not found in the Image.')
 
 
 
