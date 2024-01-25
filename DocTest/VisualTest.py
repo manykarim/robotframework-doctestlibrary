@@ -899,7 +899,11 @@ class VisualTest(object):
         return barcodes
 
     @keyword
-    def image_should_contain_template(self, image: str, template: str, threshold: float=0.8, take_screenshots: bool=False, detection: str="template"):
+    def image_should_contain_template(self, image: str, template: str, threshold: float=0.8, 
+                                      take_screenshots: bool=False, log_template: bool=False, 
+                                      detection: str="template",
+                                      tpl_crop_x1: int = None, tpl_crop_y1: int = None,
+                                      tpl_crop_x2: int = None, tpl_crop_y2: int = None):
         """Verifies that ``image`` contains a ``template``.  
 
         Returns the coordinates of the template in the image if the template is found.  
@@ -912,35 +916,60 @@ class VisualTest(object):
         | ``image`` | Path of the Image/Document in which the template shall be found |
         | ``template`` | Path of the Image/Document which shall be found in the image |
         | ``threshold`` | Minimum similarity between the two images. Default is ``0.8``. |
-        | ``take_screenshots`` | If set to ``True``, screenshots of the image with the template highlighted are added to the log. Default is ``False``. |
+        | ``take_screenshots`` | If set to ``True``, a screenshot of the image with the template highlighted gets linked to the HTML log (if `embed_screenshots` is used during import, the image gets embedded). Default is ``False``. |
+        | ``log_template`` | If set to ``True``, a screenshots of the template image gets linked to the HTML log (if `embed_screenshots` is used during import, the image gets embedded). Default is ``False``. |
         | ``detection`` | Detection method to be used. Options are ``template`` and ``orb``.  Default is ``template``. |
+        | ``tpl_crop_x1`` | X1 coordinate of the rectangle to crop the template image to.  |
+        | ``tpl_crop_y1`` | Y1 coordinate of the rectangle to crop the template image to.  |
+        | ``tpl_crop_x2`` | X2 coordinate of the rectangle to crop the template image to.  |
+        | ``tpl_crop_y2`` | Y2 coordinate of the rectangle to crop the template image to.  |
 
         Examples:
         | `Image Should Contain Template` | reference.jpg | template.jpg | #Checks if template is in image |
         | `Image Should Contain Template` | reference.jpg | template.jpg | threshold=0.9 | #Checks if template is in image with a higher threshold |
         | `Image Should Contain Template` | reference.jpg | template.jpg | take_screenshots=True | #Checks if template is in image and adds screenshots to log |
+        | `Image Should Contain Template` | reference.jpg | template.jpg | tpl_crop_x1=50  tpl_crop_y1=50  tpl_crop_x2=100  tpl_crop_y2=100 | #Before image comparison, the template image gets cropped to that selection. |
         | `${coordinates}` | `Image Should Contain Template` | reference.jpg | template.jpg | #Checks if template is in image and returns coordinates of template |
         | `Should Be Equal As Numbers` | ${coordinates['pt1'][0]} | 100 | #Checks if x coordinate of found template is 100 |
         """
+        all_crop_args = all((tpl_crop_x1, tpl_crop_y1, tpl_crop_x2, tpl_crop_y2))
+        any_crop_args = any((tpl_crop_x1, tpl_crop_y1, tpl_crop_x2, tpl_crop_y2))
+        if not all_crop_args and any_crop_args:
+            raise ValueError("Either provide all crop arguments or none of them.")
+
         img = CompareImage(image).opencv_images[0]
         template = CompareImage(template).opencv_images[0]
+        # Crop the template image if crop boundaries are provided
+        if all_crop_args:
+            template = template[tpl_crop_y1:tpl_crop_y2, tpl_crop_x1:tpl_crop_x2]
+
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
         h, w = template.shape[0:2]
 
         if detection == "template":
+            match = False
             res = cv2.matchTemplate(
                 img_gray, template_gray, cv2.TM_SQDIFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-            if (min_val < threshold):
-                top_left = min_loc
-                bottom_right = (top_left[0] + w, top_left[1] + h)
-                if take_screenshots:
-                    cv2.rectangle(img, top_left, bottom_right, 255, 2)
-                    self.add_screenshot_to_log(img, "image_with_template")
+            top_left = min_loc
+            bottom_right = (top_left[0] + w, top_left[1] + h)
+            if min_val <= threshold:
+                match = True
+                cv2.rectangle(img, top_left, bottom_right, 255, 2)
+            
+            if take_screenshots:
+                self.add_screenshot_to_log(img, "image_with_template")
+
+            if log_template:
+                self.add_screenshot_to_log(template, "template_original")
+
+            if match:
                 return {"pt1": top_left, "pt2": bottom_right}
             else:
                 AssertionError('The Template was not found in the Image.')
+
+
 
 
 
