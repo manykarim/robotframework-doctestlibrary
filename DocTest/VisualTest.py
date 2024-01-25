@@ -914,7 +914,7 @@ class VisualTest(object):
         | =Arguments= | =Description= |
         | ``image`` | Path of the Image/Document in which the template shall be found |
         | ``template`` | Path of the Image/Document which shall be found in the image |
-        | ``threshold`` | Minimum similarity between the two images. Default is ``0.8``. |
+        | ``threshold`` | Minimum similarity between the two images between ``0.0`` and ``1.0``. Default is ``0.0`` which is an exact match. Higher values allow more differences |
         | ``take_screenshots`` | If set to ``True``, a screenshot of the image with the template highlighted gets linked to the HTML log (if `embed_screenshots` is used during import, the image gets embedded). Default is ``False``. |
         | ``log_template`` | If set to ``True``, a screenshots of the template image gets linked to the HTML log (if `embed_screenshots` is used during import, the image gets embedded). Default is ``False``. |
         | ``detection`` | Detection method to be used. Options are ``template`` and ``orb``.  Default is ``template``. |
