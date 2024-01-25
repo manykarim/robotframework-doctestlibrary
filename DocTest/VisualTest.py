@@ -898,7 +898,7 @@ class VisualTest(object):
         return barcodes
 
     @keyword
-    def image_should_contain_template(self, image: str, template: str, threshold: float=0.8, 
+    def image_should_contain_template(self, image: str, template: str, threshold: float=0.0, 
                                       take_screenshots: bool=False, log_template: bool=False, 
                                       detection: str="template",
                                       tpl_crop_x1: int = None, tpl_crop_y1: int = None,
