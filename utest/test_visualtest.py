@@ -168,3 +168,10 @@ def test_find_existing_partial_image_with_template(testdata_dir):
     position = visual_tester.image_should_contain_template(ref_image, template_image, detection='template')
     assert position['pt1'] == (154, 1001)
     assert position['pt2'] == (351, 1152)
+
+def test_find_no_existing_partial_image_with_template(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image=str(testdata_dir / 'birthday_1080.png')
+    template_image=str(testdata_dir / 'text.png')
+    with pytest.raises(AssertionError, match='The Template was not found in the Image'):
+        visual_tester.image_should_contain_template(ref_image, template_image, detection='template')
