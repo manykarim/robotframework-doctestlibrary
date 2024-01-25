@@ -272,11 +272,11 @@ class VisualTest(object):
             if self.screenshot_format == 'jpg':
                 _, encoded_img  = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY), 70])  # im_arr: image in Numpy one-dim array format.
                 im_b64 = base64.b64encode(encoded_img).decode()
-                print("*HTML* " + f'<img alt="screenshot" src="data:image/jpeg;base64,{im_b64}" style="width:50%; height: auto;">' )
+                print("*HTML* " + f'{suffix}:<br><img alt="screenshot" src="data:image/jpeg;base64,{im_b64}" style="width:50%; height: auto;">' )
             else:
                 _, encoded_img  = cv2.imencode('.png', image)
                 im_b64 = base64.b64encode(encoded_img).decode()
-                print("*HTML* " + f'<img alt="screenshot" src="data:image/png;base64,{im_b64}" style="width:50%; height: auto;">' )
+                print("*HTML* " + f'{suffix}:<br><img alt="screenshot" src="data:image/png;base64,{im_b64}" style="width:50%; height: auto;">' )
         else:
             screenshot_name = str(str(uuid.uuid1()) + suffix +
                                 '.{}'.format(self.screenshot_format))
@@ -294,8 +294,7 @@ class VisualTest(object):
                             int(cv2.IMWRITE_JPEG_QUALITY), 70])
             else:
                 cv2.imwrite(abs_screenshot_path, image)
-            print("*HTML* " + "<a href='" + rel_screenshot_path + "' target='_blank'><img src='" +
-                rel_screenshot_path + "' style='width:50%; height: auto;'/></a>")
+            print("*HTML* " + f'{suffix}:<br><a href="{rel_screenshot_path}" target="_blank"><img src="{rel_screenshot_path}" style="width:50%; height: auto;"></a>')
 
     def find_partial_image_position(self, img, template, threshold=0.1, detection="classic"):
 
