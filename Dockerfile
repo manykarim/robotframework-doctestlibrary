@@ -3,8 +3,8 @@ FROM python:3.9
 MAINTAINER Many Kasiriha <manykarim@users.noreply.github.com>
 LABEL DocTest Library for Robot Framework in Docker
 
-ARG release_name=gs952
-ARG archive_name=ghostpcl-9.52-linux-x86_64
+ARG release_name=gs9561
+ARG archive_name=ghostpcl-9.56.1-linux-x86_64
 
 RUN pip install --no-cache-dir numpy
 RUN pip install --no-cache-dir robotframework-doctestlibrary
