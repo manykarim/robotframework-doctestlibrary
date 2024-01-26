@@ -10,9 +10,6 @@ See **keyword documentation** for
 - [Print Job Tests](https://manykarim.github.io/robotframework-doctestlibrary/PrintJobTest.html)
 - [Pdf Tests (very basic)](https://manykarim.github.io/robotframework-doctestlibrary/PdfTest.html)
 
-
-[![DocTest Library presentation at robocon.io 2021](https://img.youtube.com/vi/qmpwlQoJ-nE/0.jpg)](https://youtu.be/qmpwlQoJ-nE "DocTest Library presentation at robocon.io 2021")
-
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest
@@ -22,20 +19,19 @@ Compare two Images and highlight differences
     Compare Images    Reference.jpg    Candidate.jpg
 ```
 
+[![DocTest Library presentation at robocon.io 2021](https://img.youtube.com/vi/qmpwlQoJ-nE/0.jpg)](https://youtu.be/qmpwlQoJ-nE "DocTest Library presentation at robocon.io 2021")
+
 # Installation instructions
 
 `pip install --upgrade robotframework-doctestlibrary`
 
-Only Python 3.X or newer is supported. Tested with Python 3.8/3.9/3.10
-
-In general, an installation via `pip` or `poetry` is possible.
+Only Python 3.X or newer is supported. Tested with Python 3.8/3.11/3.12
 
 ## Install robotframework-doctestlibrary
 
 ### Installation via `pip` from PyPI (recommended)
 
 * `pip install --upgrade robotframework-doctestlibrary`
-
 
 ### Installation via `pip` from GitHub
 
@@ -46,12 +42,6 @@ or
 * `git clone https://github.com/manykarim/robotframework-doctestlibrary.git`
 * `cd robotframework-doctestlibrary`
 * `pip install -e .`
-
-### Installation via `poetry`
-
-* `git clone https://github.com/manykarim/robotframework-doctestlibrary.git`
-* `cd robotframework-doctestlibrary`
-* `poetry install`
 
 ## Install dependencies
 
@@ -64,7 +54,6 @@ Linux
 ```bash
 apt-get install imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
 ```
-
 
 Windows
  * https://github.com/UB-Mannheim/tesseract/wiki
