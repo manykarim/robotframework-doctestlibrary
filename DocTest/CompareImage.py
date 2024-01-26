@@ -521,7 +521,7 @@ class CompareImage(object):
             f"-sOutputFile={Output_filepath}",
             self.image
         ]
-        subprocess.run(args)
+        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         toc = time.perf_counter()
         print(f"Rendering ps document to Image with ghostscript performed in {toc - tic:0.4f} seconds")
         tic = time.perf_counter()
@@ -565,7 +565,7 @@ class CompareImage(object):
             f"-sOutputFile={Output_filepath}",
             self.image
         ]
-        subprocess.run(args)
+        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         toc = time.perf_counter()
         print(f"Rendering pcl document to Image with ghostPCL performed in {toc - tic:0.4f} seconds")
         tic = time.perf_counter()
