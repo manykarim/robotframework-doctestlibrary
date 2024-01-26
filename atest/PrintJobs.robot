@@ -14,6 +14,12 @@ Visually Compare Two PCL Invoices with missing Logo
 Visually Compare Two PCL Invoices with missing Logo and mask
     Compare Images    ${TESTDATA_DIR}/invoice.pcl    ${TESTDATA_DIR}/invoice_no_logo.pcl    placeholder_file=${MASK_DIR}/mask_logo.json
 
+Visually Compare Two PS Invoices with missing Logo
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    ${TESTDATA_DIR}/invoice.ps    ${TESTDATA_DIR}/invoice_no_logo.ps
+
+Visually Compare Two PS Invoices with missing Logo and mask
+    Compare Images    ${TESTDATA_DIR}/invoice.ps    ${TESTDATA_DIR}/invoice_no_logo.ps    placeholder_file=${MASK_DIR}/mask_logo.json
+
 Compare content of two PCL Print Jobs with same metadata
     Compare Print Jobs    pcl    ${TESTDATA_DIR}/invoice.pcl    ${TESTDATA_DIR}/invoice_no_logo.pcl
 
