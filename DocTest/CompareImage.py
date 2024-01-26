@@ -22,8 +22,6 @@ from DocTest.Ocr import EastTextExtractor
 from DocTest.Downloader import is_url, download_file_from_url
 import shutil
 import random
-import ghostscript
-import locale
 
 EAST_CONFIDENCE=0.5
 
@@ -141,10 +139,15 @@ class CompareImage(object):
             if self.extension == '.pdf':
                 self.convert_mupdf_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             elif (self.extension == '.ps') :
-                # self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
-                self.convert_ps_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)         
+                try:
+                    self.convert_ps_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+                except:
+                    self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             elif self.extension == '.pcl':
-                self.convert_pcl_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+                try:
+                    self.convert_pcl_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+                except:
+                    self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             else:
                 scale = self.MINIMUM_OCR_RESOLUTION / self.DPI # percent of original size
                 width = int(self.opencv_images[0].shape[1] * scale)
@@ -459,12 +462,12 @@ class CompareImage(object):
         if self.extension=='.pdf':
             self.convert_mupdf_to_opencv_image()
         elif (self.extension=='.ps'):
-            # self.convert_pywand_to_opencv_image()
+            #elf.convert_pywand_to_opencv_image()
             self.convert_ps_to_opencv_image()
             
         elif self.extension=='.pcl':
             self.convert_pcl_to_opencv_image()
-            # self.convert_pywand_to_opencv_image()
+            #self.convert_pywand_to_opencv_image()
         else:
             self.DPI = 72
             img = cv2.imread(self.image)
@@ -487,7 +490,11 @@ class CompareImage(object):
         pass
 
     def convert_ps_to_opencv_image(self, resolution=None):
-        
+        import subprocess
+        try:
+            command = shutil.which('gs') or shutil.which('gswin64c') or shutil.which('gswin32c') or shutil.which('ghostscript')
+        except:
+            raise AssertionError("No ghostscript executable found in path. Please install ghostscript")
         self.opencv_images = []
         if resolution == None:
             resolution = self.DPI
@@ -501,7 +508,7 @@ class CompareImage(object):
             os.makedirs(output_image_directory)
         Output_filepath = os.path.join(output_image_directory, 'output-%d.png')
         args = [
-            'ps2png',
+            command,
             '-dNOPAUSE',
             "-dBATCH",
             "-dSAFER",
@@ -510,9 +517,7 @@ class CompareImage(object):
             f"-sOutputFile={Output_filepath}",
             self.image
         ]
-        encoding = locale.getpreferredencoding()
-        args = [a.encode(encoding) for a in args]
-        ghostscript.Ghostscript(*args)
+        subprocess.run(args)
         toc = time.perf_counter()
         print(f"Rendering ps document to Image with ghostscript performed in {toc - tic:0.4f} seconds")
         tic = time.perf_counter()
@@ -530,7 +535,10 @@ class CompareImage(object):
     
     def convert_pcl_to_opencv_image(self, resolution=None):
         import subprocess
-        
+        try:
+            command = shutil.which('pcl6') or shutil.which('gpcl6win64') or shutil.which('gpcl6win32') or shutil.which('gpcl6')
+        except:
+            raise AssertionError("No pcl6 executable found in path. Please install ghostPCL")
         self.opencv_images = []
         if resolution == None:
             resolution = self.DPI
@@ -546,7 +554,7 @@ class CompareImage(object):
         Output_filepath = os.path.join(output_image_directory,'output-%d.png')
         
         args = [
-            'pcl6',
+            command,
             '-dNOPAUSE',
             "-sDEVICE=png16m",
             f"-r{resolution}",
