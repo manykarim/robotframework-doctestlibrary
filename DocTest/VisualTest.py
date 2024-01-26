@@ -266,17 +266,22 @@ class VisualTest(object):
         (x, y, w, h) = cv2.boundingRect(points)
         return x, y, w, h
 
-    def add_screenshot_to_log(self, image, suffix):
+    def add_screenshot_to_log(self, image, suffix, original_size=False):
+        if original_size:
+            img_style = "width: auto; height: auto;"
+        else:
+            img_style = "width:50%; height: auto;"
+
         if self.embed_screenshots:
             import base64
             if self.screenshot_format == 'jpg':
                 _, encoded_img  = cv2.imencode('.jpg', image, [int(cv2.IMWRITE_JPEG_QUALITY), 70])  # im_arr: image in Numpy one-dim array format.
                 im_b64 = base64.b64encode(encoded_img).decode()
-                print("*HTML* " + f'{suffix}:<br><img alt="screenshot" src="data:image/jpeg;base64,{im_b64}" style="width:50%; height: auto;">' )
+                print("*HTML* " + f'{suffix}:<br><img alt="screenshot" src="data:image/jpeg;base64,{im_b64}" style="{img_style}">' )
             else:
                 _, encoded_img  = cv2.imencode('.png', image)
                 im_b64 = base64.b64encode(encoded_img).decode()
-                print("*HTML* " + f'{suffix}:<br><img alt="screenshot" src="data:image/png;base64,{im_b64}" style="width:50%; height: auto;">' )
+                print("*HTML* " + f'{suffix}:<br><img alt="screenshot" src="data:image/png;base64,{im_b64}" style="{img_style}">' )
         else:
             screenshot_name = str(str(uuid.uuid1()) + suffix +
                                 '.{}'.format(self.screenshot_format))
@@ -294,7 +299,7 @@ class VisualTest(object):
                             int(cv2.IMWRITE_JPEG_QUALITY), 70])
             else:
                 cv2.imwrite(abs_screenshot_path, image)
-            print("*HTML* " + f'{suffix}:<br><a href="{rel_screenshot_path}" target="_blank"><img src="{rel_screenshot_path}" style="width:50%; height: auto;"></a>')
+            print("*HTML* " + f'{suffix}:<br><a href="{rel_screenshot_path}" target="_blank"><img src="{rel_screenshot_path}" style="{img_style}"></a>')
 
     def find_partial_image_position(self, img, template, threshold=0.1, detection="classic"):
 
@@ -961,7 +966,7 @@ class VisualTest(object):
                 self.add_screenshot_to_log(img, "image_with_template")
 
             if log_template:
-                self.add_screenshot_to_log(template, "template_original")
+                self.add_screenshot_to_log(template, "template_original", original_size=True)
 
             if match:
                 return {"pt1": top_left, "pt2": bottom_right}
