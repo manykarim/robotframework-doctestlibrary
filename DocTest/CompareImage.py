@@ -462,12 +462,16 @@ class CompareImage(object):
         if self.extension=='.pdf':
             self.convert_mupdf_to_opencv_image()
         elif (self.extension=='.ps'):
-            #elf.convert_pywand_to_opencv_image()
-            self.convert_ps_to_opencv_image()
+            try:
+                self.convert_ps_to_opencv_image()
+            except:
+                self.convert_pywand_to_opencv_image()
             
         elif self.extension=='.pcl':
-            self.convert_pcl_to_opencv_image()
-            #self.convert_pywand_to_opencv_image()
+            try:
+                self.convert_pcl_to_opencv_image()
+            except:
+                self.convert_pywand_to_opencv_image()
         else:
             self.DPI = 72
             img = cv2.imread(self.image)
