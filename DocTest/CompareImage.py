@@ -20,6 +20,10 @@ import fitz
 import logging
 from DocTest.Ocr import EastTextExtractor
 from DocTest.Downloader import is_url, download_file_from_url
+import shutil
+import random
+import ghostscript
+import locale
 
 EAST_CONFIDENCE=0.5
 
@@ -53,7 +57,7 @@ class CompareImage(object):
         self.text_content = []
         #self.pdf_content = []
         self.placeholder_frame_width = 10
-        self.tmp_directory = tempfile.TemporaryDirectory()
+        self.tmp_directory = tempfile.gettempdir()
         self.diff_images = []
         self.threshold_images = []
         self.barcodes = []
@@ -136,8 +140,11 @@ class CompareImage(object):
             print("Re-Render document for OCR at {} DPI as current resolution is only {} DPI".format(self.MINIMUM_OCR_RESOLUTION, self.DPI))
             if self.extension == '.pdf':
                 self.convert_mupdf_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
-            elif (self.extension == '.ps') or (self.extension == '.pcl'):
-                self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+            elif (self.extension == '.ps') :
+                # self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+                self.convert_ps_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)         
+            elif self.extension == '.pcl':
+                self.convert_pcl_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             else:
                 scale = self.MINIMUM_OCR_RESOLUTION / self.DPI # percent of original size
                 width = int(self.opencv_images[0].shape[1] * scale)
@@ -451,8 +458,13 @@ class CompareImage(object):
             raise AssertionError('The file does not exist: {}'.format(self.image))
         if self.extension=='.pdf':
             self.convert_mupdf_to_opencv_image()
-        elif (self.extension=='.ps') or (self.extension=='.pcl'):
-            self.convert_pywand_to_opencv_image()
+        elif (self.extension=='.ps'):
+            # self.convert_pywand_to_opencv_image()
+            self.convert_ps_to_opencv_image()
+            
+        elif self.extension=='.pcl':
+            self.convert_pcl_to_opencv_image()
+            # self.convert_pywand_to_opencv_image()
         else:
             self.DPI = 72
             img = cv2.imread(self.image)
@@ -474,6 +486,90 @@ class CompareImage(object):
     def get_text_content_from_mupdf(self):
         pass
 
+    def convert_ps_to_opencv_image(self, resolution=None):
+        
+        self.opencv_images = []
+        if resolution == None:
+            resolution = self.DPI
+        tic = time.perf_counter()
+        output_image_directory = os.path.join(self.tmp_directory, self.filename_without_extension+str(random.randint(100, 999)))
+        is_exist = os.path.exists(output_image_directory)
+        if not is_exist:
+            os.makedirs(output_image_directory)
+        else:
+            shutil.rmtree(output_image_directory)
+            os.makedirs(output_image_directory)
+        Output_filepath = os.path.join(output_image_directory, 'output-%d.png')
+        args = [
+            'ps2png',
+            '-dNOPAUSE',
+            "-dBATCH",
+            "-dSAFER",
+            "-sDEVICE=png16m",
+            f"-r{resolution}",
+            f"-sOutputFile={Output_filepath}",
+            self.image
+        ]
+        encoding = locale.getpreferredencoding()
+        args = [a.encode(encoding) for a in args]
+        ghostscript.Ghostscript(*args)
+        toc = time.perf_counter()
+        print(f"Rendering ps document to Image with ghostscript performed in {toc - tic:0.4f} seconds")
+        tic = time.perf_counter()
+        for image in os.listdir(output_image_directory):
+            image_file =os.path.join(output_image_directory, image)
+            data = cv2.imread(image_file)
+            
+            if data is None:
+                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
+            self.opencv_images.append(data)
+        
+        toc = time.perf_counter()
+        print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+        shutil.rmtree(output_image_directory)
+    
+    def convert_pcl_to_opencv_image(self, resolution=None):
+        import subprocess
+        
+        self.opencv_images = []
+        if resolution == None:
+            resolution = self.DPI
+        tic = time.perf_counter()
+        output_image_directory = os.path.join(self.tmp_directory, self.filename_without_extension+str(random.randint(100, 999)))
+        
+        is_exist = os.path.exists(output_image_directory)
+        if not is_exist:
+            os.makedirs(output_image_directory)
+        else:
+            shutil.rmtree(output_image_directory)
+            os.makedirs(output_image_directory)
+        Output_filepath = os.path.join(output_image_directory,'output-%d.png')
+        
+        args = [
+            'pcl6',
+            '-dNOPAUSE',
+            "-sDEVICE=png16m",
+            f"-r{resolution}",
+            f"-sOutputFile={Output_filepath}",
+            self.image
+        ]
+        subprocess.run(args)
+        toc = time.perf_counter()
+        print(f"Rendering pcl document to Image with ghostPCL performed in {toc - tic:0.4f} seconds")
+        tic = time.perf_counter()
+        print(len(os.listdir(output_image_directory)))
+        for image in os.listdir(output_image_directory):
+            image_file =os.path.join(output_image_directory, image)
+            data = cv2.imread(image_file)
+            
+            if data is None:
+                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
+            self.opencv_images.append(data)
+
+        toc = time.perf_counter()
+        print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+        shutil.rmtree(output_image_directory) 
+           
     def convert_pywand_to_opencv_image(self, resolution=None):
         self.opencv_images = []
         if resolution == None:
