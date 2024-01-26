@@ -26,8 +26,8 @@ jobs:
           sudo wget -O /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/eng.traineddata?raw=true
           sudo wget -O /usr/share/tesseract-ocr/4.00/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/osd.traineddata?raw=true
           echo "Download Ghostscript and GhostPCL"
-          export release_name=gs952
-          export archive_name=ghostpcl-9.52-linux-x86_64
+          export release_name=gs9561
+          export archive_name=ghostpcl-9.56.1-linux-x86_64
           wget https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/${release_name}/${archive_name}.tgz
           tar -xvzf ${archive_name}.tgz
           chmod +x ${archive_name}/gpcl6*
