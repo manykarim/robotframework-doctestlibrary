@@ -140,14 +140,14 @@ class CompareImage(object):
                 self.convert_mupdf_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             elif (self.extension == '.ps') :
                 try:
-                    self.convert_ps_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
-                except:
                     self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+                except:
+                    self.convert_ps_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             elif self.extension == '.pcl':
                 try:
-                    self.convert_pcl_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
-                except:
                     self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+                except:
+                    self.convert_pcl_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             else:
                 scale = self.MINIMUM_OCR_RESOLUTION / self.DPI # percent of original size
                 width = int(self.opencv_images[0].shape[1] * scale)
@@ -463,15 +463,15 @@ class CompareImage(object):
             self.convert_mupdf_to_opencv_image()
         elif (self.extension=='.ps'):
             try:
-                self.convert_ps_to_opencv_image()
-            except:
                 self.convert_pywand_to_opencv_image()
+            except:
+                self.convert_ps_to_opencv_image()
             
         elif self.extension=='.pcl':
             try:
-                self.convert_pcl_to_opencv_image()
-            except:
                 self.convert_pywand_to_opencv_image()
+            except:
+                self.convert_pcl_to_opencv_image()
         else:
             self.DPI = 72
             img = cv2.imread(self.image)
@@ -500,6 +500,7 @@ class CompareImage(object):
         except:
             raise AssertionError("No ghostscript executable found in path. Please install ghostscript")
         self.opencv_images = []
+        
         if resolution == None:
             resolution = self.DPI
         tic = time.perf_counter()
@@ -510,31 +511,41 @@ class CompareImage(object):
         else:
             shutil.rmtree(output_image_directory)
             os.makedirs(output_image_directory)
-        Output_filepath = os.path.join(output_image_directory, 'output-%d.png')
+        Output_filepath = os.path.join(output_image_directory, 'output-%d.pdf')
         args = [
             command,
             '-dNOPAUSE',
             "-dBATCH",
             "-dSAFER",
-            "-sDEVICE=png16m",
+            "-sDEVICE=pdfwrite",
             f"-r{resolution}",
             f"-sOutputFile={Output_filepath}",
             self.image
         ]
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         toc = time.perf_counter()
-        print(f"Rendering ps document to Image with ghostscript performed in {toc - tic:0.4f} seconds")
+        print(f"Rendering ps document to pdf with ghostscript performed in {toc - tic:0.4f} seconds")
         tic = time.perf_counter()
-        for image in os.listdir(output_image_directory):
-            image_file =os.path.join(output_image_directory, image)
-            data = cv2.imread(image_file)
-            
-            if data is None:
-                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
-            self.opencv_images.append(data)
-        
-        toc = time.perf_counter()
-        print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+        try:
+            self.mupdfdoc = fitz.open()
+            file_num = len(os.listdir(output_image_directory))
+            for index in range(file_num) :
+                image =  'output-' + str(index+1)+'.pdf'
+                image_file =os.path.join(output_image_directory, image)
+                singleDoc = fitz.open(image_file)
+                zoom = resolution/72
+                mat = fitz.Matrix(zoom, zoom)
+                pix = singleDoc.load_page(0).get_pixmap(matrix = mat)
+                imgData = pix.tobytes("png")
+                nparr = np.frombuffer(imgData, np.uint8)
+                opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                self.opencv_images.append(opencv_image)
+                self.mupdfdoc.insert_pdf(singleDoc)
+                singleDoc.close()
+            toc = time.perf_counter()
+            print(f"Rendering pdf document to OpenCV image with PyMuPDF performed in {toc - tic:0.4f} seconds")
+        except:
+            raise AssertionError("File could not be converted by PyMuPDF to OpenCV Image: {}".format(self.image))
         shutil.rmtree(output_image_directory)
     
     def convert_pcl_to_opencv_image(self, resolution=None):
@@ -555,31 +566,40 @@ class CompareImage(object):
         else:
             shutil.rmtree(output_image_directory)
             os.makedirs(output_image_directory)
-        Output_filepath = os.path.join(output_image_directory,'output-%d.png')
-        
+        Output_filepath = os.path.join(output_image_directory,'output-%d.pdf')        
         args = [
             command,
             '-dNOPAUSE',
-            "-sDEVICE=png16m",
+            "-sDEVICE=pdfwrite",
             f"-r{resolution}",
             f"-sOutputFile={Output_filepath}",
             self.image
         ]
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         toc = time.perf_counter()
-        print(f"Rendering pcl document to Image with ghostPCL performed in {toc - tic:0.4f} seconds")
+        print(f"Rendering pcl document to pdf with ghostPCL performed in {toc - tic:0.4f} seconds")
         tic = time.perf_counter()
-        print(len(os.listdir(output_image_directory)))
-        for image in os.listdir(output_image_directory):
-            image_file =os.path.join(output_image_directory, image)
-            data = cv2.imread(image_file)
-            
-            if data is None:
-                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
-            self.opencv_images.append(data)
 
-        toc = time.perf_counter()
-        print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+        try:
+            self.mupdfdoc = fitz.open()
+            file_num = len(os.listdir(output_image_directory))
+            for index in range(file_num):
+                image =  'output-' + str(index+1)+'.pdf'
+                image_file =os.path.join(output_image_directory, image)
+                singleDoc = fitz.open(image_file)
+                zoom = resolution/72
+                mat = fitz.Matrix(zoom, zoom)
+                pix = singleDoc.load_page(0).get_pixmap(matrix = mat)
+                imgData = pix.tobytes("png")
+                nparr = np.frombuffer(imgData, np.uint8)
+                opencv_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                self.opencv_images.append(opencv_image)
+                self.mupdfdoc.insert_pdf(singleDoc)
+                singleDoc.close()
+            toc = time.perf_counter()
+            print(f"Rendering pdf document to OpenCV image with PyMuPDF performed in {toc - tic:0.4f} seconds")
+        except:
+            raise AssertionError("File could not be converted by PyMuPDF to OpenCV Image: {}".format(self.image))
         shutil.rmtree(output_image_directory) 
            
     def convert_pywand_to_opencv_image(self, resolution=None):
