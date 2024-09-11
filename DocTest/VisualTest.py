@@ -183,12 +183,14 @@ class VisualTest(object):
         reference_compare_image = CompareImage(reference_image, placeholder_file=placeholder_file, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, force_ocr=force_ocr, mask=mask, ocr_engine=ocr_engine)
         candidate_compare_image = CompareImage(test_image, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI)
 
+        reference_image_dimensions = reference_compare_image.get_image_dimensions()
+
 
         tic = time.perf_counter()
         if reference_compare_image.placeholders != []:
             candidate_compare_image.placeholders = reference_compare_image.placeholders
             reference_collection = reference_compare_image.get_image_with_placeholders()
-            compare_collection = candidate_compare_image.get_image_with_placeholders()
+            compare_collection = candidate_compare_image.get_image_with_placeholders(resize=resize_candidate, dimensions=reference_image_dimensions)
             logging.debug("OCR Data: {}".format(reference_compare_image.text_content))
         else:
             reference_collection = reference_compare_image.opencv_images

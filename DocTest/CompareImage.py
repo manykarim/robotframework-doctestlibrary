@@ -431,10 +431,25 @@ class CompareImage(object):
 
         return cv2.resize(image, dim, interpolation=inter)
 
-    def get_image_with_placeholders(self, placeholders=None):
+    def get_image_dimensions(self):
+        """
+        Return a list of tuples with the dimensions of the images
+        Tuples shall be in format (width, height)
+        """
+        dimensions = []
+        for i in range(len(self.opencv_images)):
+            dimensions.append((self.opencv_images[i].shape[1], self.opencv_images[i].shape[0]))
+        return dimensions    
+
+    def get_image_with_placeholders(self, placeholders=None, resize=False, dimensions=None):
         if placeholders is None:
             placeholders = self.placeholders
         images_with_placeholders = self.opencv_images
+        if resize:
+            if dimensions is None:
+                raise AssertionError("Dimensions must be defined for resizing")
+            for i in range(len(images_with_placeholders)):
+                images_with_placeholders[i] = cv2.resize(images_with_placeholders[i], dimensions[i])   
         for placeholder in placeholders:
             if placeholder['page'] == 'all':
                 for i in range(len(images_with_placeholders)):
