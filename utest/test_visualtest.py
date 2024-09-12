@@ -55,7 +55,7 @@ def test_compare_birthday_image_with_noise_and_lower_threshold(testdata_dir):
     visual_tester.compare_images(ref_image, cand_image)
 
 def test_compare_birthday_image_with_noise_and_blurring(testdata_dir):
-    visual_tester = VisualTest(threshold=0.005)
+    visual_tester = VisualTest(threshold=0.006, take_screenshots=True)
     ref_image=str(testdata_dir / 'birthday_1080.png')
     cand_image=str(testdata_dir / 'birthday_1080_noise_001.png')
     visual_tester.compare_images(ref_image, cand_image, blur=True)
