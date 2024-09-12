@@ -445,16 +445,17 @@ class CompareImage(object):
         if placeholders is None:
             placeholders = self.placeholders
         images_with_placeholders = self.opencv_images
-        for i in range(len(images_with_placeholders)):
-            if resize:
-                if dimensions is None:
-                    raise AssertionError("Dimensions must be defined for resizing")
-                images_with_placeholders[i] = cv2.resize(images_with_placeholders[i], dimensions[i])    
-            if blur:
-                kernel_size = int(images_with_placeholders[i].shape[1]/50)
-                # must be odd if median
-                kernel_size += kernel_size%2-1
-                images_with_placeholders[i] = cv2.GaussianBlur(images_with_placeholders[i], (kernel_size, kernel_size), 1.5)           
+        if resize or blur:
+            for i in range(len(images_with_placeholders)):
+                if resize:
+                    if dimensions is None:
+                        raise AssertionError("Dimensions must be defined for resizing")
+                    images_with_placeholders[i] = cv2.resize(images_with_placeholders[i], dimensions[i])    
+                if blur:
+                    kernel_size = int(images_with_placeholders[i].shape[1]/50)
+                    # must be odd if median
+                    kernel_size += kernel_size%2-1
+                    images_with_placeholders[i] = cv2.GaussianBlur(images_with_placeholders[i], (kernel_size, kernel_size), 1.5)           
         for placeholder in placeholders:
             if placeholder['page'] == 'all':
                 for i in range(len(images_with_placeholders)):
