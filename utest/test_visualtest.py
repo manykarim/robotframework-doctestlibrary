@@ -181,3 +181,9 @@ def test_compare_birthday_image_with_different_size_and_mask(testdata_dir):
     ref_image=str(testdata_dir / 'birthday_1080_date_id.png')
     cand_image=str(testdata_dir / 'birthday_left.png')
     visual_tester.compare_images(ref_image, cand_image, resize_candidate=True, threshold=0.05,  placeholder_file=str(testdata_dir / 'pattern_mask.json'))
+
+def test_compare_birthday_image_with_different_size_blur_and_mask(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image=str(testdata_dir / 'birthday_1080_date_id.png')
+    cand_image=str(testdata_dir / 'birthday_left.png')
+    visual_tester.compare_images(ref_image, cand_image, resize_candidate=True, blur=True, threshold=0.017, placeholder_file=str(testdata_dir / 'pattern_mask.json'))
