@@ -189,8 +189,8 @@ class VisualTest(object):
         tic = time.perf_counter()
         if reference_compare_image.placeholders != []:
             candidate_compare_image.placeholders = reference_compare_image.placeholders
-            reference_collection = reference_compare_image.get_image_with_placeholders()
-            compare_collection = candidate_compare_image.get_image_with_placeholders(resize=resize_candidate, dimensions=reference_image_dimensions)
+            reference_collection = reference_compare_image.get_image_with_placeholders(blur=blur)
+            compare_collection = candidate_compare_image.get_image_with_placeholders(resize=resize_candidate, dimensions=reference_image_dimensions, blur=blur)
             logging.debug("OCR Data: {}".format(reference_compare_image.text_content))
         else:
             reference_collection = reference_compare_image.opencv_images
@@ -478,13 +478,14 @@ class VisualTest(object):
         grayA = cv2.cvtColor(reference, cv2.COLOR_BGR2GRAY)
         grayB = cv2.cvtColor(candidate, cv2.COLOR_BGR2GRAY)
 
-        # Blur images if blur=True
-        if compare_options['blur']:
-            kernel_size = int(grayA.shape[1]/50)
-            # must be odd if median
-            kernel_size += kernel_size%2-1
-            grayA = cv2.GaussianBlur(grayA, (kernel_size, kernel_size), 1.5)
-            grayB = cv2.GaussianBlur(grayB, (kernel_size, kernel_size), 1.5)
+        # Blur is now in get_images_with_placeholders
+        # # Blur images if blur=True
+        # if compare_options['blur']:
+        #     kernel_size = int(grayA.shape[1]/50)
+        #     # must be odd if median
+        #     kernel_size += kernel_size%2-1
+        #     grayA = cv2.GaussianBlur(grayA, (kernel_size, kernel_size), 1.5)
+        #     grayB = cv2.GaussianBlur(grayB, (kernel_size, kernel_size), 1.5)
         
         if self.take_screenshots:
             # Not necessary to take screenshots for every successful comparison
@@ -815,6 +816,8 @@ class VisualTest(object):
                                         self.add_screenshot_to_log(self.overlay_two_images(
                                             diff_area_reference, diff_area_candidate), "_diff_area_blended")
             if images_are_equal is not True:
+                logging.info(
+                    f'The compared images are different with a score of {score}')
                 raise AssertionError('The compared images are different.')
 
     @keyword
