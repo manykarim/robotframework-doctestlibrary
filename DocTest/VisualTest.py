@@ -189,12 +189,9 @@ class VisualTest(object):
         tic = time.perf_counter()
         if reference_compare_image.placeholders != []:
             candidate_compare_image.placeholders = reference_compare_image.placeholders
-            reference_collection = reference_compare_image.get_image_with_placeholders(blur=blur)
-            compare_collection = candidate_compare_image.get_image_with_placeholders(resize=resize_candidate, dimensions=reference_image_dimensions, blur=blur)
-            logging.debug("OCR Data: {}".format(reference_compare_image.text_content))
-        else:
-            reference_collection = reference_compare_image.opencv_images
-            compare_collection = candidate_compare_image.opencv_images
+        reference_collection = reference_compare_image.get_image_with_placeholders(blur=blur)
+        compare_collection = candidate_compare_image.get_image_with_placeholders(resize=resize_candidate, dimensions=reference_image_dimensions, blur=blur)
+        logging.debug("OCR Data: {}".format(reference_compare_image.text_content))
 
         if len(reference_collection) != len(compare_collection):
             print("Pages in reference file:{}. Pages in candidate file:{}".format(
@@ -479,7 +476,9 @@ class VisualTest(object):
         grayB = cv2.cvtColor(candidate, cv2.COLOR_BGR2GRAY)
 
         # Blur is now in get_images_with_placeholders
-        # # Blur images if blur=True
+        # This is now a double blur, which is not necessary
+        # ToDo: Think about a better solution of blurring
+        # Blur images if blur=True
         # if compare_options['blur']:
         #     kernel_size = int(grayA.shape[1]/50)
         #     # must be odd if median
