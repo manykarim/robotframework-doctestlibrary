@@ -19,8 +19,7 @@ def download_file_from_url(url, directory=None, filename=None):
     If directory is None, save it in a temp directory.
     Save the file with the provided filename.
     If the filename is None, try to check if the URL contains a valid filename.
-    If the URL contains a valid filename, use that as a filename.
-    if the URL does not contain a filename save it as a temporary filename by creating a uuid
+    If the URL does not contain a filename, save it as a temporary filename by creating a uuid.
     """
     if directory is None:
         directory = tempfile.gettempdir()
@@ -34,7 +33,7 @@ def get_filename_from_url(url):
     """
     Check if the URL contains a valid filename.
     If the URL contains a valid filename, return the filename.
-    if the URL does not contain a filename return None
+    if the URL does not contain a filename, return None.
     """
     filename = None
     if url is not None:
