@@ -162,6 +162,8 @@ class VisualTest(object):
         compare_options = {'get_pdf_content': get_pdf_content, 'ignore_watermarks': ignore_watermarks, 'check_text_content': check_text_content, 'contains_barcodes': contains_barcodes,
                            'force_ocr': force_ocr, 'move_tolerance': move_tolerance, 'watermark_file': watermark_file, 'ocr_engine': ocr_engine, 'resize_candidate': resize_candidate, 'blur': blur, 'threshold': threshold}
 
+        
+        
         if self.reference_run is True:
             if os.path.isfile(test_image) == True:
                 shutil.copyfile(test_image, reference_image)
@@ -180,8 +182,9 @@ class VisualTest(object):
             raise AssertionError(
                 'The candidate file does not exist: {}'.format(test_image))
 
-        reference_compare_image = CompareImage(reference_image, placeholder_file=placeholder_file, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, force_ocr=force_ocr, mask=mask, ocr_engine=ocr_engine)
-        candidate_compare_image = CompareImage(test_image, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI)
+        reference_compare_image = CompareImage(reference_image, placeholder_file=placeholder_file, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI, force_ocr=force_ocr, mask=mask, ocr_engine=ocr_engine,**kwargs)
+        candidate_compare_image = CompareImage(test_image, contains_barcodes=contains_barcodes, get_pdf_content=get_pdf_content, DPI=self.DPI,**kwargs)
+        # print(kwargs)
 
 
         tic = time.perf_counter()
@@ -221,7 +224,10 @@ class VisualTest(object):
             else:
                 reference_pdf_content = None
                 candidate_pdf_content = None
-            self.check_for_differences(reference, candidate, i, detected_differences, compare_options, reference_pdf_content, candidate_pdf_content)
+            try:
+                self.check_for_differences(reference, candidate, i, detected_differences, compare_options, reference_pdf_content, candidate_pdf_content)
+            except:
+                detected_differences.append(True)
         if reference_compare_image.barcodes != []:
             if reference_compare_image.barcodes != candidate_compare_image.barcodes:
                 detected_differences.append(True)
@@ -972,12 +978,6 @@ class VisualTest(object):
                 return {"pt1": top_left, "pt2": bottom_right}
             else:
                 raise AssertionError('The Template was not found in the Image.')
-
-
-
-
-
-
 
 
 def remove_empty_textelements(lst):
