@@ -85,6 +85,13 @@ class VisualTest:
 
             if check_text_content and not similar:
                 similar = True
+                # Create two new Page objects which only contain absolute differences
+                # Do a simple cv2.absdiff to get the absolute differences between the two images
+
+                
+
+
+
                 # If the images are not similar, we need to compare text content
                 # Only compare the text content in the areas that have differences
                 # For that, the rectangles around the differences are needed
@@ -92,7 +99,7 @@ class VisualTest:
                 # Compare text content only in the areas that have differences
                 for rect in diff_rectangles:
                     
-                    same_text, ref_area_text, cand_area_text = ref_page._compare_text_content_in_area_with(cand_page, rect)
+                    same_text, ref_area_text, cand_area_text = ref_page._compare_text_content_in_area_with(cand_page, rect, force_ocr)
                     # Save the reference and candidate areas as images and add them to the log
                     reference_area = ref_page.get_area(rect)
                     candidate_area = cand_page.get_area(rect)
@@ -185,6 +192,7 @@ class VisualTest:
         """
         
         absolute_diff = cv2.dilate(absolute_diff, None, iterations=10)
+        absolute_diff = cv2.erode(absolute_diff, None, iterations=10)
         contours, _ = cv2.findContours(absolute_diff, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         rectangles = [cv2.boundingRect(contour) for contour in contours]
         # Convert the rectangles to a list of dictionaries
