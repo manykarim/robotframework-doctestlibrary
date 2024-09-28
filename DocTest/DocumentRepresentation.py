@@ -194,20 +194,20 @@ class Page:
     def _process_coordinates_ignore_area(self, ignore_area: Dict):
         """Convert coordinate-based ignore areas into pixel-wise ignore areas."""
         unit = ignore_area.get('unit', 'px')
-        x, y, h, w = self._convert_to_pixels(ignore_area, unit)
+        x, y, w, h = self._convert_to_pixels(ignore_area, unit)
         self.pixel_ignore_areas.append({"x": x, "y": y, "height": h, "width": w})
     
     def _convert_to_pixels(self, area: Dict, unit: str):
         """Convert dimensions from cm, mm, or px to pixel units."""
-        x, y, h, w = int(area['x']), int(area['y']), int(area['height']), int(area['width'])
+        x, y, w, h = int(area['x']), int(area['y']), int(area['width']), int(area['height'])
         if unit == 'mm':
             constant = self.dpi / 25.4
-            x, y, h, w = int(x * constant), int(y * constant), int(h * constant), int(w * constant)
+            x, y, w, h = int(x * constant), int(y * constant), int(w * constant), int(h * constant)
         elif unit == 'cm':
             constant = self.dpi / 2.54
-            x, y, h, w = int(x * constant), int(y * constant), int(h * constant), int(w * constant)
-        return x, y, h, w
-    
+            x, y, w, h = int(x * constant), int(y * constant), int(w * constant), int(h * constant)
+        return x, y, w, h
+        
     def _process_area_ignore_area(self, ignore_area: Dict):
         """Handle area-based ignore areas (e.g., 'top', 'bottom', 'left', 'right') as percentages."""
         page = ignore_area.get('page', 'all')
@@ -217,7 +217,7 @@ class Page:
         if page == 'all' or page == self.page_number:
             location = ignore_area.get('location', None)
             percent = int(ignore_area.get('percent', 10))
-            x, y, h, w = 0, 0, self.image.shape[0], self.image.shape[1]
+            x, y, w, h = 0, 0, self.image.shape[1], self.image.shape[0]
             if location == 'top':
                 h = int(self.image.shape[0] * percent / 100)
             elif location == 'bottom':
@@ -228,9 +228,9 @@ class Page:
             elif location == 'right':
                 w = int(self.image.shape[1] * percent / 100)
                 x = self.image.shape[1] - w
-            self.pixel_ignore_areas.append({"x": x, "y": y, "height": h, "width": w})
+            self.pixel_ignore_areas.append({"x": x, "y": y, "width": w, "height": h})
 
-    def _get_text_from_area(self, area: Dict):
+    def _get_text_from_area(self, area: Dict, force_ocr: bool = False):
         """Extract text content from a specific area of the page:
         Returns the text content within the specified area.
         An area is defined by a dictionary with keys 'x', 'y', 'width', and 'height'.
@@ -238,11 +238,16 @@ class Page:
         Units are in pixels by default.
         Optional: Units can be specified as 'mm' or 'cm' via the 'unit' key.
         """
+        if force_ocr:
+        # Shortcut: if OCR is forced, extract text using Tesseract
+            return self._get_text_from_area_with_tesseract(area)
+        
         try:
             unit = area.get('unit', 'px')
         except:
             unit = 'px'
-        area_x, area_y, area_w, area_h = self._convert_to_pixels(area, unit)
+        area_x, area_y, area_h, area_w  = self._convert_to_pixels(area, unit)
+
 
         if self.ocr_performed:
             text = ""
@@ -269,8 +274,17 @@ class Page:
                     text += box + " "
             return text.strip()
         
+    def _get_text_from_area_with_tesseract(self, area: Dict):
+        """Extract text content from a specific area of the page using Tesseract OCR."""
+        x, y, w, h = self._convert_to_pixels(area, area.get('unit', 'px'))
+        image = self.image[y:y+h, x:x+w]
+        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        thresholded_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        config = f'--psm 11 -l eng'
+        text = pytesseract.image_to_string(thresholded_image, config=config)
+        return text.strip()
 
-    def _compare_text_content_in_area_with(self, other_page: 'Page', area: Dict):
+    def _compare_text_content_in_area_with(self, other_page: 'Page', area: Dict, force_ocr: bool = False):
         """Compare text content in a specific area of the page with another page.
         Returns True if the text content in the specified area is the same between the two pages.
         Also returns the text content from the area in both pages.
@@ -278,8 +292,8 @@ class Page:
         Or it can be a tuple like (124, 337, 287, 121) where the values are in pixels.
 
         """
-        text_self = self._get_text_from_area(area)
-        text_other = other_page._get_text_from_area(area)
+        text_self = self._get_text_from_area(area, force_ocr)
+        text_other = other_page._get_text_from_area(area, force_ocr)
         return text_self == text_other, text_self, text_other
     
     def _get_area(self, area: Dict):
