@@ -82,7 +82,7 @@ class Page:
             cv2.rectangle(image_with_ignore_areas, (x, y), (x + w, y + h), (255, 0, 0), -1)
         return image_with_ignore_areas
 
-    def compare_with(self, other_page: 'Page', threshold: float = 0.99):
+    def compare_with(self, other_page: 'Page', threshold: float = 0.99, resize: bool = False, **kwargs):
         """
         Compare this page with another page and return a tuple of (similarity_result, diff_image).
         
@@ -91,7 +91,7 @@ class Page:
         | ``threshold`` | The SSIM threshold to determine similarity. |
         """
         if self.dpi != other_page.dpi:
-            raise ValueError(f"Page DPI mismatch: {self.dpi} vs {other_page.dpi}")
+            raise ValueError(f"Page DPI mismatch: {self.dpi} vs {other_page.dpi}")        
         
         if self.pixel_ignore_areas:
             other_page.pixel_ignore_areas = self.pixel_ignore_areas
@@ -230,6 +230,19 @@ class Page:
                 x = self.image.shape[1] - w
             self.pixel_ignore_areas.append({"x": x, "y": y, "width": w, "height": h})
 
+    def _get_text(self, force_ocr: bool = False):
+        """Extract text content from the page image."""
+        if force_ocr and not self.ocr_performed:
+            self.apply_ocr()
+            return " ".join(self.ocr_text_data['text'])
+        if self.ocr_performed:
+            return " ".join(self.ocr_text_data['text'])
+        elif self.pdf_text_words:
+            return make_text(self.pdf_text_words).split()
+        else:
+            self.apply_ocr()
+            return " ".join(self.ocr_text_data['text'])
+
     def _get_text_from_area(self, area: Dict, force_ocr: bool = False):
         """Extract text content from a specific area of the page:
         Returns the text content within the specified area.
@@ -278,8 +291,14 @@ class Page:
         """Extract text content from a specific area of the page using Tesseract OCR."""
         x, y, w, h = self._convert_to_pixels(area, area.get('unit', 'px'))
         image = self.image[y:y+h, x:x+w]
+        # upscale the image if the resolution is too low for OCR
+        if self.dpi < MINIMUM_OCR_RESOLUTION:
+            scale_factor = MINIMUM_OCR_RESOLUTION / self.dpi
+            image = cv2.resize(image, (0, 0), fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
         gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         thresholded_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+        # Add a white border around the image to improve OCR accuracy
+        thresholded_image = cv2.copyMakeBorder(thresholded_image, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=(255, 255, 255))
         config = f'--psm 11 -l eng'
         text = pytesseract.image_to_string(thresholded_image, config=config)
         return text.strip()
@@ -415,9 +434,29 @@ class DocumentRepresentation:
                 page._process_ignore_area(ignore_area)    
             
 
-    def get_text_content(self) -> str:
-        """Extract the text content from all pages."""
-        return "\n".join([page.get_text_content() for page in self.pages])
+    def get_text_from_area(self, area: Dict, force_ocr: bool = False):
+        """Extract text content from a specific area of the document."""
+        text_content = ""
+        for page in self.pages:
+            text_content += page._get_text_from_area(area, force_ocr) + " "
+        return text_content.strip()
+
+    def get_text(self, force_ocr: bool = False):
+        """Extract text content from the document."""
+        # If doc is pdf, extract text directly from pdf
+        text_content = ""
+        if force_ocr:
+            for page in self.pages:
+                text_content += page._get_text(force_ocr) + " "
+            return text_content.strip()
+        if self.file_path.endswith('.pdf'):
+            text_content = self.extract_text_from_pdf()
+            return text_content
+        else:
+            # If OCR is not forced, extract text from the OCR data
+            for page in self.pages:
+                text_content += page._get_text(force_ocr) + " "
+        return text_content.strip()
 
     def identify_barcodes(self):
         """Detect barcodes in all pages."""

@@ -46,13 +46,13 @@ Compare two different PDF Files with moved text but same content pdfminer
     Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    check_text_content=${true}
 
 Compare two different PDF Files with moved text but and different content pdfminer
-    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved_and_different.pdf    check_text_content=${true}    get_pdf_content=${true}
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved_and_different.pdf    check_text_content=${true}
 
 Compare two different PDF Files with moved text within tolerance
-    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=20    get_pdf_content=${true}
+    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=20
 
 Compare two different PDF Files with moved text outside tolerance
-    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=5    get_pdf_content=${true}
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=5
 
 Compare two different Image Files with moved text
     Compare Images    testdata/small_A_reference.png    testdata/small_A_moved.png    move_tolerance=60    ignore_watermarks=False
@@ -67,16 +67,17 @@ Compare two small Image Files with moved text without OCR
     Compare Images    testdata/small_A_reference.png    testdata/small_A_moved.png    move_tolerance=60    ignore_watermarks=False
 
 Compare Images With Different Shapes
-    Run Keyword And Expect Error    STARTS:The compared images have different dimensions    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg
 
 Compare Text Content from PDF
-    ${text}     Get Text From Document    testdata/sample.pdf
-    List Should Contain Value   ${text}     THE TEST SHIPPER
+    ${text}     Get Text From Document    testdata/sample.pdf    *=    THE TEST SHIPPER
+#    List Should Contain Value   ${text}     THE TEST SHIPPER
 
 Compare Text Content from Image
-    ${text}     Get Text From Document    testdata/Beach_date.png
-    List Should Contain Value   ${text}     123456789
-    List Should Contain Value   ${text}     01-Jan-2021
+    ${text}     Get Text From Document    testdata/Beach_date.png    *=    123456789
+    ${text}     Get Text From Document    testdata/Beach_date.png    *=    01-Jan-2021
+    ${text}     Get Text From Document    testdata/Beach_date.png    !=    Not Equal
+    ${text}     Get Text From Document    testdata/Beach_date.png    not contains    Not Equal
 
 
 Compare Text Content from Image with east

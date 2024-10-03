@@ -1,7 +1,7 @@
 import base64
-from typing import Union
+from typing import Union, Optional, Any
 import uuid
-from DocTest.DocumentRepresentation import DocumentRepresentation
+from DocTest.DocumentRepresentation import DocumentRepresentation, Page
 from DocTest.Downloader import is_url, download_file_from_url
 from robot.api.deco import keyword, library
 from pathlib import Path
@@ -13,6 +13,10 @@ import numpy as np
 import imutils
 from robot.libraries.BuiltIn import BuiltIn
 from DocTest.IgnoreAreaManager import IgnoreAreaManager  # Import IgnoreAreaManager
+from assertionengine import verify_assertion, AssertionOperator, Formatter
+import logging
+
+LOG = logging.getLogger(__name__)
 
 @library
 class VisualTest:
@@ -48,7 +52,7 @@ class VisualTest:
     def compare_images(self, reference_image: str, candidate_image: str, placeholder_file: Union[str, dict, list] = None, 
                        check_text_content: bool = False, move_tolerance: int = None, contains_barcodes: bool = False, 
                        watermark_file: str = None, force_ocr: bool = False, DPI: int = None, resize_candidate: bool = False, 
-                       blur: bool = False, threshold: float = None, mask: Union[str, dict, list] = None):
+                       blur: bool = False, threshold: float = None, mask: Union[str, dict, list] = None, **kwargs):
         """
         Compare two images or documents visually and textually (if needed).
         If they are different, a side-by-side comparison image with highlighted differences will be saved and added to the log.
@@ -65,14 +69,26 @@ class VisualTest:
 
         # Load reference and candidate documents
         reference_doc = DocumentRepresentation(reference_image, dpi=dpi, ocr_engine=self.ocr_engine, ignore_area_file=placeholder_file, ignore_area=mask)
-        candidate_doc = DocumentRepresentation(candidate_image, dpi=dpi, ocr_engine=self.ocr_engine)
+        candidate_doc = DocumentRepresentation(candidate_image, dpi=dpi, ocr_engine=self.ocr_engine)            
+
 
         # Apply ignore areas if provided
         abstract_ignore_areas = None
         requires_ocr = force_ocr  # Start by using the force_ocr flag
 
+        detected_differences = []
         # Compare visual content through the Page class
         for ref_page, cand_page in zip(reference_doc.pages, candidate_doc.pages):
+
+            # Resize the candidate page if needed
+            if resize_candidate:
+                cand_page.image = cv2.resize(cand_page.image, (ref_page.image.shape[1], ref_page.image.shape[0]))
+            
+            # Check if dimensions are different
+            if ref_page.image.shape != cand_page.image.shape:
+                detected_differences.append((ref_page, cand_page, "Image dimensions are different."))
+                continue
+
             similar, diff, thresh, absolute_diff = ref_page.compare_with(cand_page, threshold=threshold)
 
             if self.take_screenshots:
@@ -98,7 +114,7 @@ class VisualTest:
                 diff_rectangles = self.get_diff_rectangles(absolute_diff)
                 # Compare text content only in the areas that have differences
                 for rect in diff_rectangles:
-                    
+
                     same_text, ref_area_text, cand_area_text = ref_page._compare_text_content_in_area_with(cand_page, rect, force_ocr)
                     # Save the reference and candidate areas as images and add them to the log
                     reference_area = ref_page.get_area(rect)
@@ -117,6 +133,47 @@ class VisualTest:
                         print(f"Visual differences in the area {rect} but text content is the same.")
                         print(f"Reference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}")
 
+            if move_tolerance and not similar:
+                # If the images are not similar, check if the different areas are only moved within the move_tolerance
+                # If the areas are moved within the tolerance, the images are considered similar
+                # If the areas are moved outside the tolerance, the images are considered different
+                # The move_tolerance is the maximum number of pixels the areas can be moved
+                similar = True
+                diff_rectangles = self.get_diff_rectangles(absolute_diff)
+                for rect in diff_rectangles:
+                    # Check if the area is moved within the tolerance
+                    reference_area = ref_page.get_area(rect)
+                    candidate_area = cand_page.get_area(rect)
+                    
+                    try:
+                        # Find the position of the candidate area in the reference area
+                        result = self.find_partial_image_position(reference_area, candidate_area, threshold=0.1, detection="template")
+                        if result:
+                            if 'distance' in result:
+                                distance = result["distance"]
+                            # Check if result is a dictuinory with pt1 and pt2
+                            if "pt1" in result and "pt2" in result:
+                                pt1 = result["pt1"]
+                                pt2 = result["pt2"]
+                                distance = np.sqrt(np.sum((np.array(pt1) - np.array(pt2))**2))
+                                
+                            if distance > move_tolerance:
+                                similar = False
+                                print(f"Area {rect} is moved more than {move_tolerance} pixels.")
+                                self.add_screenshot_to_log(self.blend_two_images(reference_area, candidate_area), suffix='_moved_area', original_size=False)
+                            else:
+                                print(f"Area {rect} is moved {distance} pixels.")
+                    except Exception as e:
+                        print(f"Could not compare areas: {e}")
+                        similar = False
+                        self.add_screenshot_to_log(self.blend_two_images(reference_area, candidate_area), suffix='_moved_area', original_size=False)
+                        break
+                
+                            
+                        
+
+
+
             if not similar:
                 # Save original images to the screenshot directory and add them to the Robot Framework log
                 # But add them next to each other in the log
@@ -131,11 +188,54 @@ class VisualTest:
                 # Add the side-by-side comparison with differences to the Robot Framework log
                 self.add_screenshot_to_log(combined_image_with_differeces, suffix='_combined_with_diff', original_size=False)
 
+                detected_differences.append((ref_page, cand_page, "Visual differences detected."))
 
-                # Raise an assertion error if the images are not similar
-                self._raise_comparison_failure(reference_doc, candidate_doc)
+        for ref_page, cand_page, message in detected_differences:
+            print(message)
+            self._raise_comparison_failure()
 
         print("Images/Document comparison passed.")
+
+    @keyword
+    def get_text_from_area(self, document: str, area: Union[str, dict, list] = None, assertion_operator: Optional[AssertionOperator] = None,
+        assertion_expected: Any = None,
+        message: str = None):
+        """Get the text content of a specific area in a document."""
+        if is_url(document):
+            document = download_file_from_url(document)
+        
+        # Load the document
+        doc = DocumentRepresentation(document, dpi=self.dpi, ocr_engine=self.ocr_engine)
+
+        # Convert area to dictionary if it's a string
+        if isinstance(area, str):
+            area = json.loads(area)
+
+        # Get the text content of the area
+        text = doc.get_text_from_area(area=area)
+
+    @keyword
+    def get_text_from_document(self, document: str, assertion_operator: Optional[AssertionOperator] = None,
+        assertion_expected: Any = None,
+        message: str = None):
+        """Get the text content of a document."""
+        return self.get_text(document, assertion_operator, assertion_expected, message)
+
+    @keyword
+    def get_text(self, document: str,         assertion_operator: Optional[AssertionOperator] = None,
+        assertion_expected: Any = None,
+        message: str = None):
+        """Get the text content of a document."""
+        if is_url(document):
+            document = download_file_from_url(document)
+        
+        # Load the document
+        doc = DocumentRepresentation(document, dpi=self.dpi, ocr_engine=self.ocr_engine)
+
+        # Get the text content of the document
+        text = doc.get_text()
+        return verify_assertion(text, assertion_operator, assertion_expected, message)
+    
 
     def _get_diff_rectangles(self, absolute_diff):
         """Get rectangles around differences in the page."""
@@ -148,10 +248,9 @@ class VisualTest:
         rectangles = [cv2.boundingRect(contour) for contour in contours]
         return rectangles
 
-    def _raise_comparison_failure(self, reference_doc: DocumentRepresentation, candidate_doc: DocumentRepresentation):
+    def _raise_comparison_failure(self, message: str = "The compared images are different."):
         """Handle failures in image comparison."""
-        print("Visual comparison failed.")
-        raise AssertionError("The compared images are different.")
+        raise AssertionError(message)
 
     def _compare_text_content(self, reference_doc: DocumentRepresentation, candidate_doc: DocumentRepresentation):
         """Compare the text content of the two documents after OCR."""
@@ -233,3 +332,163 @@ class VisualTest:
             else:
                 cv2.imwrite(abs_screenshot_path, image)
             print("*HTML* " + f'{suffix}:<br><a href="{rel_screenshot_path}" target="_blank"><img src="{rel_screenshot_path}" style="{img_style}"></a>')
+
+    def find_partial_image_position(self, img, template, threshold=0.1, detection="classic"):
+
+        if detection == "template":
+            result = self.find_partial_image_distance_with_matchtemplate(img, template, threshold)
+            
+        elif detection == "classic":
+            result = self.find_partial_image_distance_with_classic_method(img, template, threshold)
+            
+        elif detection == "orb":
+            result = self.find_partial_image_distance_with_orb(img, template)
+
+        return result 
+
+    def find_partial_image_distance_with_classic_method(self, img, template, threshold=0.1):
+        print("Find partial image position")
+        rectangles = []
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        h, w = template.shape[0:2]
+        print("Old detection")
+        template_blur = cv2.GaussianBlur(template_gray, (3, 3), 0)
+        template_thresh = cv2.threshold(
+            template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+
+        # Obtain bounding rectangle and extract ROI
+        temp_x, temp_y, temp_w, temp_h = cv2.boundingRect(template_thresh)
+
+        res = cv2.matchTemplate(
+            img_gray, template_gray[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w], cv2.TM_SQDIFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+
+        res_temp = cv2.matchTemplate(template_gray, template_gray[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w],
+                                    cv2.TM_SQDIFF_NORMED)
+        min_val_temp, max_val_temp, min_loc_temp, max_loc_temp = cv2.minMaxLoc(
+            res_temp)
+
+        if (min_val < threshold):
+            return {"pt1": min_loc, "pt2": min_loc_temp}
+        return
+
+    def find_partial_image_distance_with_matchtemplate(self, img, template, threshold=0.1):
+        print("Find partial image position")
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        h, w = template.shape[0:2]
+        print("dev detection")
+        mask = cv2.absdiff(img_gray, template_gray)
+        mask[mask > 0] = 255
+
+        # find contours in the mask and get the largest one
+        cnts, hierarchy = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # merge all contours into one
+        merged_contour = np.zeros(mask.shape, np.uint8)
+        for cnt in cnts:
+            cv2.drawContours(merged_contour, [cnt], -1, 255, -1)
+        
+    
+
+        # # get largest contour
+        # largest_contour = max(cnts, key=cv2.contourArea)
+        # contour_mask = np.zeros(mask.shape, np.uint8)
+        # cv2.drawContours(contour_mask, [largest_contour], -1, 255, -1)
+
+        masked_img =      cv2.bitwise_not(cv2.bitwise_and(merged_contour, cv2.bitwise_not(img_gray)))
+        masked_template = cv2.bitwise_not(cv2.bitwise_and(merged_contour, cv2.bitwise_not(template_gray)))
+        template_blur = cv2.GaussianBlur(masked_template, (3, 3), 0)
+        template_thresh = cv2.threshold(
+            template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        temp_x, temp_y, temp_w, temp_h = cv2.boundingRect(template_thresh)
+        res = cv2.matchTemplate(
+            masked_img, masked_template[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w], cv2.TM_SQDIFF_NORMED)
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+
+        res_temp = cv2.matchTemplate(masked_template, masked_template[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w],
+                                    cv2.TM_SQDIFF_NORMED)
+        min_val_temp, max_val_temp, min_loc_temp, max_loc_temp = cv2.minMaxLoc(
+            res_temp)
+
+        if (min_val < threshold):
+            return {"pt1": min_loc, "pt2": min_loc_temp}
+        return
+
+    def get_orb_keypoints_and_descriptors(self, img1, img2, edgeThreshold = 5, patchSize = 10):
+        orb = cv2.ORB_create(nfeatures=250, edgeThreshold=edgeThreshold, patchSize=patchSize)
+        img1_kp, img1_des = orb.detectAndCompute(img1, None)
+        img2_kp, img2_des = orb.detectAndCompute(img2, None)
+
+        if len(img1_kp) == 0 or len(img2_kp) == 0:
+            if patchSize > 4:
+                patchSize -= 4
+                edgeThreshold = int(patchSize/2)
+                return self.get_orb_keypoints_and_descriptors(img1, img2, edgeThreshold, patchSize)
+            else:
+                return None, None, None, None    
+
+        return img1_kp, img1_des, img2_kp, img2_des
+
+    def find_partial_image_distance_with_orb(self, img, template):
+        print("Find partial image position")
+        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        h, w = template.shape[0:2]
+        print("dev detection")
+        mask = cv2.absdiff(img_gray, template_gray)
+        mask[mask > 0] = 255
+
+        # find contours in the mask and get the largest one
+        cnts, hierarchy = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # get largest contour
+        largest_contour = max(cnts, key=cv2.contourArea)
+        contour_mask = np.zeros(mask.shape, np.uint8)
+
+        for cnt in cnts:
+            cv2.drawContours(contour_mask, [cnt], -1, 255, -1)
+
+        masked_img =      cv2.bitwise_not(cv2.bitwise_and(contour_mask, cv2.bitwise_not(img_gray)))
+        masked_template = cv2.bitwise_not(cv2.bitwise_and(contour_mask, cv2.bitwise_not(template_gray)))
+
+        edges_img = cv2.Canny(masked_img, 100, 200)
+        edges_template = cv2.Canny(masked_template, 100, 200)
+
+        # Find the keypoints and descriptors for the template image
+        template_keypoints, template_descriptors, target_keypoints, target_descriptors = self.get_orb_keypoints_and_descriptors(edges_template, edges_img)
+
+        if len(template_keypoints) == 0 or len(target_keypoints) == 0:
+            return
+
+        # Create a brute-force matcher
+        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
+        # Match the template image with the target image
+        matches = bf.match(template_descriptors, target_descriptors)
+
+        if len(matches) > 0:
+
+            # Sort the matches based on their distance
+            matches = sorted(matches, key=lambda x: x.distance)
+            best_matches = matches[:10]
+            # Estimate the transformation matrix between the two images
+            src_pts = np.float32([template_keypoints[m.queryIdx].pt for m in best_matches]).reshape(-1, 1, 2)
+            dst_pts = np.float32([target_keypoints[m.trainIdx].pt for m in best_matches]).reshape(-1, 1, 2)
+
+            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+
+            # Calculate the amount of movement between the two images
+            movement = np.sqrt(np.sum(M[:,2]**2))
+
+            self.add_screenshot_to_log(cv2.drawMatches(masked_template, template_keypoints, masked_img, target_keypoints, best_matches, None, flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS), "ORB_matches")
+            return {"distance": movement}
+        
+    def blend_two_images(self, image, overlay, ignore_color=[255, 255, 255]):
+        ignore_color = np.asarray(ignore_color)
+        mask = ~(overlay == ignore_color).all(-1)
+        # Or mask = (overlay!=ignore_color).any(-1)
+        out = image.copy()
+        out[mask] = image[mask] * 0.5 + overlay[mask] * 0.5
+        return out
