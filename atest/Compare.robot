@@ -71,7 +71,6 @@ Compare Images With Different Shapes
 
 Compare Text Content from PDF
     ${text}     Get Text From Document    testdata/sample.pdf    *=    THE TEST SHIPPER
-#    List Should Contain Value   ${text}     THE TEST SHIPPER
 
 Compare Text Content from Image
     ${text}     Get Text From Document    testdata/Beach_date.png    *=    123456789
@@ -81,10 +80,12 @@ Compare Text Content from Image
 
 
 Compare Text Content from Image with east
-    ${text}     Get Text From Document    testdata/Beach_date.png    ocr_engine=east
-    Should Contain Match    ${text}    *01-Jan-2021*
-    Should Contain Match    ${text}    *SOUVENIR*
-    Should Contain Match    ${text}    *123456789*
+    Set Ocr Engine    east
+    ${text}     Get Text From Document    testdata/Beach_date.png
+    Should Contain    ${text}    01-Jan-2021
+    Should Contain    ${text}    SOUVENIR
+    Should Contain    ${text}    123456789
+    ${text}     Get Text From Document    testdata/Beach_date.png    *=    01-Jan-2021
 
 Compare Images And Resize With Different Shapes
     Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg    resize_candidate=True

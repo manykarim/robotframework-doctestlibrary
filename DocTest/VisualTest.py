@@ -1,5 +1,5 @@
 import base64
-from typing import Union, Optional, Any
+from typing import Union, Optional, Any, Literal
 import uuid
 from DocTest.DocumentRepresentation import DocumentRepresentation, Page
 from DocTest.Downloader import is_url, download_file_from_url
@@ -25,7 +25,7 @@ class VisualTest:
     OCR_ENGINE_DEFAULT = 'tesseract'
 
     def __init__(self, threshold: float = 0.0, dpi: int = DPI_DEFAULT, take_screenshots: bool = False, show_diff: bool = False, 
-                 ocr_engine: str = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False):
+                 ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False):
         self.threshold = threshold
         self.dpi = dpi
         self.take_screenshots = take_screenshots
@@ -35,6 +35,7 @@ class VisualTest:
         self.embed_screenshots = embed_screenshots
         self.screenshot_dir = Path('screenshots')
         built_in = BuiltIn()
+        self.force_ocr = force_ocr
         try:
             self.output_directory = built_in.get_variable_value('${OUTPUT DIR}')
             self.reference_run = built_in.get_variable_value('${REFERENCE_RUN}', False)
@@ -71,11 +72,11 @@ class VisualTest:
         reference_doc = DocumentRepresentation(reference_image, dpi=dpi, ocr_engine=self.ocr_engine, ignore_area_file=placeholder_file, ignore_area=mask)
         candidate_doc = DocumentRepresentation(candidate_image, dpi=dpi, ocr_engine=self.ocr_engine)            
 
+        watermarks = []
 
         # Apply ignore areas if provided
         abstract_ignore_areas = None
-        requires_ocr = force_ocr  # Start by using the force_ocr flag
-
+       
         detected_differences = []
         # Compare visual content through the Page class
         for ref_page, cand_page in zip(reference_doc.pages, candidate_doc.pages):
@@ -98,6 +99,24 @@ class VisualTest:
                 combined_image = np.concatenate((ref_page.image, cand_page.image), axis=1)
                 self.add_screenshot_to_log(combined_image, suffix='_combined', original_size=False)
 
+            if not similar and watermark_file:
+                if watermarks == []:
+                    watermarks = load_watermarks(watermark_file)
+                for mask in watermarks:    
+                    if (mask.shape[0] != ref_page.image.shape[0] or mask.shape[1] != ref_page.image.shape[1]):
+                        # Resize mask to match thresh
+                        mask = cv2.resize(mask, (ref_page.image.shape[1], ref_page.image.shape[0]))
+
+                    mask_inv = cv2.bitwise_not(mask)
+                    # dilate the mask to account for slight misalignments
+                    mask_inv = cv2.dilate(mask_inv, None, iterations=2)
+                    result = cv2.subtract(absolute_diff, mask_inv)
+                    if cv2.countNonZero(cv2.subtract(absolute_diff, mask_inv)) == 0 or cv2.countNonZero(cv2.subtract(thresh, mask_inv)) == 0:
+                        similar = True
+                        print(
+                            "A watermark file was provided. After removing watermark area, both images are equal")
+
+                
 
             if check_text_content and not similar:
                 similar = True
@@ -222,7 +241,7 @@ class VisualTest:
         return self.get_text(document, assertion_operator, assertion_expected, message)
 
     @keyword
-    def get_text(self, document: str,         assertion_operator: Optional[AssertionOperator] = None,
+    def get_text(self, document: str, assertion_operator: Optional[AssertionOperator] = None,
         assertion_expected: Any = None,
         message: str = None):
         """Get the text content of a document."""
@@ -233,9 +252,58 @@ class VisualTest:
         doc = DocumentRepresentation(document, dpi=self.dpi, ocr_engine=self.ocr_engine)
 
         # Get the text content of the document
-        text = doc.get_text()
+        text = doc.get_text(force_ocr=self.force_ocr)
         return verify_assertion(text, assertion_operator, assertion_expected, message)
+
+    @keyword    
+    def set_ocr_engine(self, ocr_engine: Literal["tesseract", "east"]):
+        """Set the OCR engine to be used for text extraction."""
+        self.ocr_engine = ocr_engine
+
+    @keyword
+    def set_dpi(self, dpi: int):
+        """Set the DPI to be used for image processing."""
+        self.dpi = dpi
     
+    @keyword
+    def set_threshold(self, threshold: float):
+        """Set the threshold for image comparison."""
+        self.threshold = threshold
+    
+    @keyword
+    def set_screenshot_format(self, screenshot_format: str):
+        """Set the format of the screenshots to be saved."""
+        self.screenshot_format = screenshot_format
+    
+    @keyword
+    def set_embed_screenshots(self, embed_screenshots: bool):
+        """Set whether to embed screenshots in the log."""
+        self.embed_screenshots = embed_screenshots
+    
+    @keyword
+    def set_take_screenshots(self, take_screenshots: bool):
+        """Set whether to take screenshots during image comparison."""
+        self.take_screenshots = take_screenshots
+    
+    @keyword
+    def set_show_diff(self, show_diff: bool):
+        """Set whether to show differences in the images during comparison."""
+        self.show_diff = show_diff
+    
+    @keyword
+    def set_screenshot_dir(self, screenshot_dir: str):
+        """Set the directory to save screenshots."""
+        self.screenshot_dir = Path(screenshot_dir)
+    
+    @keyword
+    def set_reference_run(self, reference_run: bool):
+        """Set whether the run is a reference run."""
+        self.reference_run = reference_run
+    
+    @keyword
+    def set_force_ocr(self, force_ocr: bool):
+        """Set whether to force OCR during image comparison."""
+        self.force_ocr = force_ocr
 
     def _get_diff_rectangles(self, absolute_diff):
         """Get rectangles around differences in the page."""
@@ -492,3 +560,32 @@ class VisualTest:
         out = image.copy()
         out[mask] = image[mask] * 0.5 + overlay[mask] * 0.5
         return out
+
+def load_watermarks(watermark_file):
+    if isinstance(watermark_file, str):
+        watermarks = []
+        if os.path.isdir(watermark_file):
+            watermark_file = [str(os.path.join(watermark_file, f)) for f in os.listdir(
+                watermark_file) if os.path.isfile(os.path.join(watermark_file, f))]
+        else:
+            watermark_file = [watermark_file]
+        if isinstance(watermark_file, list):
+            try:
+                for single_watermark in watermark_file:
+                    try:
+                        watermark = DocumentRepresentation(single_watermark).pages[0].image
+                        if watermark.shape[2] == 4:
+                            watermark = watermark[:, :, :3]
+                        watermark_gray = cv2.cvtColor(
+                            watermark, cv2.COLOR_BGR2GRAY)
+                        #watermark_gray = (watermark_gray * 255).astype("uint8")
+                        mask = cv2.threshold(watermark_gray, 10, 255, cv2.THRESH_BINARY)[1]   
+
+                        watermarks.append(mask)
+                    except:
+                        print(
+                            f'Watermark file {single_watermark} could not be loaded. Continue with next item.')
+                    continue
+            except:
+                print("Watermark file could not be loaded.")
+            return watermarks

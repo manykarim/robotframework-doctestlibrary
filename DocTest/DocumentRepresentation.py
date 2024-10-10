@@ -4,7 +4,7 @@ import pytesseract
 import numpy as np
 import json
 from skimage import metrics
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Literal
 from concurrent.futures import ThreadPoolExecutor
 from pytesseract import Output
 from DocTest.IgnoreAreaManager import IgnoreAreaManager
@@ -43,8 +43,11 @@ class Page:
             self.ocr_text_data = pytesseract.image_to_data(thresholded_image, config=config, output_type=Output.DICT)
             self.ocr_performed = True
         elif ocr_engine == "east":
-            # Placeholder for EAST OCR logic
-            pass
+            from DocTest.Ocr import EastTextExtractor
+            self.east_text_extractor = EastTextExtractor()
+            text = self.east_text_extractor.get_image_text(self.image)
+            self.ocr_text_data= text
+            self.ocr_performed = True
         if self.image_rescaled_for_ocr:
             self.image = original_image
 
@@ -230,17 +233,17 @@ class Page:
                 x = self.image.shape[1] - w
             self.pixel_ignore_areas.append({"x": x, "y": y, "width": w, "height": h})
 
-    def _get_text(self, force_ocr: bool = False):
+    def _get_text(self, force_ocr: bool = False, ocr_engine: Literal['tesseract', 'east'] = 'tesseract', confidence: int = DEFAULT_CONFIDENCE):
         """Extract text content from the page image."""
         if force_ocr and not self.ocr_performed:
-            self.apply_ocr()
+            self.apply_ocr(ocr_engine=ocr_engine, confidence=confidence)
             return " ".join(self.ocr_text_data['text'])
         if self.ocr_performed:
             return " ".join(self.ocr_text_data['text'])
         elif self.pdf_text_words:
             return make_text(self.pdf_text_words).split()
         else:
-            self.apply_ocr()
+            self.apply_ocr(ocr_engine=ocr_engine, confidence=confidence)
             return " ".join(self.ocr_text_data['text'])
 
     def _get_text_from_area(self, area: Dict, force_ocr: bool = False):
@@ -279,13 +282,7 @@ class Page:
                             w for w in self.pdf_text_words if fitz.Rect(w[:4]).intersects(rect)]
             return make_text(diff_area_ref_words).split()
         else:
-            self.apply_ocr()
-            text = ""
-            for i, box in enumerate(self.ocr_text_data['text']):
-                x, y, w, h = self.ocr_text_data['left'][i], self.ocr_text_data['top'][i], self.ocr_text_data['width'][i], self.ocr_text_data['height'][i]
-                if x >= area_x and y >= area_y and x + w <= area_x + area_w and y + h <= area_y + area_h:
-                    text += box + " "
-            return text.strip()
+            return self._get_text_from_area_with_tesseract(area)
         
     def _get_text_from_area_with_tesseract(self, area: Dict):
         """Extract text content from a specific area of the page using Tesseract OCR."""
@@ -323,7 +320,7 @@ class Page:
         return self.image[y:y+h, x:x+w]
     
 class DocumentRepresentation:
-    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: str = OCR_ENGINE_DEFAULT, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False):
+    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False):
         self.file_path = file_path
         self.dpi = dpi
         self.pages: List[Page] = []
@@ -447,7 +444,7 @@ class DocumentRepresentation:
         text_content = ""
         if force_ocr:
             for page in self.pages:
-                text_content += page._get_text(force_ocr) + " "
+                text_content += page._get_text(force_ocr, ocr_engine=self.ocr_engine) + " "
             return text_content.strip()
         if self.file_path.endswith('.pdf'):
             text_content = self.extract_text_from_pdf()
@@ -455,7 +452,7 @@ class DocumentRepresentation:
         else:
             # If OCR is not forced, extract text from the OCR data
             for page in self.pages:
-                text_content += page._get_text(force_ocr) + " "
+                text_content += page._get_text(force_ocr, ocr_engine=self.ocr_engine) + " "
         return text_content.strip()
 
     def identify_barcodes(self):
