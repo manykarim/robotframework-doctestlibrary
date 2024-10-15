@@ -3,6 +3,8 @@ import cv2
 import pytesseract
 import numpy as np
 import json
+import logging
+from pathlib import Path
 from skimage import metrics
 from typing import List, Dict, Optional, Union, Literal
 from concurrent.futures import ThreadPoolExecutor
@@ -103,11 +105,11 @@ class Page:
 
         # Quick check: if the images are of different sizes, they are not similar
         if self.image.shape != other_page.image.shape:
-            return False, None, None, None
+            return False, None, None, None, None
         
         # Quick check: if the images are identical, they are similar
         if np.array_equal(self.image, other_page.image):
-            return True, None, None, None
+            return True, None, None, None, None
 
         # Perform SSIM (Structural Similarity Index) comparison and get the diff image
         gray_self = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
@@ -121,12 +123,56 @@ class Page:
         absolute_diff = cv2.absdiff(gray_self, gray_other)
 
         # Return a tuple: whether the pages are similar, and the difference image
-        return score >= (1.0 - threshold), diff, thresh, absolute_diff
+        return score >= (1.0 - threshold), diff, thresh, absolute_diff, 1.0 - score
 
     def identify_barcodes(self):
         """Detect and store barcodes for this page."""
-        # Placeholder for barcode detection logic using OpenCV or pyzbar
-        pass
+        self.identify_barcodes_with_zbar()
+        self.identify_datamatrices()
+
+    def identify_barcodes_with_zbar(self):
+        try:
+            from pyzbar import pyzbar
+        except:
+            logging.debug('Failed to import pyzbar', exc_info=True)
+            return
+        image_height = self.image.shape[0]
+        image_width = self.image.shape[1]
+        barcodes = pyzbar.decode(self.image)
+        #Add barcode as placehoder
+        for barcode in barcodes:
+            logging.debug(barcode)
+            x = barcode.rect.left
+            y = barcode.rect.top
+            h = barcode.rect.height
+            w = barcode.rect.width
+            value = barcode.data.decode("utf-8")
+            self.barcodes.append({"x":x, "y":y, "height":h, "width":w, "value":value})
+            self.pixel_ignore_areas.append({"x": x, "y": y, "height": h, "width": w})
+
+    def identify_datamatrices(self):
+        try:
+            from pylibdmtx import pylibdmtx
+        except:
+            logging.debug('Failed to import pylibdmtx', exc_info=True)
+            return
+        logging.debug("Identify datamatrices")
+        image_height = self.image.shape[0]
+        try:
+            barcodes = pylibdmtx.decode(self.image, timeout=5000)
+        except:
+            logging.debug("pylibdmtx could not be loaded",exc_info=True)
+            return
+        #Add barcode as placehoder
+        for barcode in barcodes:
+            print(barcode)
+            x = barcode.rect.left
+            y = image_height - barcode.rect.top - barcode.rect.height
+            h = barcode.rect.height
+            w = barcode.rect.width
+            value = barcode.data.decode("utf-8")
+            self.barcodes.append({"x":x, "y":y, "height":h, "width":w, "value":value})
+            self.pixel_ignore_areas.append({"x": x, "y:": y, "height": h, "width": w})
 
     def _process_ignore_area(self, ignore_area: Dict):
         """Process each ignore area based on its type and convert it into pixel-based coordinates."""
@@ -320,21 +366,28 @@ class Page:
         return self.image[y:y+h, x:x+w]
     
 class DocumentRepresentation:
-    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False):
-        self.file_path = file_path
+    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False, contains_barcodes: bool = False):
+        self.file_path = Path(file_path)
         self.dpi = dpi
+        self.contains_barcodes = contains_barcodes
         self.pages: List[Page] = []
         self.ocr_engine = ocr_engine
         self.abstract_ignore_areas = []
-        self.pixel_ignore_areas = []
+        self.barcodes = []
         self.load_document()
         self.create_abstract_ignore_areas(ignore_area_file, ignore_area)
         self.create_pixel_based_ignore_areas(force_ocr)
+        if self.contains_barcodes:
+            self.identify_barcodes
 
     def load_document(self):
         """Load the document, either as an image or a multi-page PDF, into Page objects."""
-        if self.file_path.endswith('.pdf'):
+        if self.file_path.suffix == '.pdf':
             self._load_pdf()
+        elif self.file_path.suffix == '.pcl':
+            self._load_pcl()
+        elif self.file_path.suffix == '.ps':
+            self._load_ps()
         else:
             self._load_image()
 
@@ -365,6 +418,93 @@ class DocumentRepresentation:
                 self.pages[-1].pdf_text_blocks = page.get_text("blocks")
         except ImportError:
             raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
+
+    def _load_pcl(self, resolution: int = None):
+        import subprocess
+        import shutil
+        import random
+        import tempfile
+        from os.path import splitext, split
+        try:
+            command = shutil.which('pcl6') or shutil.which('gpcl6win64') or shutil.which('gpcl6win32') or shutil.which('gpcl6')
+        except:
+            raise AssertionError("No pcl6 executable found in path. Please install ghostPCL")
+        filename_without_extension = self.file_path.stem
+        if resolution == None:
+            resolution = self.dpi
+        output_image_directory = os.path.join(tempfile.gettempdir(), filename_without_extension+str(random.randint(100, 999)))
+        
+        is_exist = os.path.exists(output_image_directory)
+        if not is_exist:
+            os.makedirs(output_image_directory)
+        else:
+            shutil.rmtree(output_image_directory)
+            os.makedirs(output_image_directory)
+        Output_filepath = os.path.join(output_image_directory,'output-%d.png')
+        
+        args = [
+            command,
+            '-dNOPAUSE',
+            "-sDEVICE=png16m",
+            f"-r{resolution}",
+            f"-sOutputFile={Output_filepath}",
+            self.file_path.resolve()
+        ]
+        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        page = 1
+        for image in os.listdir(output_image_directory):
+            image_file =os.path.join(output_image_directory, image)
+            data = cv2.imread(image_file)
+            
+            if data is None:
+                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
+            self.pages.append(Page(data, page, resolution))
+            page += 1
+
+        shutil.rmtree(output_image_directory)
+
+    def _load_ps(self, resolution: int = None):
+        import subprocess
+        import shutil
+        import random
+        import tempfile
+        from os.path import splitext, split 
+        try:
+            command = shutil.which('gs') or shutil.which('gswin64c') or shutil.which('gswin32c') or shutil.which('ghostscript')
+        except:
+            raise AssertionError("No ghostscript executable found in path. Please install ghostscript")
+        filename_without_extension = self.file_path.stem
+        if resolution == None:
+            resolution = self.dpi
+        output_image_directory = os.path.join(tempfile.gettempdir(), filename_without_extension+str(random.randint(100, 999)))
+        is_exist = os.path.exists(output_image_directory)
+        if not is_exist:
+            os.makedirs(output_image_directory)
+        else:
+            shutil.rmtree(output_image_directory)
+            os.makedirs(output_image_directory)
+        Output_filepath = os.path.join(output_image_directory, 'output-%d.png')
+        args = [
+            command,
+            '-dNOPAUSE',
+            "-dBATCH",
+            "-dSAFER",
+            "-sDEVICE=png16m",
+            f"-r{resolution}",
+            f"-sOutputFile={Output_filepath}",
+            self.file_path.resolve()
+        ]
+        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        page = 1
+        for image in os.listdir(output_image_directory):
+            image_file =os.path.join(output_image_directory, image)
+            data = cv2.imread(image_file)
+            if data is None:
+                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
+            self.pages.append(Page(data, page, resolution))
+            page += 1     
+        shutil.rmtree(output_image_directory)
+
 
     def apply_ocr(self, parallel: bool = False):
         """Apply OCR to each page of the document."""
@@ -477,6 +617,12 @@ class DocumentRepresentation:
             for ignore_area in ignore_areas:
                 if ignore_area.get('page') == page.page_number or ignore_area.get('page') == 'all':
                     page.ignore_areas.append(ignore_area)
+    
+
+    def identify_barcodes(self):
+        """Detect barcodes in all pages."""
+        for page in self.pages:
+            page.identify_barcodes()
 
 def make_text(words):
     """Return textstring output of get_text("words").

@@ -25,7 +25,7 @@ class VisualTest:
     OCR_ENGINE_DEFAULT = 'tesseract'
 
     def __init__(self, threshold: float = 0.0, dpi: int = DPI_DEFAULT, take_screenshots: bool = False, show_diff: bool = False, 
-                 ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False):
+                 ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False, **kwargs):
         self.threshold = threshold
         self.dpi = dpi
         self.take_screenshots = take_screenshots
@@ -90,7 +90,7 @@ class VisualTest:
                 detected_differences.append((ref_page, cand_page, "Image dimensions are different."))
                 continue
 
-            similar, diff, thresh, absolute_diff = ref_page.compare_with(cand_page, threshold=threshold)
+            similar, diff, thresh, absolute_diff, score = ref_page.compare_with(cand_page, threshold=threshold)
 
             if self.take_screenshots:
                 # Save original images to the screenshot directory and add them to the Robot Framework log
@@ -207,7 +207,10 @@ class VisualTest:
                 # Add the side-by-side comparison with differences to the Robot Framework log
                 self.add_screenshot_to_log(combined_image_with_differeces, suffix='_combined_with_diff', original_size=False)
 
-                detected_differences.append((ref_page, cand_page, "Visual differences detected."))
+                # Add absolute difference image to the log
+                self.add_screenshot_to_log(absolute_diff, suffix='_absolute_diff', original_size=False)
+
+                detected_differences.append((ref_page, cand_page, f"Visual differences detected. SSIM score: {score:.20f}"))
 
         for ref_page, cand_page, message in detected_differences:
             print(message)
