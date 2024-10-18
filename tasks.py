@@ -41,6 +41,7 @@ def atests(context):
         "-d results",
         "--prerebotmodifier utilities.xom.XUnitOut:results/xunit.xml",
         f"{ROOT}/atest/Compare.robot",
+        f"{ROOT}/atest/Barcode.robot",
         f"{ROOT}/atest/PdfContent.robot",
         f"{ROOT}/atest/PrintJobs.robot",
         f"{ROOT}/atest/MovementDetection.robot",
