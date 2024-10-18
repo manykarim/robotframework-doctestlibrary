@@ -18,7 +18,7 @@ PyMuPDF = ">=1.23.1"
 imutils = "*"
 numpy = [
     {version = "<1.25", python = "<=3.8"},
-    {version = "*", python = ">3.8,<3.12"},
+    {version = "^1.26", python = ">3.8,<3.12"},
     {version = ">=1.26", python = "^3.12"}
 ]
 opencv-python-headless = "*"
