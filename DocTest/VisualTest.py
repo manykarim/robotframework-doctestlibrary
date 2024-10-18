@@ -25,7 +25,7 @@ class VisualTest:
     OCR_ENGINE_DEFAULT = 'tesseract'
 
     def __init__(self, threshold: float = 0.0, dpi: int = DPI_DEFAULT, take_screenshots: bool = False, show_diff: bool = False, 
-                 ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False, **kwargs):
+                 ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False, watermark_file: str =None,   **kwargs):
         self.threshold = threshold
         self.dpi = dpi
         self.take_screenshots = take_screenshots
@@ -34,6 +34,7 @@ class VisualTest:
         self.screenshot_format = screenshot_format if screenshot_format in ['jpg', 'png'] else 'jpg'
         self.embed_screenshots = embed_screenshots
         self.screenshot_dir = Path('screenshots')
+        self.watermark_file = watermark_file
         built_in = BuiltIn()
         self.force_ocr = force_ocr
         try:
@@ -52,7 +53,7 @@ class VisualTest:
     @keyword
     def compare_images(self, reference_image: str, candidate_image: str, placeholder_file: Union[str, dict, list] = None, 
                        check_text_content: bool = False, move_tolerance: int = None, contains_barcodes: bool = False, 
-                       watermark_file: str = None, force_ocr: bool = False, DPI: int = None, resize_candidate: bool = False, 
+                       watermark_file: str = None, ignore_watermarks: bool=None, force_ocr: bool = False, DPI: int = None, resize_candidate: bool = False, 
                        blur: bool = False, threshold: float = None, mask: Union[str, dict, list] = None, get_pdf_content: bool = False,  **kwargs):
         """Compares the documents/images ``reference_image`` and ``test_image``.
 
@@ -112,6 +113,11 @@ class VisualTest:
         # Set DPI and threshold if provided
         dpi = DPI if DPI else self.dpi
         threshold = threshold if threshold is not None else self.threshold
+
+        if watermark_file is None:
+            watermark_file = self.watermark_file
+        if ignore_watermarks is None:
+            ignore_watermarks = os.getenv('IGNORE_WATERMARKS', False)
 
         # Load reference and candidate documents
         reference_doc = DocumentRepresentation(reference_image, dpi=dpi, ocr_engine=self.ocr_engine, ignore_area_file=placeholder_file, ignore_area=mask)
