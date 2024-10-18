@@ -10,7 +10,7 @@ from typing import List, Dict, Optional, Union, Literal
 from concurrent.futures import ThreadPoolExecutor
 from pytesseract import Output
 from DocTest.IgnoreAreaManager import IgnoreAreaManager
-from DocTest.config import DEFAULT_DPI, OCR_ENGINE_DEFAULT, DEFAULT_CONFIDENCE, MINIMUM_OCR_RESOLUTION, ADD_PIXELS_TO_IGNORE_AREA
+from DocTest.config import DEFAULT_DPI, OCR_ENGINE_DEFAULT, DEFAULT_CONFIDENCE, MINIMUM_OCR_RESOLUTION, ADD_PIXELS_TO_IGNORE_AREA, TESSERACT_CONFIG
 # Constants
 
 
@@ -30,16 +30,18 @@ class Page:
         self.pixel_ignore_areas = []
         self.image_rescaled_for_ocr = False
 
-    def apply_ocr(self, ocr_engine: str = OCR_ENGINE_DEFAULT, confidence: int = DEFAULT_CONFIDENCE):
+    def apply_ocr(self, ocr_engine: str = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, confidence: int = DEFAULT_CONFIDENCE):
         """Perform OCR on the page image."""
         # re-scale the image to a standard resolution for OCR if needed
         if self.dpi < MINIMUM_OCR_RESOLUTION:
-            original_image = self.image.copy()
+            # Rescale the image to a higher resolution for better OCR results            
             scale_factor = MINIMUM_OCR_RESOLUTION / self.dpi
-            self.image = cv2.resize(self.image, (0, 0), fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
-            self.image_rescaled_for_ocr = True
+            if self.image.shape[0] * scale_factor < 32767 and self.image.shape[1] * scale_factor < 32767:
+                original_image = self.image.copy()
+                self.image = cv2.resize(self.image, (0, 0), fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
+                self.image_rescaled_for_ocr = True
         if ocr_engine == "tesseract":
-            config = f'--psm 11 -l eng'
+            config = tesseract_config
             gray_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
             thresholded_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
             self.ocr_text_data = pytesseract.image_to_data(thresholded_image, config=config, output_type=Output.DICT)
@@ -289,17 +291,17 @@ class Page:
                 x = self.image.shape[1] - w
             self.pixel_ignore_areas.append({"x": x, "y": y, "width": w, "height": h})
 
-    def _get_text(self, force_ocr: bool = False, ocr_engine: Literal['tesseract', 'east'] = 'tesseract', confidence: int = DEFAULT_CONFIDENCE):
+    def _get_text(self, force_ocr: bool = False, ocr_engine: Literal['tesseract', 'east'] = 'tesseract', confidence: int = DEFAULT_CONFIDENCE, tesseract_config: str = TESSERACT_CONFIG, **kwargs):
         """Extract text content from the page image."""
         if force_ocr and not self.ocr_performed:
-            self.apply_ocr(ocr_engine=ocr_engine, confidence=confidence)
+            self.apply_ocr(ocr_engine=ocr_engine, confidence=confidence, tesseract_config=tesseract_config)
             return " ".join(self.ocr_text_data['text'])
         if self.ocr_performed:
             return " ".join(self.ocr_text_data['text'])
         elif self.pdf_text_words:
             return make_text(self.pdf_text_words).split()
         else:
-            self.apply_ocr(ocr_engine=ocr_engine, confidence=confidence)
+            self.apply_ocr(ocr_engine=ocr_engine, confidence=confidence, tesseract_config=tesseract_config)
             return " ".join(self.ocr_text_data['text'])
 
     def _get_text_from_area(self, area: Dict, force_ocr: bool = False):
@@ -376,7 +378,7 @@ class Page:
         return self.image[y:y+h, x:x+w]
     
 class DocumentRepresentation:
-    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False, contains_barcodes: bool = False):
+    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False, contains_barcodes: bool = False):
         self.file_path = Path(file_path)
         self.dpi = dpi
         self.contains_barcodes = contains_barcodes
@@ -594,13 +596,13 @@ class DocumentRepresentation:
             text_content += page._get_text_from_area(area, force_ocr) + " "
         return text_content.strip()
 
-    def get_text(self, force_ocr: bool = False):
+    def get_text(self, force_ocr: bool = False, tesseract_config: str = TESSERACT_CONFIG):
         """Extract text content from the document."""
         # If doc is pdf, extract text directly from pdf
         text_content = ""
         if force_ocr:
             for page in self.pages:
-                text_content += page._get_text(force_ocr, ocr_engine=self.ocr_engine) + " "
+                text_content += page._get_text(force_ocr, ocr_engine=self.ocr_engine, tesseract_config=tesseract_config) + " "
             return text_content.strip()
         if self.file_path.suffix == '.pdf':
             text_content = self.extract_text_from_pdf()
@@ -608,7 +610,7 @@ class DocumentRepresentation:
         else:
             # If OCR is not forced, extract text from the OCR data
             for page in self.pages:
-                text_content += page._get_text(force_ocr, ocr_engine=self.ocr_engine) + " "
+                text_content += page._get_text(force_ocr, ocr_engine=self.ocr_engine, tesseract_config=tesseract_config) + " "
         return text_content.strip()
 
     def identify_barcodes(self):
