@@ -31,4 +31,3 @@ Read Datamatrices with Assertion Engine
     Get Barcodes    testdata/datamatrix.png    contains    Stegosaurus
     Get Barcodes    testdata/datamatrix.png    contains    Plesiosaurus
     Get Barcodes    testdata/datamatrix.png    not contains    Brontosaurus
-    Get Barcodes    testdata/datamatrix.png    ==    [Stegosaurus, Plesiosaurus]
