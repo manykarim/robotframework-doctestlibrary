@@ -3,6 +3,7 @@ import os
 import cv2
 import numpy as np
 import pytesseract
+from pytesseract import Output
 from imutils.object_detection import non_max_suppression
 import urllib
 import re
@@ -52,7 +53,7 @@ class EastTextExtractor:
             cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
 
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        results = {'text':[], 'left':[], 'top':[], 'width':[], 'height':[]}
+        results = {'text':[], 'left':[], 'top':[], 'width':[], 'height':[], 'conf':[]}
         for contour in contours:
             x, y, w, h = cv2.boundingRect(contour)
             start_x = int(x * ratio_width)
@@ -64,14 +65,29 @@ class EastTextExtractor:
             
             # recognizing text
             config = '-l eng --oem 1 --psm 7'
-            text = pytesseract.image_to_string(roi, config=config)
+            # text = pytesseract.image_to_string(roi, config=config)
+            text = pytesseract.image_to_data(roi, config=config, output_type=Output.DICT)
 
-            # collating results
-            results['text'].append(text)
-            results['left'].append(start_x)
-            results['top'].append(start_y)
-            results['width'].append(end_x - start_x)
-            results['height'].append(end_y - start_y)
+            # recalculate coordinates in tesseract text dict and add start_x and start_y
+            for i in range(len(text['text'])):
+                if int(text['conf'][i]) > PYTESSERACT_CONFIDENCE:
+                    text['text'][i] = remove_control_characters(text['text'][i])
+                    text['left'][i] = text['left'][i] + start_x
+                    text['top'][i] = text['top'][i] + start_y
+                    text['width'][i] = text['width'][i]
+                    text['height'][i] = text['height'][i]
+                    text['text'][i] = text['text'][i].strip()
+                    text['conf'][i] = text['conf'][i]
+
+
+
+                    # collating results
+                    results['text'].append(text['text'][i])
+                    results['left'].append(text['left'][i])
+                    results['top'].append(text['top'][i])
+                    results['width'].append(text['width'][i])
+                    results['height'].append(text['height'][i])
+                    results['conf'].append(text['conf'][i])
 
         return results
 
