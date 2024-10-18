@@ -61,12 +61,12 @@ def test_compare_birthday_image_with_noise_and_blurring(testdata_dir):
     visual_tester.compare_images(ref_image, cand_image, blur=True)
 
 def test_text_on_colored_background_with_east(testdata_dir):
-    visual_tester = VisualTest()
+    visual_tester = VisualTest(ocr_engine='east')
     ref_image=str(testdata_dir / 'Beach_date.png')
-    text = visual_tester.get_text_from_document(ref_image, ocr_engine='east')
-    assert any('01-Jan-2021' in s for s in text)
-    assert any('123456789' in s for s in text)
-    assert any('SOUVENIR' in s for s in text)
+    text = visual_tester.get_text_from_document(ref_image)
+    assert "01-Jan-2021" in text
+    assert "123456789" in text
+    assert "SOUVENIR" in text
 
 def test_moved_difference_for_pdf_on_white_background_within_tolerance_default(testdata_dir):
     visual_tester = VisualTest()
