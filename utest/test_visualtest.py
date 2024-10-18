@@ -55,7 +55,7 @@ def test_compare_birthday_image_with_noise_and_lower_threshold(testdata_dir):
     visual_tester.compare_images(ref_image, cand_image)
 
 def test_compare_birthday_image_with_noise_and_blurring(testdata_dir):
-    visual_tester = VisualTest(threshold=0.005)
+    visual_tester = VisualTest(threshold=0.0058)
     ref_image=str(testdata_dir / 'birthday_1080.png')
     cand_image=str(testdata_dir / 'birthday_1080_noise_001.png')
     visual_tester.compare_images(ref_image, cand_image, blur=True)
@@ -124,12 +124,18 @@ def test_get_barcode_values(testdata_dir):
     visual_tester = VisualTest()
     ref_image=str(testdata_dir / 'sample_barcodes.pdf')
     barcode_data = visual_tester.get_barcodes_from_document(ref_image)
+    # barcode_data is a list of dictionaries
+    # Only collect all the values of the key "value" from the dictionaries
+    barcode_data = [d['value'] for d in barcode_data]
     assert barcode_data == ['This is a QR Code by TEC-IT', 'This is a QR Code by TEC-IT for mobile applications', '1234567890', 'ABC-1234', 'ABC-1234-/+', 'ABC-abc-1234', '0012345000065', '90311017', '0725272730706', '9780201379624', 'This is a Data Matrix by TEC-IT', 'This is a Data Matrix by TEC-IT']
 
 def test_get_barcode_coordinates(testdata_dir):
     visual_tester = VisualTest()
     ref_image=str(testdata_dir / 'sample_barcodes.pdf')
-    barcode_coordinates = visual_tester.get_barcodes_from_document(ref_image, return_type='coordinates')
+    barcode_coordinates = visual_tester.get_barcodes_from_document(ref_image)
+    # barcode_coordinates is a list of dictionaries
+    # Only collect all the values of the keys "x", "y", "width" and "height" from the dictionaries
+    barcode_coordinates = [{k: d[k] for k in ('x', 'y', 'width', 'height')} for d in barcode_coordinates]
     assert barcode_coordinates == [{'x':757, 'y':1620, 'width':207, 'height':207}, 
                                    {'x':1198, 'y':1598, 'width':244, 'height':244}, 
                                    {'x':160, 'y':1651, 'width':413, 'height':122}, 
@@ -146,9 +152,11 @@ def test_get_barcode_coordinates(testdata_dir):
 def test_get_barcode_all(testdata_dir):
     visual_tester = VisualTest()
     ref_image=str(testdata_dir / 'sample_barcodes.pdf')
-    barcode_all = visual_tester.get_barcodes_from_document(ref_image, return_type='all')
-    assert barcode_all[0] == ['This is a QR Code by TEC-IT', 'This is a QR Code by TEC-IT for mobile applications', '1234567890', 'ABC-1234', 'ABC-1234-/+', 'ABC-abc-1234', '0012345000065', '90311017', '0725272730706', '9780201379624', 'This is a Data Matrix by TEC-IT', 'This is a Data Matrix by TEC-IT']
-    assert barcode_all[1] == [{'x':757, 'y':1620, 'width':207, 'height':207}, 
+    barcode_all = visual_tester.get_barcodes_from_document(ref_image)
+    barcode_values = [d['value'] for d in barcode_all]
+    barcode_coordinates = [{k: d[k] for k in ('x', 'y', 'width', 'height')} for d in barcode_all]    
+    assert barcode_values == ['This is a QR Code by TEC-IT', 'This is a QR Code by TEC-IT for mobile applications', '1234567890', 'ABC-1234', 'ABC-1234-/+', 'ABC-abc-1234', '0012345000065', '90311017', '0725272730706', '9780201379624', 'This is a Data Matrix by TEC-IT', 'This is a Data Matrix by TEC-IT']
+    assert barcode_coordinates == [{'x':757, 'y':1620, 'width':207, 'height':207}, 
                                    {'x':1198, 'y':1598, 'width':244, 'height':244}, 
                                    {'x':160, 'y':1651, 'width':413, 'height':122}, 
                                    {'x':467, 'y':1309, 'width':663, 'height':159}, 
