@@ -90,7 +90,7 @@ class VisualTest:
                 detected_differences.append((ref_page, cand_page, "Image dimensions are different."))
                 continue
 
-            similar, diff, thresh, absolute_diff, score = ref_page.compare_with(cand_page, threshold=threshold)
+            similar, diff, thresh, absolute_diff, score = ref_page.compare_with(cand_page, threshold=threshold, blur=blur)
 
             if self.take_screenshots:
                 # Save original images to the screenshot directory and add them to the Robot Framework log
@@ -307,6 +307,41 @@ class VisualTest:
     def set_force_ocr(self, force_ocr: bool):
         """Set whether to force OCR during image comparison."""
         self.force_ocr = force_ocr
+
+    @keyword
+    def get_barcodes(self, document: str, assertion_operator: Optional[AssertionOperator] = None, assertion_expected: Any = None, message: str = None):
+        """Get the barcodes from a document."""
+        if is_url(document):
+            document = download_file_from_url(document)
+        
+        # Load the document
+        doc = DocumentRepresentation(document, dpi=self.dpi, contains_barcodes=True)
+
+        # Get the barcodes from the document
+        barcodes = doc.get_barcodes()
+        return verify_assertion(barcodes, assertion_operator, assertion_expected, message)
+
+    @keyword
+    def get_barcodes_from_document(self, document: str, assertion_operator: Optional[AssertionOperator] = None, assertion_expected: Any = None, message: str = None):
+        """Get the barcodes from a document."""
+        return self.get_barcodes(document, assertion_operator, assertion_expected, message)
+
+    @keyword
+    def image_should_contain_template(self, image: str, template: str, threshold: float = 0.1, message: str = None):
+        """Check if an image contains a template image."""
+        if is_url(image):
+            image = download_file_from_url(image)
+        if is_url(template):
+            template = download_file_from_url(template)
+        
+        # Load the images
+        img = cv2.imread(image)
+        temp = cv2.imread(template)
+
+        # Find the template in the image
+        result = self.find_partial_image_position(img, temp, threshold=threshold, detection="template")
+        if not result:
+            self._raise_comparison_failure(message)
 
     def _get_diff_rectangles(self, absolute_diff):
         """Get rectangles around differences in the page."""
