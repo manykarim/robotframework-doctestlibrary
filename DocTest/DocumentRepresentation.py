@@ -98,11 +98,13 @@ class Page:
         if self.dpi != other_page.dpi:
             raise ValueError(f"Page DPI mismatch: {self.dpi} vs {other_page.dpi}")        
         
+        blur = kwargs.get('blur', False)
+
         if self.pixel_ignore_areas:
             other_page.pixel_ignore_areas = self.pixel_ignore_areas
             self.image = self.get_image_with_ignore_areas()
             other_page.image = other_page.get_image_with_ignore_areas()
-
+    
         # Quick check: if the images are of different sizes, they are not similar
         if self.image.shape != other_page.image.shape:
             return False, None, None, None, None
@@ -114,6 +116,14 @@ class Page:
         # Perform SSIM (Structural Similarity Index) comparison and get the diff image
         gray_self = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
         gray_other = cv2.cvtColor(other_page.image, cv2.COLOR_BGR2GRAY)
+
+        if blur:
+            kernel_size = int(gray_self.shape[1]/30)
+            # must be odd if median
+            kernel_size += kernel_size%2-1
+            gray_self = cv2.GaussianBlur(gray_self, (kernel_size, kernel_size), 1.5)
+            gray_other = cv2.GaussianBlur(gray_other, (kernel_size, kernel_size), 1.5)
+
         score, diff = metrics.structural_similarity(gray_self, gray_other, full=True)
 
         diff = (diff * 255).astype("uint8")
@@ -378,7 +388,7 @@ class DocumentRepresentation:
         self.create_abstract_ignore_areas(ignore_area_file, ignore_area)
         self.create_pixel_based_ignore_areas(force_ocr)
         if self.contains_barcodes:
-            self.identify_barcodes
+            self.identify_barcodes()
 
     def load_document(self):
         """Load the document, either as an image or a multi-page PDF, into Page objects."""
@@ -393,7 +403,7 @@ class DocumentRepresentation:
 
     def _load_image(self):
         """Load a single image file as a Page object."""
-        image = cv2.imread(self.file_path)
+        image = cv2.imread(str(self.file_path))
         # For images, the dpi is always 72 (default for OpenCV)
         self.dpi = 72
         if image is None:
@@ -405,7 +415,7 @@ class DocumentRepresentation:
         """Load a PDF document, converting each page into a Page object."""
         try:
             import fitz  # PyMuPDF
-            doc = fitz.open(self.file_path)
+            doc = fitz.open(str(self.file_path))
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
                 pix = page.get_pixmap(dpi=self.dpi)
@@ -448,7 +458,7 @@ class DocumentRepresentation:
             "-sDEVICE=png16m",
             f"-r{resolution}",
             f"-sOutputFile={Output_filepath}",
-            self.file_path.resolve()
+            self.file_path
         ]
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         page = 1
@@ -492,7 +502,7 @@ class DocumentRepresentation:
             "-sDEVICE=png16m",
             f"-r{resolution}",
             f"-sOutputFile={Output_filepath}",
-            self.file_path.resolve()
+            self.file_path
         ]
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         page = 1
@@ -505,7 +515,13 @@ class DocumentRepresentation:
             page += 1     
         shutil.rmtree(output_image_directory)
 
-
+    def get_barcodes(self):
+        """Return a list of barcodes detected in the document."""
+        barcodes = []
+        for page in self.pages:
+            barcodes.extend(page.barcodes)
+        return barcodes
+    
     def apply_ocr(self, parallel: bool = False):
         """Apply OCR to each page of the document."""
         if parallel:
@@ -520,12 +536,12 @@ class DocumentRepresentation:
         Attempt to extract text directly from a PDF document.
         Returns the text content if available, otherwise returns an empty string.
         """
-        if not self.file_path.endswith('.pdf'):
+        if not self.file_path.suffix == '.pdf':
             return ""
 
         try:
             import fitz  # PyMuPDF
-            with fitz.open(self.file_path) as pdf:
+            with fitz.open(str(self.file_path)) as pdf:
                 text_content = ""
                 for page_num in range(len(pdf)):
                     page = pdf.load_page(page_num)
@@ -586,7 +602,7 @@ class DocumentRepresentation:
             for page in self.pages:
                 text_content += page._get_text(force_ocr, ocr_engine=self.ocr_engine) + " "
             return text_content.strip()
-        if self.file_path.endswith('.pdf'):
+        if self.file_path.suffix == '.pdf':
             text_content = self.extract_text_from_pdf()
             return text_content
         else:
