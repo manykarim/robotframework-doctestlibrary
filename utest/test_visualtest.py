@@ -183,3 +183,34 @@ def test_find_no_existing_partial_image_with_template(testdata_dir):
     template_image=str(testdata_dir / 'text.png')
     with pytest.raises(AssertionError, match='The Template was not found in the Image'):
         visual_tester.image_should_contain_template(ref_image, template_image, detection='template')
+
+def test_find_existing_partial_image_with_orb(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image=str(testdata_dir / 'birthday_1080.png')
+    template_image=str(testdata_dir / 'birthday_partial_banana.png')
+    position = visual_tester.image_should_contain_template(ref_image, template_image, detection='orb')
+    assert 153 <= position['pt1'][0] <= 156
+    assert 1000 <= position['pt1'][1] <= 1003
+    assert 350 <= position['pt2'][0] <= 353
+    assert 1150 <= position['pt2'][1] <= 1154
+
+def test_find_existing_partial_image_with_sift(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image=str(testdata_dir / 'birthday_1080.png')
+    template_image=str(testdata_dir / 'birthday_partial_banana.png')
+    position = visual_tester.image_should_contain_template(ref_image, template_image, detection='sift')
+
+    # Make the position assertion fuzzy to avoid false negatives
+    # If the match differs in 1-3 pixels, it is still considered a match
+    assert 153 <= position['pt1'][0] <= 156
+    assert 1000 <= position['pt1'][1] <= 1003
+    assert 350 <= position['pt2'][0] <= 353
+    assert 1150 <= position['pt2'][1] <= 1154
+
+    
+def test_find_no_existing_partial_image_with_sift(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image=str(testdata_dir / 'birthday_1080.png')
+    template_image=str(testdata_dir / 'text.png')
+    with pytest.raises(AssertionError, match='The Template was not found in the Image'):
+        visual_tester.image_should_contain_template(ref_image, template_image, detection='sift')
