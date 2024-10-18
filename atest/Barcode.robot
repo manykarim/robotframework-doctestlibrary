@@ -8,6 +8,8 @@ Read Datamatrices in Image
     Length Should Be    ${data}    2
     Should Be True    $data[0] == {'x': 5, 'y': 7, 'height': 95, 'width': 96, 'value': 'Stegosaurus'} 
     Should Be True    $data[1] == {'x': 298, 'y': 7, 'height': 95, 'width': 95, 'value': 'Plesiosaurus'}
+    Should Be True    $data[0]['value'] == 'Stegosaurus'    
+    Should Be True    $data[1]['value'] == 'Plesiosaurus'    
 
 Read Barcodes in PDF
     ${data}    Get Barcodes    testdata/sample_barcodes.pdf
@@ -24,3 +26,9 @@ Read Barcodes in PDF
     Should Be True    $data[9] == {'x': 236, 'y': 90, 'height': 158, 'width': 396, 'value': '9780201379624'}
     Should Be True    $data[10] == {'x': 480, 'y': 2025, 'height': 183, 'width': 184, 'value': 'This is a Data Matrix by TEC-IT'}
     Should Be True    $data[11] == {'x': 979, 'y': 1971, 'height': 271, 'width': 272, 'value': 'This is a Data Matrix by TEC-IT'}
+
+Read Datamatrices with Assertion Engine
+    Get Barcodes    testdata/datamatrix.png    contains    Stegosaurus
+    Get Barcodes    testdata/datamatrix.png    contains    Plesiosaurus
+    Get Barcodes    testdata/datamatrix.png    not contains    Brontosaurus
+    Get Barcodes    testdata/datamatrix.png    ==    [Stegosaurus, Plesiosaurus]
