@@ -133,7 +133,7 @@ class VisualTest:
         for ref_page, cand_page in zip(reference_doc.pages, candidate_doc.pages):
 
             # Resize the candidate page if needed
-            if resize_candidate:
+            if resize_candidate and ref_page.image.shape != cand_page.image.shape:
                 cand_page.image = cv2.resize(cand_page.image, (ref_page.image.shape[1], ref_page.image.shape[0]))
             
             # Check if dimensions are different
