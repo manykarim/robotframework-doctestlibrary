@@ -54,11 +54,7 @@ jobs:
         with:
           name: test-results ${{ matrix.python-version }} # Choose a descriptive name for your artifact
           path: |
-            results/report.html
-            results/log.html
-            results/output.xml
-            results/pytest.xml
-            results/xunit.xml
+            results/
       - name: Test Report
         uses: dorny/test-reporter@main
         if: success() || failure()    # run this step even if previous step failed
