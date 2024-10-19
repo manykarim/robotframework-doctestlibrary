@@ -22,6 +22,7 @@ def utests(context):
         "-m",
         "pytest",
         "--junitxml=results/pytest.xml",
+        "-s",
         f"{ROOT}/utest",
     ]
     global utests_completed_process  

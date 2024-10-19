@@ -14,10 +14,18 @@ def get_result_dir(request):
     
     if junitxml_path:
         # Extract and return the directory from the full path
+        print("junitxml_path: ", junitxml_path)
         junitxml_dir = os.path.dirname(junitxml_path)
+        # Get absolute path
+        junitxml_dir = os.path.abspath(junitxml_dir)
+        print("junitxml_path: ", junitxml_path)
         return junitxml_dir
     else:
-        return './results'
+        print("No junitxml_path")
+        # Return the default directory
+        # Absolute path of the current directory
+        print("os.path.abspath('results'): ", os.path.abspath('results'))
+        return os.path.abspath('results')
     return None
 
 def test_profiler_ocr_text_small(testdata_dir, request, get_result_dir):
