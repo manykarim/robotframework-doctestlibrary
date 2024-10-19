@@ -22,7 +22,6 @@ def utests(context):
         "-m",
         "pytest",
         "--junitxml=results/pytest.xml",
-        "-s",
         f"{ROOT}/utest",
     ]
     global utests_completed_process  
@@ -53,16 +52,16 @@ def atests(context):
 @task(utests, atests)
 def tests(context):
     subprocess.run("coverage combine", shell=True, check=False)
-    subprocess.run("coverage report", shell=True, check=False)
-    subprocess.run("coverage html", shell=True, check=False)
+    subprocess.run("coverage report -d results", shell=True, check=False)
+    subprocess.run("coverage html -d results", shell=True, check=False)
     if utests_completed_process.returncode != 0 or atests_completed_process.returncode != 0:
         raise Exception("Tests failed")
 
 @task
 def coverage_report(context):
     subprocess.run("coverage combine", shell=True, check=False)
-    subprocess.run("coverage report", shell=True, check=False)
-    subprocess.run("coverage html", shell=True, check=False)
+    subprocess.run("coverage report -d results", shell=True, check=False)
+    subprocess.run("coverage html -d results", shell=True, check=False)
 
 @task
 def libdoc(context):
