@@ -7,26 +7,11 @@ import os
 
 @pytest.fixture
 def get_result_dir(request):
-    # Access pytest config object
-    config = request.config
-    # Get the value of --junitxml option, if it exists
-    junitxml_path = config.getoption('--junitxml')
-    
-    if junitxml_path:
-        # Extract and return the directory from the full path
-        print("junitxml_path: ", junitxml_path)
-        junitxml_dir = os.path.dirname(junitxml_path)
-        # Get absolute path
-        junitxml_dir = os.path.abspath(junitxml_dir)
-        print("junitxml_path: ", junitxml_path)
-        return junitxml_dir
-    else:
-        print("No junitxml_path")
-        # Return the default directory
-        # Absolute path of the current directory
-        print("os.path.abspath('results'): ", os.path.abspath('results'))
-        return os.path.abspath('results')
-    return None
+    # Get cwd and create a results directory
+    results_dir = Path(os.getcwd()) / 'results'
+    results_dir.mkdir(exist_ok=True)
+    return str(results_dir)
+
 
 def test_profiler_ocr_text_small(testdata_dir, request, get_result_dir):
     img = VisualTest()
