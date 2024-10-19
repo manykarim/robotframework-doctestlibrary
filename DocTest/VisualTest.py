@@ -239,7 +239,7 @@ class VisualTest:
                             diff_area_candidate, "_page_" + str(ref_page.page_number+1) + "_diff_area_test_"+str(c))
 
                         if len(diff_area_ref_words) != len(diff_area_cand_words):
-                            images_are_equal = False
+                            similar = False
                             print("The identified pdf layout elements are different",
                                   diff_area_ref_words, diff_area_cand_words)
                             raise AssertionError('The compared images are different.')
@@ -265,7 +265,7 @@ class VisualTest:
                                               top_moved, right_moved, bottom_moved, " pixels")
                                         print(
                                             "This is outside of the allowed range of ", move_tolerance, " pixels")
-                                        images_are_equal = False
+                                        similar = False
                                         self.add_screenshot_to_log(self.blend_two_images(
                                             diff_area_reference, diff_area_candidate), "_diff_area_blended")
                                         raise AssertionError('The compared images are different.')
