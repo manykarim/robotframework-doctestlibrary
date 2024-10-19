@@ -9,7 +9,7 @@ import urllib
 import re
 import unicodedata
 
-PYTESSERACT_CONFIDENCE=20
+PYTESSERACT_CONFIDENCE=1
 
 def remove_control_characters(s):
     return "".join(ch for ch in s if unicodedata.category(ch)[0]!="C")
@@ -70,24 +70,24 @@ class EastTextExtractor:
 
             # recalculate coordinates in tesseract text dict and add start_x and start_y
             for i in range(len(text['text'])):
-                # if int(text['conf'][i]) > PYTESSERACT_CONFIDENCE:
-                text['text'][i] = remove_control_characters(text['text'][i])
-                text['left'][i] = text['left'][i] + start_x
-                text['top'][i] = text['top'][i] + start_y
-                text['width'][i] = text['width'][i]
-                text['height'][i] = text['height'][i]
-                text['text'][i] = text['text'][i].strip()
-                text['conf'][i] = text['conf'][i]
+                if int(text['conf'][i]) > PYTESSERACT_CONFIDENCE:
+                    text['text'][i] = remove_control_characters(text['text'][i])
+                    text['left'][i] = text['left'][i] + start_x
+                    text['top'][i] = text['top'][i] + start_y
+                    text['width'][i] = text['width'][i]
+                    text['height'][i] = text['height'][i]
+                    text['text'][i] = text['text'][i].strip()
+                    text['conf'][i] = text['conf'][i]
 
 
 
-                # collating results
-                results['text'].append(text['text'][i])
-                results['left'].append(text['left'][i])
-                results['top'].append(text['top'][i])
-                results['width'].append(text['width'][i])
-                results['height'].append(text['height'][i])
-                results['conf'].append(text['conf'][i])
+                    # collating results
+                    results['text'].append(text['text'][i])
+                    results['left'].append(text['left'][i])
+                    results['top'].append(text['top'][i])
+                    results['width'].append(text['width'][i])
+                    results['height'].append(text['height'][i])
+                    results['conf'].append(text['conf'][i])
 
         return results
 
