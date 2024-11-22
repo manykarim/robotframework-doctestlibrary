@@ -22,6 +22,7 @@ from DocTest.Ocr import EastTextExtractor
 from DocTest.Downloader import is_url, download_file_from_url
 import shutil
 import random
+import requests
 
 EAST_CONFIDENCE=0.5
 
@@ -43,6 +44,8 @@ class CompareImage(object):
         self.force_ocr = kwargs.pop('force_ocr', False)
         self.ocr_engine = kwargs.pop('ocr_engine', 'tesseract')
         self.DPI = int(kwargs.pop('DPI', 200))
+        self.ignore_printfactory_envelope = kwargs.pop('ignore_printfactory_envelope',False)
+        self.printing_papersize= kwargs.pop('printing_papersize', 'a4')
         if is_url(image):
             self.image = download_file_from_url(image)
         else:
@@ -140,14 +143,11 @@ class CompareImage(object):
                 self.convert_mupdf_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             elif (self.extension == '.ps') :
                 try:
-                    self.convert_ps_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+                    self.convert_ps_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION,papersize=self.printing_papersize)
                 except:
                     self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
             elif self.extension == '.pcl':
-                try:
-                    self.convert_pcl_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
-                except:
-                    self.convert_pywand_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION)
+                    self.convert_pcl_to_opencv_image(resolution=self.MINIMUM_OCR_RESOLUTION, ignore_printfactory_envelope=self.ignore_printfactory_envelope, papersize=self.printing_papersize)
             else:
                 scale = self.MINIMUM_OCR_RESOLUTION / self.DPI # percent of original size
                 width = int(self.opencv_images[0].shape[1] * scale)
@@ -463,15 +463,15 @@ class CompareImage(object):
             self.convert_mupdf_to_opencv_image()
         elif (self.extension=='.ps'):
             try:
-                self.convert_ps_to_opencv_image()
+                self.convert_ps_to_opencv_image(papersize=self.printing_papersize)
             except:
                 self.convert_pywand_to_opencv_image()
             
         elif self.extension=='.pcl':
-            try:
-                self.convert_pcl_to_opencv_image()
-            except:
-                self.convert_pywand_to_opencv_image()
+            self.convert_pcl_to_opencv_image(ignore_printfactory_envelope=self.ignore_printfactory_envelope, papersize=self.printing_papersize)
+            
+        elif self.extension == '.zpl':
+            self.convert_zpl_to_opencv_image()
         else:
             self.DPI = 72
             img = cv2.imread(self.image)
@@ -493,7 +493,7 @@ class CompareImage(object):
     def get_text_content_from_mupdf(self):
         pass
 
-    def convert_ps_to_opencv_image(self, resolution=None):
+    def convert_ps_to_opencv_image(self, resolution=None, papersize='a4'):
         import subprocess
         try:
             command = shutil.which('gs') or shutil.which('gswin64c') or shutil.which('gswin32c') or shutil.which('ghostscript')
@@ -513,6 +513,7 @@ class CompareImage(object):
         Output_filepath = os.path.join(output_image_directory, 'output-%d.png')
         args = [
             command,
+            f'-sPAPERSIZE={papersize}',
             '-dNOPAUSE',
             "-dBATCH",
             "-dSAFER",
@@ -525,8 +526,10 @@ class CompareImage(object):
         toc = time.perf_counter()
         print(f"Rendering ps document to Image with ghostscript performed in {toc - tic:0.4f} seconds")
         tic = time.perf_counter()
-        for image in os.listdir(output_image_directory):
-            image_file =os.path.join(output_image_directory, image)
+        file_num =len(os.listdir(output_image_directory))
+        for index in range(file_num):
+            filename = 'output-' + str(index+1)+'.png'
+            image_file =os.path.join(output_image_directory, filename)
             data = cv2.imread(image_file)
             
             if data is None:
@@ -537,7 +540,7 @@ class CompareImage(object):
         print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
         shutil.rmtree(output_image_directory)
     
-    def convert_pcl_to_opencv_image(self, resolution=None):
+    def convert_pcl_to_opencv_image(self, resolution=None, ignore_printfactory_envelope=False,papersize='a4'):
         import subprocess
         try:
             command = shutil.which('pcl6') or shutil.which('gpcl6win64') or shutil.which('gpcl6win32') or shutil.which('gpcl6')
@@ -556,9 +559,11 @@ class CompareImage(object):
             shutil.rmtree(output_image_directory)
             os.makedirs(output_image_directory)
         Output_filepath = os.path.join(output_image_directory,'output-%d.png')
-        
+        # args = command + f' -J"@PJL SET PAPER = {papersize}" -dNOPAUSE -dBATCH -sDEVICE=png16m -r{resolution} -o {Output_filepath} '+ self.image
+
         args = [
             command,
+            f'-J"@PJL SET PAPER = {papersize}"',
             '-dNOPAUSE',
             "-sDEVICE=png16m",
             f"-r{resolution}",
@@ -569,19 +574,70 @@ class CompareImage(object):
         toc = time.perf_counter()
         print(f"Rendering pcl document to Image with ghostPCL performed in {toc - tic:0.4f} seconds")
         tic = time.perf_counter()
-        print(len(os.listdir(output_image_directory)))
-        for image in os.listdir(output_image_directory):
-            image_file =os.path.join(output_image_directory, image)
-            data = cv2.imread(image_file)
+        file_num =len(os.listdir(output_image_directory))
+        for index in range(file_num):
+            if (index == 0 or index == int(file_num-1)) and ignore_printfactory_envelope is True:
+                print("The printfactory envelope is ignored in page {}".format(index+1))
+                continue
+            else:
+                filename = 'output-' + str(index+1)+'.png'
+                image_file =os.path.join(output_image_directory, filename)
+                data = cv2.imread(image_file)
             
-            if data is None:
-                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
-            self.opencv_images.append(data)
+                if data is None:
+                    raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
+                self.opencv_images.append(data)
 
         toc = time.perf_counter()
         print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
         shutil.rmtree(output_image_directory) 
-           
+
+    def convert_zpl_to_opencv_image(self):
+        path, filename= os.path.split(self.image)
+        filename_without_extension, extension = os.path.splitext(filename)
+        output_tmp_directory = os.path.join(self.tmp_directory, filename_without_extension+str(random.randint(100, 999)))
+        is_exist = os.path.exists(output_tmp_directory)
+        if not is_exist:
+            os.makedirs(output_tmp_directory)
+        else:
+            shutil.rmtree(output_tmp_directory)
+            os.makedirs(output_tmp_directory)
+        tic = time.perf_counter()
+        with open(self.image, 'r') as file:        
+        
+            data = ''
+            index= 0
+            for line in file:
+                if '^XA' in line:
+                    data = line 
+                else:
+                    data = data + line
+                    if '^XZ' in line:
+                        file_name = 'output_'+str(index) +'.png'
+                        file_path= os.path.join(output_tmp_directory,file_name)
+                        url = "http://api.labelary.com/v1/printers/8dpmm/labels/4x6/0/"
+                        response = requests.post(url, data=data, headers={"Accept": "image/png"})
+                        if response.status_code == 200:
+                            with open(file_path, 'wb') as f:
+                                f.write(response.content)
+                        else:
+                            print(f"Unable to convert zpl to image, Error: {response.status_code}")
+                        index=index+1
+                       
+            assert index >0
+        file_num =len(os.listdir(output_tmp_directory))
+        for index in range(file_num):
+            filename = 'output_' + str(index)+'.png'
+            image_file =os.path.join(output_tmp_directory, filename)
+            data = cv2.imread(image_file)
+        
+            if data is None:
+                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
+            self.opencv_images.append(data)
+        toc = time.perf_counter()
+        print(f"Conversion from zpl file to opencv image performed in {toc - tic:0.4f} seconds, and totally contains {index + 1} pages")
+        shutil.rmtree(output_tmp_directory)
+
     def convert_pywand_to_opencv_image(self, resolution=None):
         self.opencv_images = []
         if resolution == None:
