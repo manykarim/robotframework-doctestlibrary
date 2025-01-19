@@ -120,7 +120,7 @@ Try out the library using [Gitpod](https://gitpod.io/#https://github.com/manykar
 
 ## Codeanywhere
  [![Open in Codeanywhere](https://codeanywhere.com/img/open-in-codeanywhere-btn.svg)](https://app.codeanywhere.com/#https://github.com/manykarim/robotframework-doctestlibrary)
- 
+
 Try out the library using [Codeanywhere](https://app.codeanywhere.com/#https://github.com/manykarim/robotframework-doctestlibrary)
 
 # Examples
@@ -131,7 +131,6 @@ Have a look at
 * [Print Job Tests](./atest/PrintJobs.robot)
 
 for more examples.
-
 ### Testing with [Robot Framework](https://robotframework.org)
 ```RobotFramework
 *** Settings ***
