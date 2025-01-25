@@ -23,6 +23,10 @@ class VisualTest:
     ROBOT_LIBRARY_VERSION = 1.0
     DPI_DEFAULT = 200
     OCR_ENGINE_DEFAULT = 'tesseract'
+    WATERMARK_WIDTH = 31
+    WATERMARK_HEIGHT = 36
+    WATERMARK_CENTER_OFFSET = 3/100
+
 
     def __init__(self, threshold: float = 0.0, dpi: int = DPI_DEFAULT, take_screenshots: bool = False, show_diff: bool = False, 
                  ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False, watermark_file: str =None,   **kwargs):
@@ -61,7 +65,7 @@ class VisualTest:
 
         | =Arguments= | =Description= |
         | ``reference_image`` | Path or URL of the Reference Image/Document, your expected result. May be .pdf, .ps, .pcl or image files |
-        | ``test_image`` | Path or URL of the Candidate Image/Document, that's the one you want to test. May be .pdf, .ps, .pcl or image files |
+        | ``candidate_image`` | Path or URL of the Candidate Image/Document, that's the one you want to test. May be .pdf, .ps, .pcl or image files |
         | ``placeholder_file`` | Path to a ``.json`` which defines areas that shall be ignored for comparison. Those parts will be replaced with solid placeholders  |
         | ``mask`` | Same purpose as ``placeholder_file`` but instead of a file path, this is either ``json`` , a ``dict`` , a ``list`` or a ``string`` which defines the areas to be ignored  |
         | ``check_text_content`` | In case of visual differences: Is it acceptable, if only the text content in the different areas is equal |
@@ -76,6 +80,8 @@ class VisualTest:
         | ``resize_candidate`` | Allow visual comparison, even of documents have different sizes |
         | ``blur`` | Blur the image before comparison to reduce visual difference caused by noise |
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
+        | ``block_based_ssim`` | Uses additional block based block-based comparison, to catch differences in smaller areas. Makes only sense, for ``threshold`` > 0 . Default is `False` |
+        | ``block_size`` | Size of the blocks for block-based comparison. Default is 32. Only relevant for ``block_based_ssim`` |
         | ``**kwargs`` | Everything else |
         
 
@@ -150,6 +156,19 @@ class VisualTest:
                 combined_image = np.concatenate((ref_page.image, cand_page.image), axis=1)
                 self.add_screenshot_to_log(combined_image, suffix='_combined', original_size=False)
 
+            if not similar and ignore_watermarks:
+                # Get bounding rect of differences
+                diff_rectangles = self.get_diff_rectangles(absolute_diff)
+                # Check if the differences are only in the watermark area
+                if len(diff_rectangles) == 1:
+                    diff_rect = diff_rectangles[0]
+                    x, y, w, h = diff_rect['x'], diff_rect['y'], diff_rect['width'], diff_rect['height']
+                    diff_center_x = abs((x + w/2) - ref_page.image.shape[1]/2)
+                    diff_center_y = abs((y + h/2) - ref_page.image.shape[0]/2)
+                    if diff_center_x < ref_page.image.shape[1] * self.WATERMARK_CENTER_OFFSET and (w * 25.4 / dpi < self.WATERMARK_WIDTH) and (h * 25.4 / dpi < self.WATERMARK_HEIGHT):
+                        similar = True
+                        print("Visual differences are only in the watermark area.")
+
             if not similar and watermark_file:
                 if watermarks == []:
                     watermarks = load_watermarks(watermark_file)
@@ -203,7 +222,7 @@ class VisualTest:
                         print(f"Visual differences in the area {rect} but text content is the same.")
                         print(f"Reference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}")
 
-            if move_tolerance and not similar:
+            if move_tolerance and int(move_tolerance)>0 and not similar:
                 
                 if get_pdf_content:
                     import fitz
@@ -492,7 +511,15 @@ class VisualTest:
     
     @keyword
     def set_embed_screenshots(self, embed_screenshots: bool):
-        """Set whether to embed screenshots in the log."""
+        """Set whether to embed screenshots as base64 in the log.
+
+        | =Arguments= | =Description= |
+        | ``embed_screenshots`` | Whether to embed screenshots in the log. |
+
+        Examples:
+        | `Set Embed Screenshots` | True | # Set to embed screenshots as base64  in the log |
+        | `Set Embed Screenshots` | False | # Set not to embed screenshots in the log |
+        """
         self.embed_screenshots = embed_screenshots
     
     @keyword
@@ -525,17 +552,46 @@ class VisualTest:
     
     @keyword
     def set_screenshot_dir(self, screenshot_dir: str):
-        """Set the directory to save screenshots."""
+        """Set the directory to save screenshots.
+
+        | =Arguments= | =Description= |
+        | ``screenshot_dir`` | Directory to save screenshots. |
+
+        Examples:
+        | `Set Screenshot Dir` | screenshots | # Set the directory to save screenshots as 'screenshots' |
+
+        """
         self.screenshot_dir = Path(screenshot_dir)
     
     @keyword
     def set_reference_run(self, reference_run: bool):
-        """Set whether the run is a reference run."""
+        """Set whether the run is a reference run.
+        In a Reference Run, the candidate images are saved as reference images and no comparison is done.
+
+        | =Arguments= | =Description= |
+        | ``reference_run`` | Whether the run is a reference run. |
+
+        Examples:
+        | `Set Reference Run` | True | # Set the run as a reference run |
+        | `Compare Images` | reference.pdf | candidate.pdf | # Saves `candidate.pdf` as `reference.pdf` and passes the test | 
+
+        """
         self.reference_run = reference_run
     
     @keyword
     def set_force_ocr(self, force_ocr: bool):
-        """Set whether to force OCR during image comparison."""
+        """Set whether to force OCR during image comparison.
+
+        | =Arguments= | =Description= |
+        | ``force_ocr`` | Whether to force OCR during image comparison. |
+
+        Examples:
+        | `Set Force OCR` | True | # Set to force OCR during image comparison |
+        | `Get Text` | document.pdf | # Get the text content of the document using OCR |
+        | `Set Force OCR` | False | # Set not to force OCR during image comparison |
+        | `Get Text` | document.pdf | # Get the text content of the document without using OCR |
+        
+        """
         self.force_ocr = force_ocr
 
     @keyword
