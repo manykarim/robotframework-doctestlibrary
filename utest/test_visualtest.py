@@ -214,3 +214,10 @@ def test_find_no_existing_partial_image_with_sift(testdata_dir):
     template_image=str(testdata_dir / 'text.png')
     with pytest.raises(AssertionError, match='The Template was not found in the Image'):
         visual_tester.image_should_contain_template(ref_image, template_image, detection='sift')
+
+
+def test_block_based_ssim(testdata_dir):
+    visual_tester = VisualTest(threshold=0.999)
+    ref_image=str(testdata_dir / "birthday_left.png")
+    cand_image=str(testdata_dir / "birthday_right.png")
+    ssim = visual_tester.compare_images(ref_image, cand_image, block_based_ssim=True, block_size=32)
