@@ -107,3 +107,6 @@ Compare two Beach images with differences and higher threshold and block based s
 
 Compare two Beach images with differences and higher threshold and block based ssim with higher block size
     Compare Images    testdata/Beach_left.jpg    testdata/Beach_right.jpg    threshold=0.05    block_based_ssim=True    block_size=256
+
+Compare two different PDF Files with change in watermark area and ignore_watermarks
+    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_watermark_changed.pdf    ignore_watermarks=True
