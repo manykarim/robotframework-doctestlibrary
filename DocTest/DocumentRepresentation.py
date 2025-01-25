@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 from skimage import metrics
-from typing import List, Dict, Optional, Union, Literal
+from typing import List, Dict, Optional, Tuple, Union, Literal
 from concurrent.futures import ThreadPoolExecutor
 from pytesseract import Output
 from DocTest.IgnoreAreaManager import IgnoreAreaManager
@@ -89,7 +89,7 @@ class Page:
             cv2.rectangle(image_with_ignore_areas, (x, y), (x + w, y + h), (255, 0, 0), -1)
         return image_with_ignore_areas
 
-    def compare_with(self, other_page: 'Page', threshold: float = 0.99, resize: bool = False, **kwargs):
+    def compare_with(self, other_page: 'Page', threshold: float = 0.0, resize: bool = False, block_based_ssim: bool = False, block_size: int = 32, **kwargs):
         """
         Compare this page with another page and return a tuple of (similarity_result, diff_image).
         
@@ -134,8 +134,53 @@ class Page:
                                 cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
         absolute_diff = cv2.absdiff(gray_self, gray_other)
 
+        if block_based_ssim:
+            block_based_ssim_result, block_based_ssim_score = self.block_based_ssim_comparison(other_page.image, threshold=threshold, block_size=block_size)            
+            if not block_based_ssim_result:
+                return False, diff, thresh, absolute_diff, 1.0 - block_based_ssim_score
         # Return a tuple: whether the pages are similar, and the difference image
         return score >= (1.0 - threshold), diff, thresh, absolute_diff, 1.0 - score
+
+
+    def block_based_ssim_comparison(self, other_image, threshold: float = 0.0, block_size: int = 32) -> Tuple[bool, float]:
+        """
+        Perform a block-based SSIM comparison between this page's image and another image.
+
+        :param other_image: The image of the other Page to compare against.
+        :param threshold: The minimum SSIM score for a block to be considered similar.
+        :param block_size: The size of the blocks for block-based SSIM.
+        :return: 
+            - A tuple of (similarity_result, lowest_score) where similarity_result is a boolean indicating whether the pages are similar
+            - lowest_score is the lowest SSIM score found in the blocks
+        """
+        height, width = self.image.shape[:2]
+
+        # Initialize the lowest score as 1.0 (maximum SSIM)
+        lowest_score = 1.0
+
+        for y in range(0, height, block_size):
+            for x in range(0, width, block_size):
+                # Define the block region for both images
+                block_ref = self.image[y:y+block_size, x:x+block_size]
+                block_cand = other_image[y:y+block_size, x:x+block_size]
+
+                block_ref_gray = cv2.cvtColor(block_ref, cv2.COLOR_BGR2GRAY)
+                block_cand_gray = cv2.cvtColor(block_cand, cv2.COLOR_BGR2GRAY)
+
+                # Ensure blocks are the same size (handle edge cases)
+                if block_ref.shape != block_cand.shape:
+                    continue  # Skip mismatched blocks at edges
+                
+                # Compute SSIM score for the block
+                block_score = metrics.structural_similarity(block_ref_gray, block_cand_gray, full=False)
+                lowest_score = min(lowest_score, block_score)
+
+                # If any block falls below the threshold, return False with the lowest score
+                if lowest_score < (1.0 - threshold):
+                    return False, lowest_score
+
+        # All blocks passed the threshold
+        return True, lowest_score
 
     def identify_barcodes(self):
         """Detect and store barcodes for this page."""

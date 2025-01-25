@@ -98,3 +98,12 @@ Compare Images Different Images With Partial Watermark
 
 Compare Images Different Images With Smaller Watermark
     Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    watermark_file=testdata/Beach_date_mask_full_smaller.png
+
+Compare two Beach images with differences and higher threshold
+    Compare Images    testdata/Beach_left.jpg    testdata/Beach_right.jpg    threshold=0.05
+
+Compare two Beach images with differences and higher threshold and block based ssim
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/Beach_left.jpg    testdata/Beach_right.jpg    threshold=0.05    block_based_ssim=True
+
+Compare two Beach images with differences and higher threshold and block based ssim with higher block size
+    Compare Images    testdata/Beach_left.jpg    testdata/Beach_right.jpg    threshold=0.05    block_based_ssim=True    block_size=256

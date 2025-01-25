@@ -54,7 +54,7 @@ class VisualTest:
     def compare_images(self, reference_image: str, candidate_image: str, placeholder_file: Union[str, dict, list] = None, 
                        check_text_content: bool = False, move_tolerance: int = None, contains_barcodes: bool = False, 
                        watermark_file: str = None, ignore_watermarks: bool=None, force_ocr: bool = False, DPI: int = None, resize_candidate: bool = False, 
-                       blur: bool = False, threshold: float = None, mask: Union[str, dict, list] = None, get_pdf_content: bool = False,  **kwargs):
+                       blur: bool = False, threshold: float = None, mask: Union[str, dict, list] = None, get_pdf_content: bool = False, block_based_ssim: bool = False, block_size: int = 32, **kwargs):
         """Compares the documents/images ``reference_image`` and ``test_image``.
 
         Result is passed if no visual differences are detected.
@@ -141,7 +141,7 @@ class VisualTest:
                 detected_differences.append((ref_page, cand_page, "Image dimensions are different."))
                 continue
 
-            similar, diff, thresh, absolute_diff, score = ref_page.compare_with(cand_page, threshold=threshold, blur=blur)
+            similar, diff, thresh, absolute_diff, score = ref_page.compare_with(cand_page, threshold=threshold, blur=blur, block_based_ssim=block_based_ssim, block_size=block_size)
 
             if self.take_screenshots:
                 # Save original images to the screenshot directory and add them to the Robot Framework log
@@ -718,8 +718,6 @@ class VisualTest:
         else:
             raise ValueError("Detection method must be 'template', 'orb' or 'sift'.")
         
-
-
 
     def _get_diff_rectangles(self, absolute_diff):
         """Get rectangles around differences in the page."""
