@@ -144,42 +144,81 @@ class Page:
 
     def block_based_ssim_comparison(self, other_image, threshold: float = 0.0, block_size: int = 32) -> Tuple[bool, float]:
         """
-        Perform a block-based SSIM comparison between this page's image and another image.
+        Perform a block-based SSIM comparison between this page's image and another image,
+        including partial blocks at the edges.
 
         :param other_image: The image of the other Page to compare against.
         :param threshold: The minimum SSIM score for a block to be considered similar.
         :param block_size: The size of the blocks for block-based SSIM.
         :return: 
-            - A tuple of (similarity_result, lowest_score) where similarity_result is a boolean indicating whether the pages are similar
-            - lowest_score is the lowest SSIM score found in the blocks
+            - A tuple of (similarity_result, lowest_score) 
+            where similarity_result is a boolean indicating whether the pages are similar
+            - lowest_score is the lowest SSIM score found in any block
         """
+
+        # Dimensions of the reference image
         height, width = self.image.shape[:2]
 
-        # Initialize the lowest score as 1.0 (maximum SSIM)
+        # Initialize the lowest score to 1.0 (maximum SSIM)
         lowest_score = 1.0
 
+        # Go row by row in increments of `block_size`
         for y in range(0, height, block_size):
-            for x in range(0, width, block_size):
-                # Define the block region for both images
-                block_ref = self.image[y:y+block_size, x:x+block_size]
-                block_cand = other_image[y:y+block_size, x:x+block_size]
+            # Figure out how tall this block really should be (including partial blocks)
+            block_height = min(block_size, height - y)
 
+            # Go column by column in increments of `block_size`
+            for x in range(0, width, block_size):
+                # Figure out how wide this block really should be
+                block_width = min(block_size, width - x)
+
+                # Extract block from reference and candidate images
+                block_ref = self.image[y:y+block_height, x:x+block_width]
+                block_cand = other_image[y:y+block_height, x:x+block_width]
+
+                if np.array_equal(block_ref, block_cand):
+                    continue
+
+                # Convert to grayscale
                 block_ref_gray = cv2.cvtColor(block_ref, cv2.COLOR_BGR2GRAY)
                 block_cand_gray = cv2.cvtColor(block_cand, cv2.COLOR_BGR2GRAY)
 
-                # Ensure blocks are the same size (handle edge cases)
-                if block_ref.shape != block_cand.shape:
-                    continue  # Skip mismatched blocks at edges
-                
-                # Compute SSIM score for the block
-                block_score = metrics.structural_similarity(block_ref_gray, block_cand_gray, full=False)
-                lowest_score = min(lowest_score, block_score)
+                # If either block is zero-sized (shouldn't happen unless images mismatch), skip
+                if block_ref_gray.size == 0 or block_cand_gray.size == 0:
+                    continue
 
-                # If any block falls below the threshold, return False with the lowest score
+                # Determine a `win_size` that does not exceed the block's dimensions.
+                # structural_similarity requires:
+                #    - an odd integer
+                #    - <= the smallest dimension of the image/block
+                # Default is 7, so reduce only if needed.
+                min_side = min(block_ref_gray.shape[0], block_ref_gray.shape[1])
+                if min_side >= 7:
+                    # Use default (7) if block is at least 7×7
+                    win_size = 7
+                else:
+                    # If block is smaller than 7 in any dimension, pick the largest odd integer <= min_side
+                    # (This ensures we do not exceed the partial block dimensions)
+                    if min_side % 2 == 0:
+                        win_size = max(1, min_side - 1)
+                    else:
+                        win_size = min_side
+
+                # Compute SSIM score for the current block using the chosen window size
+                block_score = metrics.structural_similarity(
+                    block_ref_gray,
+                    block_cand_gray,
+                    win_size=win_size
+                )
+
+                # Track the lowest block SSIM
+                lowest_score = abs(min(lowest_score, block_score))
+
+                # If any block's SSIM falls below (1.0 - threshold), return immediately
                 if lowest_score < (1.0 - threshold):
                     return False, lowest_score
 
-        # All blocks passed the threshold
+        # If we reach here, all blocks (including partials) are above the threshold
         return True, lowest_score
 
     def identify_barcodes(self):
