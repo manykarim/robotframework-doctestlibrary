@@ -24,8 +24,9 @@ jobs:
           echo "Install Dependencies via apt"
           sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
           echo "Download Tesseract Models"
-          sudo wget -O /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/eng.traineddata?raw=true
-          sudo wget -O /usr/share/tesseract-ocr/4.00/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/osd.traineddata?raw=true
+          sudo ls /usr/share/
+          sudo wget -O /usr/share/tesseract-ocr/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/eng.traineddata?raw=true
+          sudo wget -O /usr/share/tesseract-ocr/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/osd.traineddata?raw=true
           echo "Download Ghostscript and GhostPCL"
           export release_name=gs9561
           export archive_name=ghostpcl-9.56.1-linux-x86_64
