@@ -29,7 +29,25 @@ class VisualTest:
 
 
     def __init__(self, threshold: float = 0.0, dpi: int = DPI_DEFAULT, take_screenshots: bool = False, show_diff: bool = False, 
-                 ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False, watermark_file: str =None,   **kwargs):
+                 ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False, watermark_file: str =None, movement_detection: str ="template",   **kwargs):
+        """
+        Initialize the VisualTest library.
+
+        | =Arguments= | =Description= |
+        | ``threshold`` | Threshold for image comparison. Value is between 0.0 and 1.0. A higher value will tolerate more differences. Default is 0.0. |
+        | ``dpi`` | DPI to be used for image processing. Default is 200. |
+        | ``take_screenshots`` | Whether to take screenshots during image comparison. Default is False. |
+        | ``show_diff`` | Whether to show diff screenshot in the images during comparison. Default is False. |
+        | ``ocr_engine`` | OCR engine to be used for text extraction. Options are ``tesseract`` and ``east``. Default is ``tesseract``. |
+        | ``screenshot_format`` | Format of the screenshots to be saved. Options are ``jpg`` and ``png``. Default is ``jpg``. |
+        | ``embed_screenshots`` | Whether to embed screenshots as base64 in the log. Default is False. |
+        | ``force_ocr`` | Whether to force OCR during image comparison. Default is False. |
+        | ``watermark_file`` | Path to an image/document or a folder containing multiple images. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
+        | ``movement_detection`` | Method to be used for movement detection. Default is ``template``. |
+        | ``**kwargs`` | Everything else. |
+        
+        
+        """
         self.threshold = threshold
         self.dpi = dpi
         self.take_screenshots = take_screenshots
@@ -39,6 +57,7 @@ class VisualTest:
         self.embed_screenshots = embed_screenshots
         self.screenshot_dir = Path('screenshots')
         self.watermark_file = watermark_file
+        self.movement_detection = movement_detection
         built_in = BuiltIn()
         self.force_ocr = force_ocr
         try:
