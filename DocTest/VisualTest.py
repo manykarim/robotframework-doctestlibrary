@@ -26,6 +26,14 @@ class VisualTest:
     WATERMARK_WIDTH = 31
     WATERMARK_HEIGHT = 36
     WATERMARK_CENTER_OFFSET = 3/100
+    FONT = cv2.FONT_HERSHEY_SIMPLEX
+    BOTTOM_LEFT_CORNER_OF_TEXT = (20, 60)
+    FONT_SCALE = 0.7
+    FONT_COLOR = (255, 0, 0)
+    LINE_TYPE = 2
+    REFERENCE_LABEL = "Expected Result (Reference)"
+    CANDIDATE_LABEL = "Actual Result (Candidate)"
+
 
 
     def __init__(self, threshold: float = 0.0, dpi: int = DPI_DEFAULT, take_screenshots: bool = False, show_diff: bool = False, 
@@ -335,7 +343,7 @@ class VisualTest:
                             # If no result is found, use the ORB or SIFT method
 
     #                        result = self.find_partial_image_position(reference_area, candidate_area, threshold=0.1, detection="template")
-                            result = self.find_partial_image_position(reference_area, candidate_area, threshold=0.1, detection="sift")
+                            result = self.find_partial_image_position(reference_area, candidate_area, threshold=0.1, detection=self.movement_detection)
 
                             if result:
                                 if 'distance' in result:
@@ -367,15 +375,20 @@ class VisualTest:
                 # Save original images to the screenshot directory and add them to the Robot Framework log
                 # But add them next to each other in the log
                 # Do a np.concatenate with axis=1 to add them next to each other
+                cv2.putText(ref_page.image, self.REFERENCE_LABEL, self.BOTTOM_LEFT_CORNER_OF_TEXT,
+                        self.FONT, self.FONT_SCALE, self.FONT_COLOR, self.LINE_TYPE)
+                cv2.putText(cand_page.image, self.CANDIDATE_LABEL, self.BOTTOM_LEFT_CORNER_OF_TEXT,
+                        self.FONT, self.FONT_SCALE, self.FONT_COLOR, self.LINE_TYPE)
+
                 combined_image = np.concatenate((ref_page.image, cand_page.image), axis=1)
                 self.add_screenshot_to_log(combined_image, suffix='_combined', original_size=False)
 
                 # Generate side-by-side image highlighting differences using the SSIM diff image
                 reference_img, candidate_img, _ = self.get_images_with_highlighted_differences(thresh, ref_page.image, cand_page.image)
                 
-                combined_image_with_differeces = np.concatenate((reference_img, candidate_img), axis=1)
+                combined_image_with_differences = np.concatenate((reference_img, candidate_img), axis=1)
                 # Add the side-by-side comparison with differences to the Robot Framework log
-                self.add_screenshot_to_log(combined_image_with_differeces, suffix='_combined_with_diff', original_size=False)
+                self.add_screenshot_to_log(combined_image_with_differences, suffix='_combined_with_diff', original_size=False)
 
                 # Add absolute difference image to the log
                 self.add_screenshot_to_log(absolute_diff, suffix='_absolute_diff', original_size=False)
@@ -896,7 +909,7 @@ class VisualTest:
             result = self.find_partial_image_distance_with_matchtemplate(img, template, threshold)
             
         elif detection == "classic":
-            result = self.find_partial_image_distance_with_classic_method(img, template, threshold)
+            result = self.find_partial_image_distance_with_matchtemplate(img, template, threshold)
             
         elif detection == "orb":
             result = self.find_partial_image_distance_with_orb(img, template)
