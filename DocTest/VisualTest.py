@@ -441,10 +441,10 @@ class VisualTest:
         | ``message`` | Message to be displayed in the log. |
 
         Examples:
-        | `Get Text` | document.pdf | == | "Expected text" | # Get the text content of the document |
-        | `Get Text` | document.pdf | != | "Unexpected text" | # Get the text content of the document and check if it's not equal to the expected text |
-        | ${text} | `Get Text` | document.pdf | # Get the text content of the document and store it in a variable |
-        | `Should Be Equal` | ${text} | "Expected text" | # Check if the text content is equal to the expected text |
+        | `Get Text`    document.pdf    ==    "Expected text"    # Get the text content of the document   
+        | `Get Text`    document.pdf    !=    "Unexpected text"    # Get the text content of the document and check if it's not equal to the expected text   
+        | ${text}    `Get Text`    document.pdf    # Get the text content of the document and store it in a variable   
+        | `Should Be Equal`    ${text}    "Expected text"    # Check if the text content is equal to the expected text   
         """
         if is_url(document):
             document = download_file_from_url(document)
@@ -464,8 +464,8 @@ class VisualTest:
         | ``ocr_engine`` | OCR engine to be used. Options are ``tesseract`` and ``east``. |
 
         Examples:
-        | `Set OCR Engine` | tesseract | # Set the OCR engine to Tesseract |
-        | `Set OCR Engine` | east | # Set the OCR engine to EAST |
+        | `Set OCR Engine`    tesseract    # Set the OCR engine to Tesseract   
+        | `Set OCR Engine`    east    # Set the OCR engine to EAST   
         
         """
         self.ocr_engine = ocr_engine
@@ -478,7 +478,7 @@ class VisualTest:
         | ``dpi`` | DPI to be used for image processing. |
 
         Examples:
-        | `Set DPI` | 300 | # Set the DPI to 300 |
+        | `Set DPI`    300    # Set the DPI to 300   
 
         """
         self.dpi = dpi
@@ -491,7 +491,7 @@ class VisualTest:
         | ``threshold`` | Threshold for image comparison. |
 
         Examples:
-        | `Set Threshold` | 0.1 | # Set the threshold to 0.1 |
+        | `Set Threshold`    0.1    # Set the threshold to 0.1   
         
         """
         self.threshold = threshold
@@ -504,8 +504,8 @@ class VisualTest:
         | ``screenshot_format`` | Format of the screenshots to be saved. Options are ``jpg`` and ``png``. |
 
         Examples:
-        | `Set Screenshot Format` | jpg | # Set the screenshot format to jpg |
-        | `Set Screenshot Format` | png | # Set the screenshot format to png |
+        | `Set Screenshot Format`    jpg    # Set the screenshot format to jpg   
+        | `Set Screenshot Format`    png    # Set the screenshot format to png   
         """
         self.screenshot_format = screenshot_format
     
@@ -517,8 +517,8 @@ class VisualTest:
         | ``embed_screenshots`` | Whether to embed screenshots in the log. |
 
         Examples:
-        | `Set Embed Screenshots` | True | # Set to embed screenshots as base64  in the log |
-        | `Set Embed Screenshots` | False | # Set not to embed screenshots in the log |
+        | `Set Embed Screenshots`    True    # Set to embed screenshots as base64  in the log   
+        | `Set Embed Screenshots`    False    # Set not to embed screenshots in the log   
         """
         self.embed_screenshots = embed_screenshots
     
@@ -530,8 +530,8 @@ class VisualTest:
         | ``take_screenshots`` | Whether to take screenshots during image comparison. |
 
         Examples:
-        | `Set Take Screenshots` | True | # Set to take screenshots during image comparison |
-        | `Set Take Screenshots` | False | # Set not to take screenshots during image comparison |
+        | `Set Take Screenshots`    True    # Set to take screenshots during image comparison   
+        | `Set Take Screenshots`    False    # Set not to take screenshots during image comparison   
         
         """
         self.take_screenshots = take_screenshots
@@ -544,8 +544,8 @@ class VisualTest:
         | ``show_diff`` | Whether to show diff screenshot in the images during comparison. |
 
         Examples:
-        | `Set Show Diff` | True | # Set to show diff screenshot in the images during comparison |
-        | `Set Show Diff` | False | # Set not to show diff screenshot in the images during comparison |
+        | `Set Show Diff`    True    # Set to show diff screenshot in the images during comparison   
+        | `Set Show Diff`    False    # Set not to show diff screenshot in the images during comparison   
         
         """
         self.show_diff = show_diff
@@ -558,7 +558,7 @@ class VisualTest:
         | ``screenshot_dir`` | Directory to save screenshots. |
 
         Examples:
-        | `Set Screenshot Dir` | screenshots | # Set the directory to save screenshots as 'screenshots' |
+        | `Set Screenshot Dir`    screenshots    # Set the directory to save screenshots as 'screenshots'   
 
         """
         self.screenshot_dir = Path(screenshot_dir)
@@ -572,8 +572,8 @@ class VisualTest:
         | ``reference_run`` | Whether the run is a reference run. |
 
         Examples:
-        | `Set Reference Run` | True | # Set the run as a reference run |
-        | `Compare Images` | reference.pdf | candidate.pdf | # Saves `candidate.pdf` as `reference.pdf` and passes the test | 
+        | `Set Reference Run`    True    # Set the run as a reference run   
+        | `Compare Images`    reference.pdf    candidate.pdf    # Saves `candidate.pdf` as `reference.pdf` and passes the test    
 
         """
         self.reference_run = reference_run
@@ -586,10 +586,10 @@ class VisualTest:
         | ``force_ocr`` | Whether to force OCR during image comparison. |
 
         Examples:
-        | `Set Force OCR` | True | # Set to force OCR during image comparison |
-        | `Get Text` | document.pdf | # Get the text content of the document using OCR |
-        | `Set Force OCR` | False | # Set not to force OCR during image comparison |
-        | `Get Text` | document.pdf | # Get the text content of the document without using OCR |
+        | `Set Force OCR`    True    # Set to force OCR during image comparison   
+        | `Get Text`    document.pdf    # Get the text content of the document using OCR   
+        | `Set Force OCR`    False    # Set not to force OCR during image comparison   
+        | `Get Text`    document.pdf    # Get the text content of the document without using OCR   
         
         """
         self.force_ocr = force_ocr
@@ -607,13 +607,13 @@ class VisualTest:
         Optionally assert the barcodes using the ``assertion_operator`` and ``assertion_expected`` arguments.
 
         Examples:
-        | ${data} | `Get Barcodes` | document.pdf | # Get the barcodes from the document |
-        | `Length Should Be` | ${data} | 2 | # Check if the number of barcodes is 2 |
-        | `Should Be True` | ${data[0]} == {'x': 5, 'y': 7, 'height': 95, 'width': 96, 'value': 'Stegosaurus'} | # Check if the first barcode is as expected |
-        | `Should Be True` | ${data[1]} == {'x': 298, 'y': 7, 'height': 95, 'width': 95, 'value': 'Plesiosaurus'} | # Check if the second barcode is as expected |
-        | `Should Be True` | ${data[0]['value']} == 'Stegosaurus' | # Check if the value of the first barcode is 'Stegosaurus' |
-        | `Should Be True` | ${data[1]['value']} == 'Plesiosaurus' | # Check if the value of the second barcode is 'Plesiosaurus' |
-        | `Get Barcodes` | document.pdf | contains | 'Stegosaurus' | # Check if the document contains a barcode with the value 'Stegosaurus' |
+        | ${data}    `Get Barcodes`    document.pdf    # Get the barcodes from the document   
+        | `Length Should Be`    ${data}    2    # Check if the number of barcodes is 2   
+        | `Should Be True`    ${data[0]} == {'x': 5, 'y': 7, 'height': 95, 'width': 96, 'value': 'Stegosaurus'}    # Check if the first barcode is as expected   
+        | `Should Be True`    ${data[1]} == {'x': 298, 'y': 7, 'height': 95, 'width': 95, 'value': 'Plesiosaurus'}    # Check if the second barcode is as expected   
+        | `Should Be True`    ${data[0]['value']} == 'Stegosaurus'    # Check if the value of the first barcode is 'Stegosaurus'   
+        | `Should Be True`    ${data[1]['value']} == 'Plesiosaurus'    # Check if the value of the second barcode is 'Plesiosaurus'   
+        | `Get Barcodes`    document.pdf    contains    'Stegosaurus'    # Check if the document contains a barcode with the value 'Stegosaurus'   
         """
         if is_url(document):
             document = download_file_from_url(document)
@@ -641,13 +641,13 @@ class VisualTest:
         Optionally assert the barcodes using the ``assertion_operator`` and ``assertion_expected`` arguments.
 
         Examples:
-        | ${data} | `Get Barcodes From Document` | document.pdf | # Get the barcodes from the document |
-        | `Length Should Be` | ${data} | 2 | # Check if the number of barcodes is 2 |
-        | `Should Be True` | ${data[0]} == {'x': 5, 'y': 7, 'height': 95, 'width': 96, 'value': 'Stegosaurus'} | # Check if the first barcode is as expected |
-        | `Should Be True` | ${data[1]} == {'x': 298, 'y': 7, 'height': 95, 'width': 95, 'value': 'Plesiosaurus'} | # Check if the second barcode is as expected |
-        | `Should Be True` | ${data[0]['value']} == 'Stegosaurus' | # Check if the value of the first barcode is 'Stegosaurus' |
-        | `Should Be True` | ${data[1]['value']} == 'Plesiosaurus' | # Check if the value of the second barcode is 'Plesiosaurus' |
-        | `Get Barcodes From Document` | document.pdf | contains | 'Stegosaurus' | # Check if the document contains a barcode with the value 'Stegosaurus' |
+        | ${data}    `Get Barcodes From Document`    document.pdf    # Get the barcodes from the document   
+        | `Length Should Be`    ${data}    2    # Check if the number of barcodes is 2   
+        | `Should Be True`    ${data[0]} == {'x': 5, 'y': 7, 'height': 95, 'width': 96, 'value': 'Stegosaurus'}    # Check if the first barcode is as expected   
+        | `Should Be True`    ${data[1]} == {'x': 298, 'y': 7, 'height': 95, 'width': 95, 'value': 'Plesiosaurus'}    # Check if the second barcode is as expected   
+        | `Should Be True`    ${data[0]['value']} == 'Stegosaurus'    # Check if the value of the first barcode is 'Stegosaurus'   
+        | `Should Be True`    ${data[1]['value']} == 'Plesiosaurus'    # Check if the value of the second barcode is 'Plesiosaurus'   
+        | `Get Barcodes From Document`    document.pdf    contains    'Stegosaurus'    # Check if the document contains a barcode with the value 'Stegosaurus'   
        
         """
         return self.get_barcodes(document, assertion_operator, assertion_expected, message)
@@ -679,12 +679,12 @@ class VisualTest:
         | ``tpl_crop_y2`` | Y2 coordinate of the rectangle to crop the template image to.  |
 
         Examples:
-        | `Image Should Contain Template` | reference.jpg | template.jpg | #Checks if template is in image |
-        | `Image Should Contain Template` | reference.jpg | template.jpg | threshold=0.9 | #Checks if template is in image with a higher threshold |
-        | `Image Should Contain Template` | reference.jpg | template.jpg | take_screenshots=True | #Checks if template is in image and adds screenshots to log |
-        | `Image Should Contain Template` | reference.jpg | template.jpg | tpl_crop_x1=50  tpl_crop_y1=50  tpl_crop_x2=100  tpl_crop_y2=100 | #Before image comparison, the template image gets cropped to that selection. |
-        | `${coordinates}` | `Image Should Contain Template` | reference.jpg | template.jpg | #Checks if template is in image and returns coordinates of template |
-        | `Should Be Equal As Numbers` | ${coordinates['pt1'][0]} | 100 | #Checks if x coordinate of found template is 100 |
+        | `Image Should Contain Template`    reference.jpg    template.jpg    #Checks if template is in image   
+        | `Image Should Contain Template`    reference.jpg    template.jpg    threshold=0.9    #Checks if template is in image with a higher threshold   
+        | `Image Should Contain Template`    reference.jpg    template.jpg    take_screenshots=True    #Checks if template is in image and adds screenshots to log   
+        | `Image Should Contain Template`    reference.jpg    template.jpg    tpl_crop_x1=50  tpl_crop_y1=50  tpl_crop_x2=100  tpl_crop_y2=100    #Before image comparison, the template image gets cropped to that selection.   
+        | `${coordinates}`    `Image Should Contain Template`    reference.jpg    template.jpg    #Checks if template is in image and returns coordinates of template   
+        | `Should Be Equal As Numbers`    ${coordinates['pt1'][0]}    100    #Checks if x coordinate of found template is 100   
         """
         all_crop_args = all((tpl_crop_x1, tpl_crop_y1, tpl_crop_x2, tpl_crop_y2))
         any_crop_args = any((tpl_crop_x1, tpl_crop_y1, tpl_crop_x2, tpl_crop_y2))
