@@ -41,6 +41,7 @@ def atests(context):
         "-d results",
         "--prerebotmodifier utilities.xom.XUnitOut:results/xunit.xml",
         f"{ROOT}/atest/Compare.robot",
+        f"{ROOT}/atest/Barcode.robot",
         f"{ROOT}/atest/PdfContent.robot",
         f"{ROOT}/atest/PrintJobs.robot",
         f"{ROOT}/atest/MovementDetection.robot",
@@ -52,7 +53,7 @@ def atests(context):
 def tests(context):
     subprocess.run("coverage combine", shell=True, check=False)
     subprocess.run("coverage report", shell=True, check=False)
-    subprocess.run("coverage html", shell=True, check=False)
+    subprocess.run("coverage html -d results/htmlcov", shell=True, check=False)
     if utests_completed_process.returncode != 0 or atests_completed_process.returncode != 0:
         raise Exception("Tests failed")
 
@@ -60,7 +61,7 @@ def tests(context):
 def coverage_report(context):
     subprocess.run("coverage combine", shell=True, check=False)
     subprocess.run("coverage report", shell=True, check=False)
-    subprocess.run("coverage html", shell=True, check=False)
+    subprocess.run("coverage html -d results/htmlcov", shell=True, check=False)
 
 @task
 def libdoc(context):

@@ -9,6 +9,7 @@ jobs:
     strategy:
           matrix:
             python-version: ["3.8", "3.11", "3.12", "3.13"]
+          fail-fast: false
     steps:
       - uses: actions/checkout@v1
         with:
@@ -23,8 +24,9 @@ jobs:
           echo "Install Dependencies via apt"
           sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
           echo "Download Tesseract Models"
-          sudo wget -O /usr/share/tesseract-ocr/4.00/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/eng.traineddata?raw=true
-          sudo wget -O /usr/share/tesseract-ocr/4.00/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/osd.traineddata?raw=true
+          sudo ls /usr/share/tesseract-ocr
+          sudo wget -O /usr/share/tesseract-ocr/5/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/eng.traineddata?raw=true
+          sudo wget -O /usr/share/tesseract-ocr/5/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata/blob/main/osd.traineddata?raw=true
           echo "Download Ghostscript and GhostPCL"
           export release_name=gs9561
           export archive_name=ghostpcl-9.56.1-linux-x86_64
@@ -37,6 +39,7 @@ jobs:
       - name: Install and configure Poetry
         uses: snok/install-poetry@v1
         with:
+          version: 1.8.5
           virtualenvs-create: true
           virtualenvs-in-project: false
           virtualenvs-path: ~/.virtualenvs
@@ -48,15 +51,16 @@ jobs:
         run: |
           poetry run invoke tests
       - name: Store Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
         with:
           name: test-results ${{ matrix.python-version }} # Choose a descriptive name for your artifact
           path: |
-            results/report.html
-            results/log.html
-            results/output.xml
-            results/pytest.xml
-            results/xunit.xml
+            results/*.html
+            results/*.xml
+            results/htmlcov/
+            results/*.prof
+            results/*.txt
       - name: Test Report
         uses: dorny/test-reporter@main
         if: success() || failure()    # run this step even if previous step failed

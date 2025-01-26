@@ -8,3 +8,4 @@ robotframework_doctestlibrary.egg-info/
 log.html
 output.xml
 report.html
+results/

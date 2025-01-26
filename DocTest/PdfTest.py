@@ -44,9 +44,8 @@ class PdfTest(object):
 
 
         Examples:
-        | = Keyword =    |  = reference_document =  | = candidate_document =       |  = comment = |
-        | Compare Pdf Documents | reference.pdf | candidate.pdf | #Performs a property comparison of both files |
-        | Compare Pdf Documents | reference.pdf | candidate.pdf | compare=text | #Performs a property comparison of both files. Only text content will be compared |
+        | `Compare Pdf Documents`    reference.pdf    candidate.pdf    #Performs a property comparison of both files   
+        | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=text    #Performs a property comparison of both files. Only text content will be compared   
 
         compare=text
         
@@ -160,8 +159,8 @@ class PdfTest(object):
         
         Examples:
 
-        | @{strings}= | Create List | One String | Another String |
-        | Check Text Content | ${strings} | candidate.pdf |
+        | @{strings}=    Create List    One String    Another String   
+        | `Check Text Content`    ${strings}    candidate.pdf   
         
         """
         if is_url(candidate_document):
@@ -192,9 +191,9 @@ class PdfTest(object):
         
         Examples:
 
-        | @{strings}= | Create List | One String | Another String |
-        | PDF Should Contain Strings | ${strings} | candidate.pdf |
-        | PDF Should Contain Strings | One String | candidate.pdf |
+        | @{strings}=    Create List    One String    Another String   
+        | `PDF Should Contain Strings`    ${strings}    candidate.pdf   
+        | `PDF Should Contain Strings`    One String    candidate.pdf   
         
         """
         if is_url(candidate_document):
@@ -234,9 +233,9 @@ class PdfTest(object):
         
         Examples:
 
-        | @{strings}= | Create List | One String | Another String |
-        | PDF Should Not Contain Strings | ${strings} | candidate.pdf |
-        | PDF Should Not Contain Strings | One String | candidate.pdf |
+        | @{strings}=    Create List    One String    Another String   
+        | `PDF Should Not Contain Strings`    ${strings}    candidate.pdf   
+        | `PDF Should Not Contain Strings`    One String    candidate.pdf   
         
         """
         if is_url(candidate_document):

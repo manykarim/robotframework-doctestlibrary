@@ -40,19 +40,19 @@ Compare two different PDF Files with moved text
     Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf
 
 Compare two different PDF Files with moved text but same content OCR
-    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    check_text_content=${true}
+    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    check_text_content=${true}    force_ocr=${true}
 
 Compare two different PDF Files with moved text but same content pdfminer
-    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    check_text_content=${true}    get_pdf_content=${true}
+    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    check_text_content=${true}
 
 Compare two different PDF Files with moved text but and different content pdfminer
-    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved_and_different.pdf    check_text_content=${true}    get_pdf_content=${true}
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved_and_different.pdf    check_text_content=${true}
 
 Compare two different PDF Files with moved text within tolerance
-    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=20    get_pdf_content=${true}
+    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=20
 
 Compare two different PDF Files with moved text outside tolerance
-    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=5    get_pdf_content=${true}
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_moved.pdf    move_tolerance=5
 
 Compare two different Image Files with moved text
     Compare Images    testdata/small_A_reference.png    testdata/small_A_moved.png    move_tolerance=60    ignore_watermarks=False
@@ -67,23 +67,25 @@ Compare two small Image Files with moved text without OCR
     Compare Images    testdata/small_A_reference.png    testdata/small_A_moved.png    move_tolerance=60    ignore_watermarks=False
 
 Compare Images With Different Shapes
-    Run Keyword And Expect Error    STARTS:The compared images have different dimensions    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg
 
 Compare Text Content from PDF
-    ${text}     Get Text From Document    testdata/sample.pdf
-    List Should Contain Value   ${text}     THE TEST SHIPPER
+    ${text}     Get Text From Document    testdata/sample.pdf    *=    THE TEST SHIPPER
 
 Compare Text Content from Image
-    ${text}     Get Text From Document    testdata/Beach_date.png
-    List Should Contain Value   ${text}     123456789
-    List Should Contain Value   ${text}     01-Jan-2021
+    ${text}     Get Text From Document    testdata/Beach_date.png    *=    123456789
+    ${text}     Get Text From Document    testdata/Beach_date.png    *=    01-Jan-2021
+    ${text}     Get Text From Document    testdata/Beach_date.png    !=    Not Equal
+    ${text}     Get Text From Document    testdata/Beach_date.png    not contains    Not Equal
 
 
 Compare Text Content from Image with east
-    ${text}     Get Text From Document    testdata/Beach_date.png    ocr_engine=east
-    Should Contain Match    ${text}    *01-Jan-2021*
-    Should Contain Match    ${text}    *SOUVENIR*
-    Should Contain Match    ${text}    *123456789*
+    Set Ocr Engine    east
+    ${text}     Get Text From Document    testdata/Beach_date.png
+    Should Contain    ${text}    01-Jan-2021
+    Should Contain    ${text}    SOUVENIR
+    Should Contain    ${text}    123456789
+    ${text}     Get Text From Document    testdata/Beach_date.png    *=    01-Jan-2021
 
 Compare Images And Resize With Different Shapes
     Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg    resize_candidate=True
@@ -96,3 +98,15 @@ Compare Images Different Images With Partial Watermark
 
 Compare Images Different Images With Smaller Watermark
     Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    watermark_file=testdata/Beach_date_mask_full_smaller.png
+
+Compare two Beach images with differences and higher threshold
+    Compare Images    testdata/Beach_left.jpg    testdata/Beach_right.jpg    threshold=0.05
+
+Compare two Beach images with differences and higher threshold and block based ssim
+    Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/Beach_left.jpg    testdata/Beach_right.jpg    threshold=0.05    block_based_ssim=True
+
+Compare two Beach images with differences and higher threshold and block based ssim with higher block size
+    Compare Images    testdata/Beach_left.jpg    testdata/Beach_right.jpg    threshold=0.05    block_based_ssim=True    block_size=256
+
+Compare two different PDF Files with change in watermark area and ignore_watermarks
+    Compare Images    testdata/sample_1_page.pdf    testdata/sample_1_page_watermark_changed.pdf    ignore_watermarks=True

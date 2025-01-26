@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "robotframework-doctestlibrary"
-version = "0.23.0"
+version = "0.24.0rc02"
 description = "A library for Visual Document Testing"
 authors = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
 maintainers = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
@@ -14,7 +14,7 @@ homepage = "https://github.com/manykarim/robotframework-doctestlibrary"
 
 [tool.poetry.dependencies]
 python = "^3.8.1"
-PyMuPDF = ">=1.23.1"
+PyMuPDF = ">=1.23.1, <1.25.0"
 imutils = "*"
 numpy = [
     {version = "<1.25", python = "<3.9"},
@@ -43,6 +43,7 @@ pylibdmtx = "*"
 deepdiff = "*"
 pyzbar = "^0.1.9"
 setuptools = { version = "*", python = "^3.12" }
+robotframework-assertion-engine = "^3.0.3"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"

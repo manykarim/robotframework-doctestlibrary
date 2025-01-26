@@ -341,9 +341,8 @@ def compare_print_jobs(type, reference_file, test_file):
 
 
         Examples:
-        | = Keyword =    |  = reference_file =  | = test_file =       |  = comment = |
-        | Compare Print Jobs | reference.pcl | candidate.pcl | #Performs a property comparison of both files |
-        | Compare Print Jobs | reference.ps | candidate.ps | #Performs a property comparison of both files |
+        | `Compare Print Jobs`    reference.pcl    candidate.pcl    #Performs a property comparison of both files   
+        | `Compare Print Jobs`    reference.ps    candidate.ps    #Performs a property comparison of both files   
         
         
         """
@@ -422,15 +421,15 @@ def check_print_job_property(print_job, property, value):
         
         Examples:
 
-        | ${value1} =  | Create Dictionary  | page=1  | property=copies  | value=1 |
-        | ${value2} =  | Create Dictionary  | page=1  | property=paper_source  | value=2 |
-        | Check Print Job Property  | pcl_file.pcl  | pcl_commands  | ${value1} |
-        | Check Print Job Property  | pcl_file.pcl  | pcl_commands  | ${value2} |
+        | ${value1} =     Create Dictionary     page=1     property=copies     value=1   
+        | ${value2} =     Create Dictionary     page=1     property=paper_source     value=2   
+        | `Check Print Job Property`     pcl_file.pcl     pcl_commands     ${value1}   
+        | `Check Print Job Property`     pcl_file.pcl     pcl_commands     ${value2}   
 
-        | ${value1} =  | Create Dictionary  | property=Copyright  | value=ExampleCompany Inc. |
-        | ${value2} =  | Create Dictionary  | property=LanguageLevel  | value=2 |
-        | Check Print Job Property  | postscript_file.ps  | header  | ${value1} |
-        | Check Print Job Property  | postscript_file.ps  | header  | ${value2} |
+        | ${value1} =     Create Dictionary     property=Copyright     value=ExampleCompany Inc.   
+        | ${value2} =     Create Dictionary     property=LanguageLevel     value=2   
+        | `Check Print Job Property`     postscript_file.ps     header     ${value1}   
+        | `Check Print Job Property`     postscript_file.ps     header     ${value2}   
         
         """
 
