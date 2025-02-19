@@ -23,6 +23,8 @@ class VisualTest:
     ROBOT_LIBRARY_VERSION = 1.0
     DPI_DEFAULT = 200
     OCR_ENGINE_DEFAULT = 'tesseract'
+    MOVEMENT_DETECTION_DEFAULT = 'template'
+    PARTIAL_IMAGE_THRESHOLD_DEFAULT = 0.1
     WATERMARK_WIDTH = 31
     WATERMARK_HEIGHT = 36
     WATERMARK_CENTER_OFFSET = 3/100
@@ -37,7 +39,7 @@ class VisualTest:
 
 
     def __init__(self, threshold: float = 0.0, dpi: int = DPI_DEFAULT, take_screenshots: bool = False, show_diff: bool = False, 
-                 ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False, watermark_file: str =None, movement_detection: str ="template",   **kwargs):
+                 ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT, screenshot_format: str = 'jpg', embed_screenshots: bool = False, force_ocr: bool = False, watermark_file: str =None, movement_detection: Literal["template", "orb", "sift"] = MOVEMENT_DETECTION_DEFAULT, partial_image_threshold: float = PARTIAL_IMAGE_THRESHOLD_DEFAULT,  **kwargs):
         """
         Initialize the VisualTest library.
 
@@ -51,7 +53,8 @@ class VisualTest:
         | ``embed_screenshots`` | Whether to embed screenshots as base64 in the log. Default is False. |
         | ``force_ocr`` | Whether to force OCR during image comparison. Default is False. |
         | ``watermark_file`` | Path to an image/document or a folder containing multiple images. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
-        | ``movement_detection`` | Method to be used for movement detection. Default is ``template``. |
+        | ``movement_detection`` | Method to be used for movement detection. Options are ``template``, ``orb`` or ``sift``. Default is ``template``. |
+        | ``partial_image_threshold`` | The threshold used to identify partial images, e.g. for movement detection. Value is between 0.0 and 1.0. A higher value will tolerate more differences. Default is ``0.1``. |
         | ``**kwargs`` | Everything else. |
         
         
@@ -66,6 +69,7 @@ class VisualTest:
         self.screenshot_dir = Path('screenshots')
         self.watermark_file = watermark_file
         self.movement_detection = movement_detection
+        self.partial_image_threshold = partial_image_threshold
         built_in = BuiltIn()
         self.force_ocr = force_ocr
         try:
@@ -343,7 +347,7 @@ class VisualTest:
                             # If no result is found, use the ORB or SIFT method
 
     #                        result = self.find_partial_image_position(reference_area, candidate_area, threshold=0.1, detection="template")
-                            result = self.find_partial_image_position(reference_area, candidate_area, threshold=0.1, detection=self.movement_detection)
+                            result = self.find_partial_image_position(reference_area, candidate_area, threshold=self.partial_image_threshold, detection=self.movement_detection)
 
                             if result:
                                 if 'distance' in result:
