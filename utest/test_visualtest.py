@@ -92,6 +92,12 @@ def test_moved_difference_for_pdf_on_white_background_within_tolerance_orb(testd
     cand_image=str(testdata_dir / 'sample_1_page_moved.pdf')
     visual_tester.compare_images(ref_image, cand_image, move_tolerance=8)
 
+def test_moved_difference_for_pdf_on_white_background_within_tolerance_sift(testdata_dir):
+    visual_tester = VisualTest(movement_detection="sift")
+    ref_image=str(testdata_dir / 'sample_1_page.pdf')
+    cand_image=str(testdata_dir / 'sample_1_page_moved.pdf')
+    visual_tester.compare_images(ref_image, cand_image, move_tolerance=8)
+
 def test_moved_difference_for_pdf_on_white_background_outside_tolerance_default(testdata_dir):
     visual_tester = VisualTest()
     ref_image=str(testdata_dir / 'sample_1_page.pdf')
@@ -115,6 +121,13 @@ def test_moved_difference_for_pdf_on_white_background_outside_tolerance_template
 
 def test_moved_difference_for_pdf_on_white_background_outside_tolerance_orb(testdata_dir):
     visual_tester = VisualTest(movement_detection="orb")
+    ref_image=str(testdata_dir / 'sample_1_page.pdf')
+    cand_image=str(testdata_dir / 'sample_1_page_moved.pdf')
+    with pytest.raises(AssertionError, match='The compared images are different.'):
+        visual_tester.compare_images(ref_image, cand_image, move_tolerance=7)
+
+def test_moved_difference_for_pdf_on_white_background_outside_tolerance_sift(testdata_dir):
+    visual_tester = VisualTest(movement_detection="sift")
     ref_image=str(testdata_dir / 'sample_1_page.pdf')
     cand_image=str(testdata_dir / 'sample_1_page_moved.pdf')
     with pytest.raises(AssertionError, match='The compared images are different.'):
