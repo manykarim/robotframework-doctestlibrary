@@ -48,7 +48,7 @@ jobs:
         run: |
           poetry run invoke tests
       - name: Store Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results ${{ matrix.python-version }} # Choose a descriptive name for your artifact
           path: |
