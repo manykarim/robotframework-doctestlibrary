@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "robotframework-doctestlibrary"
-version = "0.24.0rc02"
+version = "0.24.0rc03"
 description = "A library for Visual Document Testing"
 authors = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
 maintainers = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
@@ -17,10 +17,10 @@ python = "^3.8.1"
 PyMuPDF = ">=1.23.1, <1.25.0"
 imutils = "*"
 numpy = [
-    {version = "<1.25", python = "<3.9"},
-    {version = ">=1.25, <2.0", python = ">=3.9, <3.12"},
-    {version = ">=1.26, <2.0", python = ">=3.12,<3.13"},
-    {version = ">=2.1.0, <2.2.0", python = ">=3.13"}
+    { version = "<1.25", python = ">=3.8, <3.9" },
+    { version = ">=1.25, <2.0", python = ">=3.9, <3.10" },
+    { version = ">=1.26", python = ">=3.10, <3.13" },
+    { version = ">=2.1.0", python = ">=3.13" }
 ]
 opencv-python-headless = "*"
 parsimonious = "*"
@@ -35,12 +35,15 @@ scikit-image = [
     {version = "<0.22", python = "<=3.8"},
     {version = "*", python = ">3.8,<3.12"},
     {version = ">=0.22.0", python = ">=3.12,<3.13"},
-    {version = ">=0.25.0rc1", python = ">=3.13", allow-prereleases = true},
-    
+    {version = ">=0.25.0", python = ">=3.13"},   
 ]
 Wand = "*"
 pylibdmtx = "*"
-deepdiff = "*"
+deepdiff = [
+    { version = "<8.0", python = "<3.9" },
+    { version = "*", python = ">=3.9,<3.12" },
+    { version = ">=6.0", python = ">=3.12" }
+]
 pyzbar = "^0.1.9"
 setuptools = { version = "*", python = "^3.12" }
 robotframework-assertion-engine = "^3.0.3"
