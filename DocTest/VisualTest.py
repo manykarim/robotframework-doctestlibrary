@@ -1,3 +1,4 @@
+
 import base64
 from typing import Union, Optional, Any, Literal
 import uuid
@@ -157,8 +158,8 @@ class VisualTest:
             ignore_watermarks = os.getenv('IGNORE_WATERMARKS', False)
 
         # Load reference and candidate documents
-        reference_doc = DocumentRepresentation(reference_image, dpi=dpi, ocr_engine=self.ocr_engine, ignore_area_file=placeholder_file, ignore_area=mask)
-        candidate_doc = DocumentRepresentation(candidate_image, dpi=dpi, ocr_engine=self.ocr_engine)            
+        reference_doc = DocumentRepresentation(reference_image, dpi=dpi, ocr_engine=self.ocr_engine, ignore_area_file=placeholder_file, ignore_area=mask, **kwargs)
+        candidate_doc = DocumentRepresentation(candidate_image, dpi=dpi, ocr_engine=self.ocr_engine, **kwargs)            
 
         watermarks = []
 
@@ -998,12 +999,17 @@ class VisualTest:
         # contour_mask = np.zeros(mask.shape, np.uint8)
         # cv2.drawContours(contour_mask, [largest_contour], -1, 255, -1)
 
+
         masked_img =      cv2.bitwise_not(cv2.bitwise_and(merged_contour, cv2.bitwise_not(img_gray)))
         masked_template = cv2.bitwise_not(cv2.bitwise_and(merged_contour, cv2.bitwise_not(template_gray)))
         template_blur = cv2.GaussianBlur(masked_template, (3, 3), 0)
         template_thresh = cv2.threshold(
             template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
         temp_x, temp_y, temp_w, temp_h = cv2.boundingRect(template_thresh)
+
+        # There should be a minimal image size for further processing
+        if temp_w < 5 or temp_h < 5:
+            return {"distance":5}
         res = cv2.matchTemplate(
             masked_img, masked_template[temp_y:temp_y + temp_h, temp_x:temp_x + temp_w], cv2.TM_SQDIFF_NORMED)
         min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)

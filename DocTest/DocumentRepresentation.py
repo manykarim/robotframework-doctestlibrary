@@ -11,6 +11,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pytesseract import Output
 from DocTest.IgnoreAreaManager import IgnoreAreaManager
 from DocTest.config import DEFAULT_DPI, OCR_ENGINE_DEFAULT, DEFAULT_CONFIDENCE, MINIMUM_OCR_RESOLUTION, ADD_PIXELS_TO_IGNORE_AREA, TESSERACT_CONFIG
+import tempfile
+
 # Constants
 
 
@@ -462,7 +464,7 @@ class Page:
         return self.image[y:y+h, x:x+w]
     
 class DocumentRepresentation:
-    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False, contains_barcodes: bool = False):
+    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False, contains_barcodes: bool = False, **kwargs):
         self.file_path = Path(file_path)
         self.dpi = dpi
         self.contains_barcodes = contains_barcodes
@@ -470,9 +472,16 @@ class DocumentRepresentation:
         self.ocr_engine = ocr_engine
         self.abstract_ignore_areas = []
         self.barcodes = []
+        self.path, self.filename= os.path.split(self.file_path)
+        self.filename_without_extension, self.extension = os.path.splitext(self.filename)
+        self.tmp_directory = tempfile.gettempdir()
+        self.ignore_printfactory_envelope=kwargs.get('ignore_printfactory_envelope', False)
+        self.printing_papersize=kwargs.get('printing_papersize', 'a4')
         self.load_document()
         self.create_abstract_ignore_areas(ignore_area_file, ignore_area)
         self.create_pixel_based_ignore_areas(force_ocr)
+        
+        
         if self.contains_barcodes:
             self.identify_barcodes()
 
@@ -515,20 +524,23 @@ class DocumentRepresentation:
         except ImportError:
             raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
 
-    def _load_pcl(self, resolution: int = None):
+    def _load_pcl(self):
         import subprocess
         import shutil
         import random
+        import time
         import tempfile
         from os.path import splitext, split
+        import subprocess
         try:
             command = shutil.which('pcl6') or shutil.which('gpcl6win64') or shutil.which('gpcl6win32') or shutil.which('gpcl6')
         except:
             raise AssertionError("No pcl6 executable found in path. Please install ghostPCL")
-        filename_without_extension = self.file_path.stem
-        if resolution == None:
-            resolution = self.dpi
-        output_image_directory = os.path.join(tempfile.gettempdir(), filename_without_extension+str(random.randint(100, 999)))
+        self.opencv_images = []
+        
+        resolution = self.dpi
+        tic = time.perf_counter()
+        output_image_directory = os.path.join(self.tmp_directory, self.filename_without_extension+str(random.randint(100, 999)))
         
         is_exist = os.path.exists(output_image_directory)
         if not is_exist:
@@ -537,9 +549,10 @@ class DocumentRepresentation:
             shutil.rmtree(output_image_directory)
             os.makedirs(output_image_directory)
         Output_filepath = os.path.join(output_image_directory,'output-%d.png')
-        
+
         args = [
             command,
+            f'-J"@PJL SET PAPER = {self.printing_papersize}"',
             '-dNOPAUSE',
             "-sDEVICE=png16m",
             f"-r{resolution}",
@@ -547,32 +560,46 @@ class DocumentRepresentation:
             self.file_path
         ]
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        page = 1
-        for image in os.listdir(output_image_directory):
-            image_file =os.path.join(output_image_directory, image)
-            data = cv2.imread(image_file)
+        toc = time.perf_counter()
+        print(f"Rendering pcl document to Image with ghostPCL performed in {toc - tic:0.4f} seconds")
+        tic = time.perf_counter()
+        file_num =len(os.listdir(output_image_directory))
+        for index in range(file_num):
+            if (index == 0 or index == int(file_num-1)) and self.ignore_printfactory_envelope is True:
+                print("The printfactory envelope is ignored in page {}".format(index+1))
+                continue
+            else:
+                filename = 'output-' + str(index+1)+'.png'
+                image_file =os.path.join(output_image_directory, filename)
+                data = cv2.imread(image_file)
+                page = Page(data, page_number=str(index+1), dpi=self.dpi)
+                
             
-            if data is None:
-                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
-            self.pages.append(Page(data, page, resolution))
-            page += 1
+                if page is None:
+                    raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.file_path))
+                #self.opencv_images.append(data)
+                self.pages.append(page)
 
-        shutil.rmtree(output_image_directory)
+        toc = time.perf_counter()
+        print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+        shutil.rmtree(output_image_directory) 
 
-    def _load_ps(self, resolution: int = None):
+    def _load_ps(self):
         import subprocess
         import shutil
         import random
         import tempfile
+        import time
         from os.path import splitext, split 
         try:
             command = shutil.which('gs') or shutil.which('gswin64c') or shutil.which('gswin32c') or shutil.which('ghostscript')
         except:
             raise AssertionError("No ghostscript executable found in path. Please install ghostscript")
-        filename_without_extension = self.file_path.stem
-        if resolution == None:
-            resolution = self.dpi
-        output_image_directory = os.path.join(tempfile.gettempdir(), filename_without_extension+str(random.randint(100, 999)))
+        self.opencv_images = []
+        
+        resolution = self.dpi
+        tic = time.perf_counter()
+        output_image_directory = os.path.join(self.tmp_directory, self.filename_without_extension+str(random.randint(100, 999)))
         is_exist = os.path.exists(output_image_directory)
         if not is_exist:
             os.makedirs(output_image_directory)
@@ -582,6 +609,7 @@ class DocumentRepresentation:
         Output_filepath = os.path.join(output_image_directory, 'output-%d.png')
         args = [
             command,
+            f'-sPAPERSIZE={self.printing_papersize}',
             '-dNOPAUSE',
             "-dBATCH",
             "-dSAFER",
@@ -591,14 +619,22 @@ class DocumentRepresentation:
             self.file_path
         ]
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        page = 1
-        for image in os.listdir(output_image_directory):
-            image_file =os.path.join(output_image_directory, image)
+        toc = time.perf_counter()
+        print(f"Rendering ps document to Image with ghostscript performed in {toc - tic:0.4f} seconds")
+        tic = time.perf_counter()
+        file_num =len(os.listdir(output_image_directory))
+        for index in range(file_num):
+            filename = 'output-' + str(index+1)+'.png'
+            image_file =os.path.join(output_image_directory, filename)
             data = cv2.imread(image_file)
-            if data is None:
-                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.image))
-            self.pages.append(Page(data, page, resolution))
-            page += 1     
+            page = Page(data, page_number=str(index+1), dpi=self.dpi)
+            if page is None:
+                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.file_path))
+            # self.opencv_images.append(data)
+            self.pages.append(page)
+        
+        toc = time.perf_counter()
+        print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
         shutil.rmtree(output_image_directory)
 
     def get_barcodes(self):
@@ -742,3 +778,4 @@ def make_text(words):
     lines = list(line_dict.items())
     lines.sort()  # sort vertically
     return "\n".join([" ".join(line[1]) for line in lines])
+
