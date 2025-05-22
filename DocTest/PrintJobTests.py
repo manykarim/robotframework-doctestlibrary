@@ -302,7 +302,7 @@ def get_postscript_print_job(filename):
     pv.visit(tree)
 
     properties = []
-    properties.append({'property':'header', 'value':pv.header})
+    #properties.append({'property':'header', 'value':pv.header})
     properties.append({'property':'pjl_commands', 'value':pv.pjl_commands})
     properties.append({'property':'pages', 'value':pv.pages})
     properties.append({'property':'trailer', 'value':pv.trailer})
