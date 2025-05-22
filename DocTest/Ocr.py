@@ -70,14 +70,15 @@ class EastTextExtractor:
 
             # recalculate coordinates in tesseract text dict and add start_x and start_y
             for i in range(len(text['text'])):
-#                if int(text['conf'][i]) > PYTESSERACT_CONFIDENCE:
+                if text['conf'][i] == '-1':
+                    continue
                 text['text'][i] = remove_control_characters(text['text'][i])
                 text['left'][i] = text['left'][i] + start_x
                 text['top'][i] = text['top'][i] + start_y
                 text['width'][i] = text['width'][i]
                 text['height'][i] = text['height'][i]
                 text['text'][i] = text['text'][i].strip()
-                text['conf'][i] = text['conf'][i]
+                text['conf'][i] = 100
 
 
 
