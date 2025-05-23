@@ -89,7 +89,7 @@ class VisualTest:
     @keyword
     def compare_images(self, reference_image: str, candidate_image: str, placeholder_file: Union[str, dict, list] = None, 
                        check_text_content: bool = False, move_tolerance: int = None, contains_barcodes: bool = False, 
-                       watermark_file: str = None, ignore_watermarks: bool=None, force_ocr: bool = False, DPI: int = None, resize_candidate: bool = False, 
+                       watermark_file: str = None, ignore_watermarks: bool=None, force_ocr: bool = False, ocr_engine: Literal["tesseract", "east"] = None, DPI: int = None, resize_candidate: bool = False, 
                        blur: bool = False, threshold: float = None, mask: Union[str, dict, list] = None, get_pdf_content: bool = False, block_based_ssim: bool = False, block_size: int = 32, **kwargs):
         """Compares the documents/images ``reference_image`` and ``test_image``.
 
@@ -152,14 +152,17 @@ class VisualTest:
         dpi = DPI if DPI else self.dpi
         threshold = threshold if threshold is not None else self.threshold
 
+        # Set OCR engine if provided
+        ocr_engine = ocr_engine if ocr_engine else self.ocr_engine
+
         if watermark_file is None:
             watermark_file = self.watermark_file
         if ignore_watermarks is None:
             ignore_watermarks = os.getenv('IGNORE_WATERMARKS', False)
 
         # Load reference and candidate documents
-        reference_doc = DocumentRepresentation(reference_image, dpi=dpi, ocr_engine=self.ocr_engine, ignore_area_file=placeholder_file, ignore_area=mask, **kwargs)
-        candidate_doc = DocumentRepresentation(candidate_image, dpi=dpi, ocr_engine=self.ocr_engine, **kwargs)            
+        reference_doc = DocumentRepresentation(reference_image, dpi=dpi, ocr_engine=ocr_engine, ignore_area_file=placeholder_file, ignore_area=mask, **kwargs)
+        candidate_doc = DocumentRepresentation(candidate_image, dpi=dpi, ocr_engine=ocr_engine, **kwargs)            
 
         watermarks = []
 
