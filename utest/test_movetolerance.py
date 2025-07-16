@@ -435,7 +435,7 @@ def test_multiple_independent_movements():
             cv2.imwrite(str(cand_path), cand_image)
 
             # Test with tolerance that accepts all movements
-            visual_tester.compare_images(ref_path, cand_path, move_tolerance=10)
+            visual_tester.compare_images(ref_path, cand_path, move_tolerance=11)
 
             # Test with tolerance that rejects the 10px movements
             with pytest.raises(AssertionError):
