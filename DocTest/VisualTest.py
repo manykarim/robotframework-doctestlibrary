@@ -964,43 +964,116 @@ class VisualTest:
         | `${coordinates}`    `Image Should Contain Template`    reference.jpg    template.jpg    #Checks if template is in image and returns coordinates of template
         | `Should Be Equal As Numbers`    ${coordinates['pt1'][0]}    100    #Checks if x coordinate of found template is 100
         """
+        # Validate crop arguments and load images
         all_crop_args = all((tpl_crop_x1, tpl_crop_y1, tpl_crop_x2, tpl_crop_y2))
         any_crop_args = any((tpl_crop_x1, tpl_crop_y1, tpl_crop_x2, tpl_crop_y2))
         if not all_crop_args and any_crop_args:
             raise ValueError("Either provide all crop arguments or none of them.")
 
         img = DocumentRepresentation(image).pages[0].image
-        template = DocumentRepresentation(template).pages[0].image
+        original_template = DocumentRepresentation(template).pages[0].image
+
+        # Log original dimensions for debugging
+        print(f"Original template dimensions: {original_template.shape}")
+        print(f"Original image dimensions: {img.shape}")
+
         # Crop the template image if crop boundaries are provided
         if all_crop_args:
-            template = template[tpl_crop_y1:tpl_crop_y2, tpl_crop_x1:tpl_crop_x2]
+            # Validate crop coordinates
+            tpl_height, tpl_width = original_template.shape[:2]
+            if (
+                tpl_crop_x1 < 0
+                or tpl_crop_y1 < 0
+                or tpl_crop_x2 > tpl_width
+                or tpl_crop_y2 > tpl_height
+                or tpl_crop_x1 >= tpl_crop_x2
+                or tpl_crop_y1 >= tpl_crop_y2
+            ):
+                raise ValueError(
+                    f"Invalid crop coordinates. Template size: {tpl_width}x{tpl_height}, "
+                    f"Crop: ({tpl_crop_x1},{tpl_crop_y1}) to ({tpl_crop_x2},{tpl_crop_y2})"
+                )
+
+            template = original_template[
+                tpl_crop_y1:tpl_crop_y2, tpl_crop_x1:tpl_crop_x2
+            ].copy()
+            print(f"Cropped template dimensions: {template.shape}")
+        else:
+            template = original_template
+
+        # Validate template size
+        if template.size == 0:
+            raise ValueError("Template image is empty after cropping")
+
+        if template.shape[0] < 3 or template.shape[1] < 3:
+            raise ValueError(f"Template too small after cropping: {template.shape}")
 
         img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
         h, w = template.shape[0:2]
 
+        # Validate that template is smaller than image
+        img_h, img_w = img_gray.shape
+        if h > img_h or w > img_w:
+            raise ValueError(
+                f"Template ({w}x{h}) is larger than image ({img_w}x{img_h})"
+            )
+
         if detection == "template":
-            match = False
+            print(f"Using template matching with threshold: {threshold}")
+
+            # Perform template matching
             res = cv2.matchTemplate(img_gray, template_gray, cv2.TM_SQDIFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+
+            # Log matching results for debugging
+            print(
+                f"Template matching results - min_val: {min_val:.6f}, max_val: {max_val:.6f}"
+            )
+            print(f"Best match location: {min_loc}")
+
             top_left = min_loc
             bottom_right = (top_left[0] + w, top_left[1] + h)
-            if min_val <= threshold:
-                match = True
-                cv2.rectangle(img, top_left, bottom_right, 255, 2)
 
-            if take_screenshots:
-                self.add_screenshot_to_log(img, "image_with_template")
+            # For TM_SQDIFF_NORMED, lower values indicate better matches
+            # A threshold of 0.0 means exact match, higher values allow more differences
+            match = min_val <= threshold
+
+            if match:
+                print(
+                    f"Template found at location: {top_left} with confidence: {1.0 - min_val:.6f}"
+                )
+                # Draw rectangle on a copy to avoid modifying original
+                img_result = img.copy()
+                cv2.rectangle(img_result, top_left, bottom_right, (0, 255, 0), 2)
+
+                if take_screenshots:
+                    self.add_screenshot_to_log(img_result, "image_with_template")
+            else:
+                print(
+                    f"Template not found. Best match confidence: {1.0 - min_val:.6f}, required: {1.0 - threshold:.6f}"
+                )
+                if take_screenshots:
+                    # Show best match attempt for debugging
+                    img_debug = img.copy()
+                    cv2.rectangle(img_debug, top_left, bottom_right, (0, 0, 255), 2)
+                    self.add_screenshot_to_log(img_debug, "image_with_failed_match")
 
             if log_template:
                 self.add_screenshot_to_log(
-                    template, "template_original", original_size=True
+                    template, "template_used", original_size=True
                 )
 
             if match:
-                return {"pt1": top_left, "pt2": bottom_right}
+                return {
+                    "pt1": top_left,
+                    "pt2": bottom_right,
+                    "confidence": 1.0 - min_val,
+                }
             else:
-                raise AssertionError("The Template was not found in the Image.")
+                raise AssertionError(
+                    f"The Template was not found in the Image. Best match confidence: {1.0 - min_val:.6f}, threshold: {1.0 - threshold:.6f}"
+                )
 
         elif detection == "sift" or detection == "orb":
             img_kp, img_des, template_kp, template_des = (
@@ -1474,11 +1547,64 @@ class VisualTest:
 
     def is_bounding_box_reasonable(self, corners):
         """Check if the bounding box is spatially consistent (rectangular and not too skewed)."""
-        tl, tr, br, bl = corners
-        width_top = np.linalg.norm(tr - tl)
-        width_bottom = np.linalg.norm(br - bl)
-        height_left = np.linalg.norm(bl - tl)
-        height_right = np.linalg.norm(br - tr)
+        try:
+            # Reshape corners to access individual points
+            corners = corners.reshape(4, 2)
+            tl, tr, br, bl = corners[0], corners[1], corners[2], corners[3]
+
+            # Calculate side lengths
+            width_top = np.linalg.norm(tr - tl)
+            width_bottom = np.linalg.norm(br - bl)
+            height_left = np.linalg.norm(bl - tl)
+            height_right = np.linalg.norm(br - tr)
+
+            # Check if the bounding box is reasonable:
+            # 1. All sides should have reasonable length (not zero or negative)
+            if min(width_top, width_bottom, height_left, height_right) <= 0:
+                return False
+
+            # 2. Opposite sides should be similar in length (within 50% tolerance)
+            width_ratio = min(width_top, width_bottom) / max(width_top, width_bottom)
+            height_ratio = min(height_left, height_right) / max(
+                height_left, height_right
+            )
+
+            if width_ratio < 0.5 or height_ratio < 0.5:
+                return False
+
+            # 3. Check for reasonable aspect ratio (not too skewed)
+            avg_width = (width_top + width_bottom) / 2
+            avg_height = (height_left + height_right) / 2
+            aspect_ratio = max(avg_width, avg_height) / min(avg_width, avg_height)
+
+            # Allow aspect ratios up to 10:1
+            if aspect_ratio > 10:
+                return False
+
+            # 4. Check if points form a reasonable quadrilateral (no self-intersections)
+            # Calculate area using shoelace formula
+            x_coords = corners[:, 0]
+            y_coords = corners[:, 1]
+            area = 0.5 * abs(
+                sum(
+                    x_coords[i] * y_coords[(i + 1) % 4]
+                    - x_coords[(i + 1) % 4] * y_coords[i]
+                    for i in range(4)
+                )
+            )
+
+            # Area should be positive and reasonable
+            min_expected_area = (
+                avg_width * avg_height * 0.1
+            )  # At least 10% of expected rectangular area
+            if area < min_expected_area:
+                return False
+
+            return True
+
+        except Exception as e:
+            print(f"Error validating bounding box: {e}")
+            return False
 
         # Ensure the width and height are approximately consistent (not too skewed)
         width_diff = abs(width_top - width_bottom)

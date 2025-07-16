@@ -90,6 +90,9 @@ Compare Text Content from Image with east
 Compare Images And Resize With Different Shapes
     Run Keyword And Expect Error    The compared images are different.    Compare Images    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg    resize_candidate=True
 
+Image Should Contain Template using cropped image
+    Image Should Contain Template    testdata/Beach_left.jpg    testdata/Beach_cropped.jpg    threshold=0.999
+
 Compare Images Different Images With Full Watermark
     Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    watermark_file=testdata/Beach_date_mask_full.png
 
