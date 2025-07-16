@@ -545,7 +545,7 @@ class VisualTest:
                                 if distance > move_tolerance:
                                     similar = False
                                     print(
-                                        f"Area {rect} is moved more than {move_tolerance} pixels."
+                                        f"Area {rect} is moved {distance} pixels which more than the tolerated {move_tolerance} pixels."
                                     )
                                     self.add_screenshot_to_log(
                                         self.blend_two_images(
