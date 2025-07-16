@@ -262,5 +262,227 @@ def test_multiple_texts_with_template(move_distance, tolerance):
         visual_tester.compare_images(ref_image_path, cand_image_path, move_tolerance=tolerance)
 
 
+@pytest.mark.parametrize("move_distance, tolerance", [
+    (0, 0),   # Exact match - no movement
+    (1, 1),   # Minimal movement
+    (10, 10),  # Medium Movement
+    (49, 50), # Minimal movement within tolerance
+])
+def test_exact_tolerance_boundary(move_distance, tolerance):
+    """
+    Test behavior when the movement is exactly at the tolerance boundary.
+    
+    Args:
+    - move_distance: The number of pixels to shift the text
+    - tolerance: The movement tolerance that should be just below or exactly at the move distance
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        
+        # Test with both SIFT and template methods
+        for detection_method in ["template", "sift"]:
+            visual_tester = VisualTest(movement_detection=detection_method)
+            
+            # Create test images
+            ref_image = create_image((300, 200), (255, 255, 255))
+            cand_image = create_image((300, 200), (255, 255, 255))
+            
+            text = f"Exact Tolerance {detection_method}"
+            ref_image = add_text_to_image(ref_image, text, (50, 50))
+            cand_image = add_text_to_image(cand_image, text, (50, 50 + move_distance))
+            
+            ref_path = temp_dir_path / f"ref_exact_{detection_method}.png"
+            cand_path = temp_dir_path / f"cand_exact_{detection_method}.png"
+            cv2.imwrite(str(ref_path), ref_image)
+            cv2.imwrite(str(cand_path), cand_image)
+            
+            # Should pass when tolerance >= movement
+            if move_distance <= tolerance:
+                visual_tester.compare_images(ref_path, cand_path, move_tolerance=tolerance)
+            
+            # Should fail when tolerance < movement
+            if move_distance > tolerance:
+                with pytest.raises(AssertionError):
+                    visual_tester.compare_images(ref_path, cand_path, move_tolerance=tolerance)
+
+
+@pytest.mark.parametrize("direction, coords", [
+    ("up", (0, -15)),
+    ("down", (0, 15)),
+    ("left", (-15, 0)),
+    ("right", (15, 0)),
+    ("diagonal", (10, 10))
+])
+def test_movement_directions(direction, coords):
+    """
+    Test detection of movement in different directions.
+    
+    Args:
+    - direction: String representing the movement direction (for test naming)
+    - coords: Tuple of (x, y) pixel shifts to apply
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        
+        # Test with both SIFT and template methods
+        for detection_method in ["template", "sift"]:
+            visual_tester = VisualTest(movement_detection=detection_method)
+            
+            # Calculate move distance for tolerance
+            x_shift, y_shift = coords
+            move_distance = int(np.sqrt(x_shift**2 + y_shift**2))
+            
+            # Create test images
+            ref_image = create_image((600, 200), (255, 255, 255))
+            cand_image = create_image((600, 200), (255, 255, 255))
+            
+            text = f"Direction {direction}"
+            ref_image = add_text_to_image(ref_image, text, (100, 100))
+            cand_image = add_text_to_image(cand_image, text, (100 + x_shift, 100 + y_shift))
+            
+            ref_path = temp_dir_path / f"ref_{direction}_{detection_method}.png"
+            cand_path = temp_dir_path / f"cand_{direction}_{detection_method}.png"
+            cv2.imwrite(str(ref_path), ref_image)
+            cv2.imwrite(str(cand_path), cand_image)
+            
+            # Test with exact tolerance
+            visual_tester.compare_images(ref_path, cand_path, move_tolerance=move_distance)
+            
+            # Test with insufficient tolerance
+            with pytest.raises(AssertionError):
+                visual_tester.compare_images(ref_path, cand_path, move_tolerance=move_distance-2)
+
+
+def test_multiple_independent_movements():
+    """
+    Test detection of multiple elements moving in different directions with different distances.
+    Verifies that each movement is detected independently.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        
+        # Test with both detection methods
+        for detection_method in ["sift", "template"]:
+            visual_tester = VisualTest(movement_detection=detection_method)
+            
+            # Create large images
+            ref_image = create_image((600, 400), (255, 255, 255))
+            cand_image = create_image((600, 400), (255, 255, 255))
+            
+            # Element 1: Text moving down by 5 pixels
+            text1 = random_text(10)
+            ref_image = add_text_to_image(ref_image, text1, (100, 100))
+            cand_image = add_text_to_image(cand_image, text1, (100, 105))
+            
+            # Element 2: Text moving right by 10 pixels
+            text2 = random_text(10)
+            ref_image = add_text_to_image(ref_image, text2, (300, 100))
+            cand_image = add_text_to_image(cand_image, text2, (310, 100))
+            
+            # Element 3: Text moving diagonally by 10 pixels (√(7²+7²) = ~10)
+            text3 = random_text(10)
+            ref_image = add_text_to_image(ref_image, text3, (100, 300))
+            cand_image = add_text_to_image(cand_image, text3, (107, 307))
+            
+            # Element 4: Text not moving
+            text4 = random_text(10)
+            ref_image = add_text_to_image(ref_image, text4, (300, 300))
+            cand_image = add_text_to_image(cand_image, text4, (300, 300))
+            
+            ref_path = temp_dir_path / f"ref_multi_movement_{detection_method}.png"
+            cand_path = temp_dir_path / f"cand_multi_movement_{detection_method}.png"
+            cv2.imwrite(str(ref_path), ref_image)
+            cv2.imwrite(str(cand_path), cand_image)
+            
+            # Test with tolerance that accepts all movements
+            visual_tester.compare_images(ref_path, cand_path, move_tolerance=10)
+            
+            # Test with tolerance that rejects the 10px movements
+            with pytest.raises(AssertionError):
+                visual_tester.compare_images(ref_path, cand_path, move_tolerance=8)
+
+
+@pytest.mark.parametrize("font_scale_change", [0.8, 0.9, 1.1, 1.2])
+def test_text_size_changes_with_movement(font_scale_change):
+    """
+    Test behavior when text not only moves but also changes size.
+    
+    Args:
+    - font_scale_change: Factor to change the font size by in the candidate image
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        
+        move_distance = 15
+        
+        # Test with both detection methods
+        for detection_method in ["sift", "template"]:
+            visual_tester = VisualTest(movement_detection=detection_method)
+            
+            # Create test images
+            ref_image = create_image((300, 200), (255, 255, 255))
+            cand_image = create_image((300, 200), (255, 255, 255))
+            
+            text = f"Size Change {font_scale_change}"
+            ref_image = add_text_to_image(ref_image, text, (50, 100), font_scale=1.0)
+            cand_image = add_text_to_image(cand_image, text, (50, 100 + move_distance), 
+                                         font_scale=font_scale_change)
+            
+            ref_path = temp_dir_path / f"ref_size_{detection_method}_{font_scale_change}.png"
+            cand_path = temp_dir_path / f"cand_size_{detection_method}_{font_scale_change}.png"
+            cv2.imwrite(str(ref_path), ref_image)
+            cv2.imwrite(str(cand_path), cand_image)
+            
+            # Test with sufficient tolerance - may fail depending on algorithm sensitivity to size changes
+            try:
+                visual_tester.compare_images(ref_path, cand_path, move_tolerance=move_distance+5)
+                size_sensitive = False
+            except AssertionError:
+                size_sensitive = True
+                
+            # Document the behavior
+            print(f"Method {detection_method} is {'sensitive' if size_sensitive else 'not sensitive'} "
+                  f"to font scale change of {font_scale_change}")
+
+
+@pytest.mark.parametrize("quality", [20, 50, 80, 100])
+def test_image_quality_impact(quality):
+    """
+    Test how JPEG compression quality affects movement detection.
+    
+    Args:
+    - quality: JPEG compression quality (0-100)
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_path = Path(temp_dir)
+        
+        move_distance = 15
+        
+        # Test with both detection methods
+        for detection_method in ["sift", "template"]:
+            visual_tester = VisualTest(movement_detection=detection_method)
+            
+            # Create test images
+            ref_image = create_image((300, 200), (255, 255, 255))
+            cand_image = create_image((300, 200), (255, 255, 255))
+            
+            text = f"Quality Test"
+            ref_image = add_text_to_image(ref_image, text, (50, 100))
+            cand_image = add_text_to_image(cand_image, text, (50, 100 + move_distance))
+            
+            # Save as JPEG with specified quality
+            ref_path = temp_dir_path / f"ref_quality_{detection_method}_{quality}.jpg"
+            cand_path = temp_dir_path / f"cand_quality_{detection_method}_{quality}.jpg"
+            cv2.imwrite(str(ref_path), ref_image, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            cv2.imwrite(str(cand_path), cand_image, [cv2.IMWRITE_JPEG_QUALITY, quality])
+            
+            # Test with exact tolerance
+            visual_tester.compare_images(ref_path, cand_path, move_tolerance=move_distance)
+            
+            # Test with insufficient tolerance
+            with pytest.raises(AssertionError):
+                visual_tester.compare_images(ref_path, cand_path, move_tolerance=move_distance-5)
+
+
 # If you are using pytest in the terminal, this code would be run using:
 # pytest <name_of_test_file>.py

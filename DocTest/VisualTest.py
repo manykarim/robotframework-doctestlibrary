@@ -25,6 +25,11 @@ class VisualTest:
     OCR_ENGINE_DEFAULT = "tesseract"
     MOVEMENT_DETECTION_DEFAULT = "template"
     PARTIAL_IMAGE_THRESHOLD_DEFAULT = 0.1
+    SIFT_RATIO_THRESHOLD_DEFAULT = 0.75
+    SIFT_MIN_MATCHES_DEFAULT = 4
+    ORB_MAX_MATCHES_DEFAULT = 10
+    ORB_MIN_MATCHES_DEFAULT = 4
+    RANSAC_THRESHOLD_DEFAULT = 5.0
     WATERMARK_WIDTH = 31
     WATERMARK_HEIGHT = 36
     WATERMARK_CENTER_OFFSET = 3 / 100
@@ -51,6 +56,11 @@ class VisualTest:
             "template", "orb", "sift"
         ] = MOVEMENT_DETECTION_DEFAULT,
         partial_image_threshold: float = PARTIAL_IMAGE_THRESHOLD_DEFAULT,
+        sift_ratio_threshold: float = SIFT_RATIO_THRESHOLD_DEFAULT,
+        sift_min_matches: int = SIFT_MIN_MATCHES_DEFAULT,
+        orb_max_matches: int = ORB_MAX_MATCHES_DEFAULT,
+        orb_min_matches: int = ORB_MIN_MATCHES_DEFAULT,
+        ransac_threshold: float = RANSAC_THRESHOLD_DEFAULT,
         **kwargs,
     ):
         """
@@ -68,6 +78,11 @@ class VisualTest:
         | ``watermark_file`` | Path to an image/document or a folder containing multiple images. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
         | ``movement_detection`` | Method to be used for movement detection. Options are ``template``, ``orb`` or ``sift``. Default is ``template``. |
         | ``partial_image_threshold`` | The threshold used to identify partial images, e.g. for movement detection. Value is between 0.0 and 1.0. A higher value will tolerate more differences. Default is ``0.1``. |
+        | ``sift_ratio_threshold`` | Lowe's ratio test threshold for SIFT feature matching. Lower values are more restrictive. Default is ``0.75``. |
+        | ``sift_min_matches`` | Minimum number of good matches required for SIFT homography computation. Default is ``4``. |
+        | ``orb_max_matches`` | Maximum number of matches to use for ORB feature matching. Default is ``10``. |
+        | ``orb_min_matches`` | Minimum number of matches required for ORB homography computation. Default is ``4``. |
+        | ``ransac_threshold`` | RANSAC threshold for robust homography estimation. Higher values are more tolerant of outliers. Default is ``5.0``. |
         | ``**kwargs`` | Everything else. |
 
 
@@ -85,6 +100,11 @@ class VisualTest:
         self.watermark_file = watermark_file
         self.movement_detection = movement_detection
         self.partial_image_threshold = partial_image_threshold
+        self.sift_ratio_threshold = sift_ratio_threshold
+        self.sift_min_matches = sift_min_matches
+        self.orb_max_matches = orb_max_matches
+        self.orb_min_matches = orb_min_matches
+        self.ransac_threshold = ransac_threshold
         built_in = BuiltIn()
         self.force_ocr = force_ocr
         try:
@@ -1214,145 +1234,269 @@ class VisualTest:
     def find_partial_image_position(
         self, img, template, threshold=0.1, detection="classic"
     ):
-        if detection == "template":
-            result = self.find_partial_image_distance_with_matchtemplate(
-                img, template, threshold
+        """
+        Find the position and movement distance of a template image within a larger image.
+
+        Args:
+            img: The source image (numpy array)
+            template: The template image to find (numpy array)
+            threshold: Threshold for matching sensitivity (float)
+            detection: Detection method ('template', 'classic', 'orb', 'sift')
+
+        Returns:
+            Dictionary with movement information or None if not found
+        """
+        # Input validation
+        if img is None or template is None:
+            return None
+
+        if img.size == 0 or template.size == 0:
+            return None
+
+        # Ensure images have the same number of channels
+        if len(img.shape) != len(template.shape):
+            return None
+
+        try:
+            if detection == "template":
+                result = self.find_partial_image_distance_with_matchtemplate(
+                    img, template, threshold
+                )
+
+            elif detection == "classic":
+                result = self.find_partial_image_distance_with_matchtemplate(
+                    img, template, threshold
+                )
+
+            elif detection == "orb":
+                result = self.find_partial_image_distance_with_orb(img, template)
+
+            elif detection == "sift":
+                result = self.find_partial_image_distance_with_sift(
+                    img, template, threshold
+                )
+
+            else:
+                raise ValueError(f"Unknown detection method: {detection}")
+
+            return result
+
+        except Exception as e:
+            # Log the error but don't crash the comparison
+            print(
+                f"Warning: Movement detection failed with {detection} method: {str(e)}"
             )
-
-        elif detection == "classic":
-            result = self.find_partial_image_distance_with_matchtemplate(
-                img, template, threshold
-            )
-
-        elif detection == "orb":
-            result = self.find_partial_image_distance_with_orb(img, template)
-
-        elif detection == "sift":
-            result = self.find_partial_image_distance_with_sift(img, template)
-
-        return result
+            return None
 
     def find_partial_image_distance_with_sift(self, img, template, threshold=0.1):
-        # Convert both images to grayscale
-        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        """
+        Find movement distance using SIFT feature matching.
 
-        # Find non-white area bounding boxes
-        template_nonwhite = cv2.findNonZero(
-            cv2.threshold(template_gray, 254, 255, cv2.THRESH_BINARY_INV)[1]
-        )
-        img_nonwhite = cv2.findNonZero(
-            cv2.threshold(img_gray, 254, 255, cv2.THRESH_BINARY_INV)[1]
-        )
-        template_x, template_y, template_w, template_h = cv2.boundingRect(
-            template_nonwhite
-        )
-        img_x, img_y, img_w, img_h = cv2.boundingRect(img_nonwhite)
+        Args:
+            img: Source image (numpy array)
+            template: Template image (numpy array)
+            threshold: Matching threshold (float)
 
-        # Initialize SIFT detector
-        sift = cv2.SIFT_create()
+        Returns:
+            Dictionary with displacement and distance information or None
+        """
+        try:
+            # Input validation
+            if img is None or template is None or img.size == 0 or template.size == 0:
+                return None
 
-        # Detect SIFT keypoints and descriptors
-        keypoints_img, descriptors_img = sift.detectAndCompute(img_gray, None)
-        keypoints_template, descriptors_template = sift.detectAndCompute(
-            template_gray, None
-        )
+            # Convert both images to grayscale
+            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # Use BFMatcher to match descriptors
-        bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
-        matches = bf.knnMatch(descriptors_template, descriptors_img, k=2)
+            # Find non-white area bounding boxes
+            template_nonwhite = cv2.findNonZero(
+                cv2.threshold(template_gray, 254, 255, cv2.THRESH_BINARY_INV)[1]
+            )
+            img_nonwhite = cv2.findNonZero(
+                cv2.threshold(img_gray, 254, 255, cv2.THRESH_BINARY_INV)[1]
+            )
 
-        # Apply Lowe's ratio test to filter good matches
-        good_matches = [m for m, n in matches if m.distance < 0.75 * n.distance]
+            # Check if we found any non-white areas
+            if template_nonwhite is None or img_nonwhite is None:
+                return None
 
-        # If enough good matches, find homography and return the coordinates
-        if len(good_matches) >= 4:
-            # Extract the matched keypoints
-            src_pts = np.float32(
-                [keypoints_template[m.queryIdx].pt for m in good_matches]
-            ).reshape(-1, 1, 2)
-            dst_pts = np.float32(
-                [keypoints_img[m.trainIdx].pt for m in good_matches]
-            ).reshape(-1, 1, 2)
+            template_x, template_y, template_w, template_h = cv2.boundingRect(
+                template_nonwhite
+            )
+            img_x, img_y, img_w, img_h = cv2.boundingRect(img_nonwhite)
 
-            # Compute homography
-            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            # Initialize SIFT detector
+            sift = cv2.SIFT_create()
 
-            if M is not None:
-                # The translation vector (dx, dy) can be extracted directly from the homography matrix M
-                dx = M[0, 2]  # Translation in x direction
-                dy = M[1, 2]  # Translation in y direction
+            # Detect SIFT keypoints and descriptors
+            keypoints_img, descriptors_img = sift.detectAndCompute(img_gray, None)
+            keypoints_template, descriptors_template = sift.detectAndCompute(
+                template_gray, None
+            )
 
-                # Calculate moved distance using the translation vector
-                moved_distance = np.sqrt(dx**2 + dy**2)
+            # Check if we have valid descriptors
+            if (
+                descriptors_img is None
+                or descriptors_template is None
+                or len(keypoints_img) == 0
+                or len(keypoints_template) == 0
+            ):
+                return None
 
-                return {
-                    "displacement_x": dx,
-                    "displacement_y": dy,
-                    "distance": moved_distance,
-                }
+            # Use BFMatcher to match descriptors
+            bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
+            matches = bf.knnMatch(descriptors_template, descriptors_img, k=2)
 
-        # Return None if not enough good matches
-        return None
+            # Apply Lowe's ratio test to filter good matches
+            good_matches = []
+            for match_pair in matches:
+                if len(match_pair) == 2:  # Ensure we have 2 matches for ratio test
+                    m, n = match_pair
+                    if m.distance < self.sift_ratio_threshold * n.distance:
+                        good_matches.append(m)
+
+            # If enough good matches, find homography and return the coordinates
+            if len(good_matches) >= self.sift_min_matches:
+                # Extract the matched keypoints
+                src_pts = np.float32(
+                    [keypoints_template[m.queryIdx].pt for m in good_matches]
+                ).reshape(-1, 1, 2)
+                dst_pts = np.float32(
+                    [keypoints_img[m.trainIdx].pt for m in good_matches]
+                ).reshape(-1, 1, 2)
+
+                # Compute homography
+                M, mask = cv2.findHomography(
+                    src_pts, dst_pts, cv2.RANSAC, self.ransac_threshold
+                )
+
+                if M is not None:
+                    # The translation vector (dx, dy) can be extracted directly from the homography matrix M
+                    dx = M[0, 2]  # Translation in x direction
+                    dy = M[1, 2]  # Translation in y direction
+
+                    # Calculate moved distance using the translation vector
+                    moved_distance = np.sqrt(dx**2 + dy**2)
+
+                    return {
+                        "displacement_x": dx,
+                        "displacement_y": dy,
+                        "distance": moved_distance,
+                    }
+
+            # Return None if not enough good matches
+            return None
+
+        except Exception as e:
+            print(f"Warning: SIFT detection failed: {str(e)}")
+            return None
 
     def find_partial_image_distance_with_matchtemplate(
         self, img, template, threshold=0.1
     ):
-        print("Find partial image position")
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-        h, w = template.shape[0:2]
-        print("dev detection")
-        mask = cv2.absdiff(img_gray, template_gray)
-        mask[mask > 0] = 255
+        """
+        Find movement distance using template matching.
 
-        # find contours in the mask and get the largest one
-        cnts, hierarchy = cv2.findContours(
-            mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        Args:
+            img: Source image (numpy array)
+            template: Template image (numpy array)
+            threshold: Matching threshold (float)
 
-        # merge all contours into one
-        merged_contour = np.zeros(mask.shape, np.uint8)
-        for cnt in cnts:
-            cv2.drawContours(merged_contour, [cnt], -1, 255, -1)
+        Returns:
+            Dictionary with movement information or None
+        """
+        try:
+            # Input validation
+            if img is None or template is None or img.size == 0 or template.size == 0:
+                return None
 
-        # # get largest contour
-        # largest_contour = max(cnts, key=cv2.contourArea)
-        # contour_mask = np.zeros(mask.shape, np.uint8)
-        # cv2.drawContours(contour_mask, [largest_contour], -1, 255, -1)
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            h, w = template.shape[0:2]
 
-        masked_img = cv2.bitwise_not(
-            cv2.bitwise_and(merged_contour, cv2.bitwise_not(img_gray))
-        )
-        masked_template = cv2.bitwise_not(
-            cv2.bitwise_and(merged_contour, cv2.bitwise_not(template_gray))
-        )
-        template_blur = cv2.GaussianBlur(masked_template, (3, 3), 0)
-        template_thresh = cv2.threshold(
-            template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-        )[1]
-        temp_x, temp_y, temp_w, temp_h = cv2.boundingRect(template_thresh)
+            # Early exit if template is larger than image
+            if h > img_gray.shape[0] or w > img_gray.shape[1]:
+                return None
 
-        # There should be a minimal image size for further processing
-        if temp_w < 5 or temp_h < 5:
-            return {"distance": 5}
-        res = cv2.matchTemplate(
-            masked_img,
-            masked_template[temp_y : temp_y + temp_h, temp_x : temp_x + temp_w],
-            cv2.TM_SQDIFF_NORMED,
-        )
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            mask = cv2.absdiff(img_gray, template_gray)
+            mask[mask > 0] = 255
 
-        res_temp = cv2.matchTemplate(
-            masked_template,
-            masked_template[temp_y : temp_y + temp_h, temp_x : temp_x + temp_w],
-            cv2.TM_SQDIFF_NORMED,
-        )
-        min_val_temp, max_val_temp, min_loc_temp, max_loc_temp = cv2.minMaxLoc(res_temp)
+            # find contours in the mask and get the largest one
+            cnts, hierarchy = cv2.findContours(
+                mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
 
-        if min_val < threshold:
-            return {"pt1": min_loc, "pt2": min_loc_temp}
-        return
+            # Check if contours were found
+            if len(cnts) == 0:
+                return None
+
+            # merge all contours into one
+            merged_contour = np.zeros(mask.shape, np.uint8)
+            for cnt in cnts:
+                cv2.drawContours(merged_contour, [cnt], -1, 255, -1)
+
+            masked_img = cv2.bitwise_not(
+                cv2.bitwise_and(merged_contour, cv2.bitwise_not(img_gray))
+            )
+            masked_template = cv2.bitwise_not(
+                cv2.bitwise_and(merged_contour, cv2.bitwise_not(template_gray))
+            )
+            template_blur = cv2.GaussianBlur(masked_template, (3, 3), 0)
+            template_thresh = cv2.threshold(
+                template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+            )[1]
+            temp_x, temp_y, temp_w, temp_h = cv2.boundingRect(template_thresh)
+
+            # There should be a minimal image size for further processing
+            if temp_w < 5 or temp_h < 5:
+                return {"distance": 5}
+
+            # Ensure we don't go out of bounds
+            if (
+                temp_y + temp_h > masked_template.shape[0]
+                or temp_x + temp_w > masked_template.shape[1]
+            ):
+                return None
+
+            template_roi = masked_template[
+                temp_y : temp_y + temp_h, temp_x : temp_x + temp_w
+            ]
+
+            res = cv2.matchTemplate(
+                masked_img,
+                template_roi,
+                cv2.TM_SQDIFF_NORMED,
+            )
+            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+
+            res_temp = cv2.matchTemplate(
+                masked_template,
+                template_roi,
+                cv2.TM_SQDIFF_NORMED,
+            )
+            min_val_temp, max_val_temp, min_loc_temp, max_loc_temp = cv2.minMaxLoc(
+                res_temp
+            )
+
+            if min_val < threshold:
+                # Calculate distance between the two locations
+                distance = np.sqrt(
+                    (min_loc[0] - min_loc_temp[0]) ** 2
+                    + (min_loc[1] - min_loc_temp[1]) ** 2
+                )
+                return {
+                    "pt1": min_loc,
+                    "pt2": min_loc_temp,
+                    "distance": distance,
+                    "displacement_x": min_loc[0] - min_loc_temp[0],
+                    "displacement_y": min_loc[1] - min_loc_temp[1],
+                }
+            return None
+
+        except Exception as e:
+            print(f"Warning: Template matching failed: {str(e)}")
+            return None
 
     def get_orb_keypoints_and_descriptors(
         self, img1, img2, edgeThreshold=5, patchSize=10
@@ -1386,83 +1530,124 @@ class VisualTest:
         return img1_kp, img1_des, img2_kp, img2_des
 
     def find_partial_image_distance_with_orb(self, img, template):
-        print("Find partial image position")
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-        h, w = template.shape[0:2]
-        print("dev detection")
-        mask = cv2.absdiff(img_gray, template_gray)
-        mask[mask > 0] = 255
+        """
+        Find movement distance using ORB feature matching.
 
-        # find contours in the mask and get the largest one
-        cnts, hierarchy = cv2.findContours(
-            mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        Args:
+            img: Source image (numpy array)
+            template: Template image (numpy array)
 
-        # get largest contour
-        largest_contour = max(cnts, key=cv2.contourArea)
-        contour_mask = np.zeros(mask.shape, np.uint8)
+        Returns:
+            Dictionary with movement information or None
+        """
+        try:
+            # Input validation
+            if img is None or template is None or img.size == 0 or template.size == 0:
+                return None
 
-        for cnt in cnts:
-            cv2.drawContours(contour_mask, [cnt], -1, 255, -1)
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            h, w = template.shape[0:2]
+            mask = cv2.absdiff(img_gray, template_gray)
+            mask[mask > 0] = 255
 
-        masked_img = cv2.bitwise_not(
-            cv2.bitwise_and(contour_mask, cv2.bitwise_not(img_gray))
-        )
-        masked_template = cv2.bitwise_not(
-            cv2.bitwise_and(contour_mask, cv2.bitwise_not(template_gray))
-        )
-
-        edges_img = cv2.Canny(masked_img, 100, 200)
-        edges_template = cv2.Canny(masked_template, 100, 200)
-
-        # Find the keypoints and descriptors for the template image
-        (
-            template_keypoints,
-            template_descriptors,
-            target_keypoints,
-            target_descriptors,
-        ) = self.get_orb_keypoints_and_descriptors(edges_template, edges_img)
-
-        if len(template_keypoints) == 0 or len(target_keypoints) == 0:
-            return
-
-        # Create a brute-force matcher
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-
-        # Match the template image with the target image
-        matches = bf.match(template_descriptors, target_descriptors)
-
-        if len(matches) > 0:
-            # Sort the matches based on their distance
-            matches = sorted(matches, key=lambda x: x.distance)
-            best_matches = matches[:10]
-            # Estimate the transformation matrix between the two images
-            src_pts = np.float32(
-                [template_keypoints[m.queryIdx].pt for m in best_matches]
-            ).reshape(-1, 1, 2)
-            dst_pts = np.float32(
-                [target_keypoints[m.trainIdx].pt for m in best_matches]
-            ).reshape(-1, 1, 2)
-
-            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-
-            # Calculate the amount of movement between the two images
-            movement = np.sqrt(np.sum(M[:, 2] ** 2))
-
-            self.add_screenshot_to_log(
-                cv2.drawMatches(
-                    masked_template,
-                    template_keypoints,
-                    masked_img,
-                    target_keypoints,
-                    best_matches,
-                    None,
-                    flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS,
-                ),
-                "ORB_matches",
+            # find contours in the mask
+            cnts, hierarchy = cv2.findContours(
+                mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
-            return {"distance": movement}
+
+            # Check if contours were found
+            if len(cnts) == 0:
+                return None
+
+            # Create mask from all contours
+            contour_mask = np.zeros(mask.shape, np.uint8)
+            for cnt in cnts:
+                cv2.drawContours(contour_mask, [cnt], -1, 255, -1)
+
+            masked_img = cv2.bitwise_not(
+                cv2.bitwise_and(contour_mask, cv2.bitwise_not(img_gray))
+            )
+            masked_template = cv2.bitwise_not(
+                cv2.bitwise_and(contour_mask, cv2.bitwise_not(template_gray))
+            )
+
+            edges_img = cv2.Canny(masked_img, 100, 200)
+            edges_template = cv2.Canny(masked_template, 100, 200)
+
+            # Find the keypoints and descriptors for the template image
+            (
+                template_keypoints,
+                template_descriptors,
+                target_keypoints,
+                target_descriptors,
+            ) = self.get_orb_keypoints_and_descriptors(edges_template, edges_img)
+
+            if (
+                template_keypoints is None
+                or target_keypoints is None
+                or len(template_keypoints) == 0
+                or len(target_keypoints) == 0
+            ):
+                return None
+
+            # Create a brute-force matcher
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+
+            # Match the template image with the target image
+            matches = bf.match(template_descriptors, target_descriptors)
+
+            if len(matches) > 0:
+                # Sort the matches based on their distance
+                matches = sorted(matches, key=lambda x: x.distance)
+                # Use top matches but limit to reasonable number
+                best_matches = matches[: min(self.orb_max_matches, len(matches))]
+
+                # Need at least minimum matches for homography
+                if len(best_matches) < self.orb_min_matches:
+                    return None
+
+                # Estimate the transformation matrix between the two images
+                src_pts = np.float32(
+                    [template_keypoints[m.queryIdx].pt for m in best_matches]
+                ).reshape(-1, 1, 2)
+                dst_pts = np.float32(
+                    [target_keypoints[m.trainIdx].pt for m in best_matches]
+                ).reshape(-1, 1, 2)
+
+                M, mask = cv2.findHomography(
+                    src_pts, dst_pts, cv2.RANSAC, self.ransac_threshold
+                )
+
+                if M is not None:
+                    # Calculate the movement distance using translation components
+                    dx = M[0, 2]  # Translation in x direction
+                    dy = M[1, 2]  # Translation in y direction
+                    movement = np.sqrt(dx**2 + dy**2)
+
+                    self.add_screenshot_to_log(
+                        cv2.drawMatches(
+                            masked_template,
+                            template_keypoints,
+                            masked_img,
+                            target_keypoints,
+                            best_matches,
+                            None,
+                            flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS,
+                        ),
+                        "ORB_matches",
+                    )
+                    return {
+                        "distance": movement,
+                        "displacement_x": dx,
+                        "displacement_y": dy,
+                    }
+
+            return None
+
+        except Exception as e:
+            print(f"Warning: ORB detection failed: {str(e)}")
+            return None
 
     def blend_two_images(self, image, overlay, ignore_color=[255, 255, 255]):
         ignore_color = np.asarray(ignore_color)
