@@ -1,7 +1,9 @@
-import tempfile
-import uuid
-import urllib
 import os
+import tempfile
+import urllib.parse
+import urllib.request
+import uuid
+
 
 def is_url(url):
     """
@@ -12,6 +14,7 @@ def is_url(url):
         return all([result.scheme, result.netloc])
     except:
         return False
+
 
 def download_file_from_url(url, directory=None, filename=None):
     """
@@ -24,10 +27,11 @@ def download_file_from_url(url, directory=None, filename=None):
     if directory is None:
         directory = tempfile.gettempdir()
     if filename is None:
-        filename = str(uuid.uuid4()) + '.' + url.split('.')[-1]
+        filename = str(uuid.uuid4()) + "." + url.split(".")[-1]
     file_path = os.path.join(directory, filename)
     urllib.request.urlretrieve(url, file_path)
     return file_path
+
 
 def get_filename_from_url(url):
     """
@@ -37,7 +41,7 @@ def get_filename_from_url(url):
     """
     filename = None
     if url is not None:
-        filename = url.split('/')[-1]
-        if '.' not in filename:
+        filename = url.split("/")[-1]
+        if "." not in filename:
             filename = None
     return filename
