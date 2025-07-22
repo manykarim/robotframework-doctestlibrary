@@ -128,7 +128,7 @@ class VisualTest:
         check_text_content: bool = False,
         move_tolerance: int = None,
         contains_barcodes: bool = False,
-        watermark_file: str = None,
+        watermark_file: Optional[Union[str, list]] = None,
         ignore_watermarks: bool = None,
         force_ocr: bool = False,
         ocr_engine: Literal["tesseract", "east"] = None,
@@ -157,7 +157,7 @@ class VisualTest:
         | ``get_pdf_content`` | Only relevant in case of using ``move_tolerance`` and ``check_text_content``: Shall the PDF Content like Texts and Boxes be used for calculations |
         | ``force_ocr`` | Always use OCR to find Texts in Images, even for PDF Documents |
         | ``DPI`` | Resolution in which documents are rendered before comparison |
-        | ``watermark_file`` | Path to an image/document or a folder containing multiple images. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
+        | ``watermark_file`` | Path to an image/document, a folder containing multiple images, or a list of paths. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
         | ``ignore_watermarks`` | Ignores a very special watermark in the middle of the document |
         | ``ocr_engine`` | Use ``tesseract`` or ``east`` for Text Detection and OCR |
         | ``resize_candidate`` | Allow visual comparison, even of documents have different sizes |
@@ -178,6 +178,8 @@ class VisualTest:
         | `Compare Images`   reference.pdf   candidate.pdf   check_text_content=${true}   get_pdf_content=${true}   #In case of visual differences, the text content in the affected areas will be read directly from  PDF (not OCR). If text content it equal, the test is considered passed
         | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=watermark.pdf     #Provides a watermark file as an argument. In case of visual differences, watermark content will be subtracted
         | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=${CURDIR}${/}watermarks     #Provides a watermark folder as an argument. In case of visual differences, all watermarks in folder will be subtracted
+        | @{watermarks}    Create List    watermark1.pdf    watermark2.pdf
+        | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=${watermarks}     #Provides a list of watermark files. Individual files will be checked first, then combined if individual files don't cover all differences
         | `Compare Images`   reference.pdf   candidate.pdf   move_tolerance=10   get_pdf_content=${true}   #In case of visual differences, it is checked if difference is caused only by moved areas. Move distance is identified directly from PDF data. If the move distance is within 10 pixels the test is considered as passed. Else it is failed
 
         Special Examples with ``mask``:
@@ -296,6 +298,8 @@ class VisualTest:
             if not similar and watermark_file:
                 if watermarks == []:
                     watermarks = self.load_watermarks(watermark_file)
+
+                # First, try each watermark mask individually
                 for mask in watermarks:
                     if (
                         mask.shape[0] != ref_page.image.shape[0]
@@ -318,6 +322,150 @@ class VisualTest:
                         print(
                             "A watermark file was provided. After removing watermark area, both images are equal"
                         )
+                        break
+
+                # If individual watermarks don't work and there are multiple watermarks,
+                # try combining all watermark files by merging their areas
+                if not similar and len(watermarks) > 1:
+                    try:
+                        print(
+                            f"Individual watermarks failed. Attempting to merge {len(watermarks)} watermark masks..."
+                        )
+
+                        # Create combined mask by merging all watermark areas
+                        # Initialize with all white (all areas to be ignored initially)
+                        # We'll AND with each mask to get union of black comparison areas
+                        combined_mask = np.full(
+                            (ref_page.image.shape[0], ref_page.image.shape[1]),
+                            255,
+                            dtype=np.uint8,
+                        )
+
+                        total_individual_pixels = 0
+                        for i, mask in enumerate(watermarks):
+                            # Ensure all masks have the same dimensions
+                            if (
+                                mask.shape[0] != ref_page.image.shape[0]
+                                or mask.shape[1] != ref_page.image.shape[1]
+                            ):
+                                mask = cv2.resize(
+                                    mask,
+                                    (ref_page.image.shape[1], ref_page.image.shape[0]),
+                                )
+
+                            # Count pixels for debugging
+                            mask_pixels = np.sum(mask > 0)
+                            total_individual_pixels += mask_pixels
+                            print(f"  Watermark {i + 1}: {mask_pixels} white pixels")
+
+                            # Add debugging screenshot for individual watermarks
+                            if self.take_screenshots:
+                                self.add_screenshot_to_log(
+                                    mask,
+                                    suffix=f"_individual_watermark_{i + 1}",
+                                    original_size=False,
+                                )
+
+                            # Merge watermark areas: any black pixel in any mask becomes black in combined mask
+                            # This creates a union of all black comparison areas
+                            # Note: Using AND operation because we want union of black (0) pixels
+                            # OR would give intersection of black areas, AND gives union of black areas
+                            combined_mask = cv2.bitwise_and(combined_mask, mask)
+
+                        if combined_mask is not None:
+                            combined_black_pixels = np.sum(combined_mask == 0)
+                            print(
+                                f"  Combined mask: {combined_black_pixels} black pixels (union of all comparison areas)"
+                            )
+
+                            # Apply morphological operations to clean up the combined mask
+                            kernel = cv2.getStructuringElement(
+                                cv2.MORPH_ELLIPSE, (3, 3)
+                            )
+                            combined_mask = cv2.morphologyEx(
+                                combined_mask, cv2.MORPH_CLOSE, kernel
+                            )
+
+                            combined_mask_inv = cv2.bitwise_not(combined_mask)
+                            # dilate the combined mask to account for slight misalignments
+                            combined_mask_inv = cv2.dilate(
+                                combined_mask_inv, None, iterations=2
+                            )
+
+                            # Take screenshots if enabled
+                            if self.take_screenshots:
+                                # Screenshot of the original combined watermark mask (before inversion)
+                                self.add_screenshot_to_log(
+                                    combined_mask,
+                                    suffix="_combined_watermark_mask_original",
+                                    original_size=False,
+                                )
+
+                                # Screenshot of the inverted dilated mask
+                                self.add_screenshot_to_log(
+                                    combined_mask_inv,
+                                    suffix="_combined_watermark_mask_inverted",
+                                    original_size=False,
+                                )
+
+                                # Screenshot showing differences before watermark removal
+                                self.add_screenshot_to_log(
+                                    absolute_diff,
+                                    suffix="_differences_before_watermark_removal",
+                                    original_size=False,
+                                )
+
+                                # Screenshot showing differences after watermark removal
+                                diff_after_watermark = cv2.subtract(
+                                    absolute_diff, combined_mask_inv
+                                )
+                                self.add_screenshot_to_log(
+                                    diff_after_watermark,
+                                    suffix="_differences_after_watermark_removal",
+                                    original_size=False,
+                                )
+
+                            if (
+                                cv2.countNonZero(
+                                    cv2.subtract(absolute_diff, combined_mask_inv)
+                                )
+                                == 0
+                                or cv2.countNonZero(
+                                    cv2.subtract(thresh, combined_mask_inv)
+                                )
+                                == 0
+                            ):
+                                similar = True
+                                print(
+                                    "Multiple watermark files were provided. After removing combined watermark areas, both images are equal"
+                                )
+
+                            # Print diff image with combined watermark
+                            if self.take_screenshots:
+                                # Ensure both images have the same number of channels
+                                if len(absolute_diff.shape) == 2:
+                                    absolute_diff_rgb = cv2.cvtColor(
+                                        absolute_diff, cv2.COLOR_GRAY2BGR
+                                    )
+                                else:
+                                    absolute_diff_rgb = absolute_diff
+
+                                if len(combined_mask_inv.shape) == 2:
+                                    combined_mask_inv_rgb = cv2.cvtColor(
+                                        combined_mask_inv, cv2.COLOR_GRAY2BGR
+                                    )
+                                else:
+                                    combined_mask_inv_rgb = combined_mask_inv
+
+                                combined_diff = self.blend_two_images(
+                                    absolute_diff_rgb, combined_mask_inv_rgb
+                                )
+                                self.add_screenshot_to_log(
+                                    combined_diff,
+                                    suffix="_combined_watermark_diff_blend",
+                                )
+                    except Exception as e:
+                        LOG.warning(f"Failed to combine watermark masks: {str(e)}")
 
             if check_text_content and not similar:
                 similar = True
@@ -3005,26 +3153,20 @@ class VisualTest:
                         else:
                             watermark_gray = watermark.copy()
 
-                        # Create binary mask with adaptive thresholding
-                        # Try multiple threshold values for robustness
-                        mask = None
-                        for thresh_val in [10, 20, 30, 50]:
-                            try:
-                                _, mask = cv2.threshold(
-                                    watermark_gray, thresh_val, 255, cv2.THRESH_BINARY
-                                )
-                                # Check if mask has reasonable content
-                                if (
-                                    np.sum(mask > 0) > watermark_gray.size * 0.01
-                                ):  # At least 1% content
-                                    break
-                            except Exception as e:
-                                LOG.warning(
-                                    f"Threshold {thresh_val} failed for {single_watermark}: {str(e)}"
-                                )
-                                continue
+                        # Create binary mask using OTSU thresholding
+                        # This method automatically determines the optimal threshold
+                        ret, mask = cv2.threshold(
+                            watermark_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+                        )
 
                         if mask is not None:
+                            # Log mask statistics for debugging
+                            mask_pixels = np.sum(mask > 0)
+                            content_ratio = mask_pixels / watermark_gray.size
+                            print(
+                                f"  Watermark mask: {mask_pixels} white pixels ({content_ratio:.1%})"
+                            )
+
                             watermarks.append(mask)
                             LOG.info(
                                 f"Successfully loaded watermark: {single_watermark}"
