@@ -3,13 +3,12 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-
   test:
     runs-on: ubuntu-latest
     strategy:
-          matrix:
-            python-version: ["3.8", "3.11", "3.12", "3.13"]
-          fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.11", "3.12", "3.13"]
+      fail-fast: false
     steps:
       - uses: actions/checkout@v1
         with:
@@ -61,11 +60,12 @@ jobs:
             results/htmlcov/
             results/*.prof
             results/*.txt
+            results/screenshots/
       - name: Test Report
         uses: dorny/test-reporter@main
-        if: success() || failure()    # run this step even if previous step failed
+        if: success() || failure() # run this step even if previous step failed
         with:
-          name: xUnit Tests ${{ matrix.python-version }}            # Name of the check run which will be created
-          path: results/pytest.xml,results/xunit.xml    # Path to test results
-          reporter: java-junit        # Format of test results
-          
+          name: xUnit Tests ${{ matrix.python-version }} # Name of the check run which will be created
+          path: results/pytest.xml,results/xunit.xml # Path to test results
+          reporter: java-junit # Format of test results
+

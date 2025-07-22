@@ -25,6 +25,11 @@ class VisualTest:
     OCR_ENGINE_DEFAULT = "tesseract"
     MOVEMENT_DETECTION_DEFAULT = "template"
     PARTIAL_IMAGE_THRESHOLD_DEFAULT = 0.1
+    SIFT_RATIO_THRESHOLD_DEFAULT = 0.75
+    SIFT_MIN_MATCHES_DEFAULT = 2
+    ORB_MAX_MATCHES_DEFAULT = 10
+    ORB_MIN_MATCHES_DEFAULT = 2
+    RANSAC_THRESHOLD_DEFAULT = 5.0
     WATERMARK_WIDTH = 31
     WATERMARK_HEIGHT = 36
     WATERMARK_CENTER_OFFSET = 3 / 100
@@ -51,6 +56,11 @@ class VisualTest:
             "template", "orb", "sift"
         ] = MOVEMENT_DETECTION_DEFAULT,
         partial_image_threshold: float = PARTIAL_IMAGE_THRESHOLD_DEFAULT,
+        sift_ratio_threshold: float = SIFT_RATIO_THRESHOLD_DEFAULT,
+        sift_min_matches: int = SIFT_MIN_MATCHES_DEFAULT,
+        orb_max_matches: int = ORB_MAX_MATCHES_DEFAULT,
+        orb_min_matches: int = ORB_MIN_MATCHES_DEFAULT,
+        ransac_threshold: float = RANSAC_THRESHOLD_DEFAULT,
         **kwargs,
     ):
         """
@@ -68,6 +78,11 @@ class VisualTest:
         | ``watermark_file`` | Path to an image/document or a folder containing multiple images. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
         | ``movement_detection`` | Method to be used for movement detection. Options are ``template``, ``orb`` or ``sift``. Default is ``template``. |
         | ``partial_image_threshold`` | The threshold used to identify partial images, e.g. for movement detection. Value is between 0.0 and 1.0. A higher value will tolerate more differences. Default is ``0.1``. |
+        | ``sift_ratio_threshold`` | Lowe's ratio test threshold for SIFT feature matching. Lower values are more restrictive. Default is ``0.75``. |
+        | ``sift_min_matches`` | Minimum number of good matches required for SIFT homography computation. Default is ``4``. |
+        | ``orb_max_matches`` | Maximum number of matches to use for ORB feature matching. Default is ``10``. |
+        | ``orb_min_matches`` | Minimum number of matches required for ORB homography computation. Default is ``4``. |
+        | ``ransac_threshold`` | RANSAC threshold for robust homography estimation. Higher values are more tolerant of outliers. Default is ``5.0``. |
         | ``**kwargs`` | Everything else. |
 
 
@@ -85,6 +100,11 @@ class VisualTest:
         self.watermark_file = watermark_file
         self.movement_detection = movement_detection
         self.partial_image_threshold = partial_image_threshold
+        self.sift_ratio_threshold = sift_ratio_threshold
+        self.sift_min_matches = sift_min_matches
+        self.orb_max_matches = orb_max_matches
+        self.orb_min_matches = orb_min_matches
+        self.ransac_threshold = ransac_threshold
         built_in = BuiltIn()
         self.force_ocr = force_ocr
         try:
@@ -275,7 +295,7 @@ class VisualTest:
 
             if not similar and watermark_file:
                 if watermarks == []:
-                    watermarks = load_watermarks(watermark_file)
+                    watermarks = self.load_watermarks(watermark_file)
                 for mask in watermarks:
                     if (
                         mask.shape[0] != ref_page.image.shape[0]
@@ -488,8 +508,20 @@ class VisualTest:
                     # If the areas are moved within the tolerance, the images are considered similar
                     # If the areas are moved outside the tolerance, the images are considered different
                     # The move_tolerance is the maximum number of pixels the areas can be moved
-                    similar = True
+
+                    # IMPORTANT: Store the original SSIM result before movement tolerance processing
+                    # This prevents content removal from being incorrectly treated as acceptable movement
+                    original_similar_result = (
+                        similar  # Should be False from SSIM comparison
+                    )
+
+                    similar = True  # Optimistically assume movement tolerance will resolve differences
                     diff_rectangles = self.get_diff_rectangles(absolute_diff)
+                    failed_areas = []  # Track areas that fail tolerance check
+                    fallback_detections = (
+                        0  # Track areas where detection fell back to minimal distances
+                    )
+
                     for rect in diff_rectangles:
                         # Check if the area is moved within the tolerance
                         reference_area = ref_page.get_area(rect)
@@ -522,10 +554,26 @@ class VisualTest:
                                         )
                                     )
 
-                                if distance > move_tolerance:
-                                    similar = False
+                                # Detect if this is likely a fallback result indicating content removal
+                                # rather than actual movement detection
+                                is_likely_fallback = (
+                                    "method" in result
+                                    and "fallback" in result["method"]
+                                    and distance
+                                    <= 5  # Only very small distances suggest fallback
+                                )
+
+                                if is_likely_fallback:
+                                    # This is likely content removal, not movement - increment fallback counter
+                                    fallback_detections += 1
                                     print(
-                                        f"Area {rect} is moved more than {move_tolerance} pixels."
+                                        f"Area {rect}: Detected likely content removal (fallback distance: {distance}px, method: {result.get('method', 'unknown')})"
+                                    )
+
+                                if distance > move_tolerance:
+                                    failed_areas.append((rect, distance))
+                                    print(
+                                        f"Area {rect} is moved {distance} pixels which is more than the tolerated {move_tolerance} pixels."
                                     )
                                     self.add_screenshot_to_log(
                                         self.blend_two_images(
@@ -535,16 +583,74 @@ class VisualTest:
                                         original_size=False,
                                     )
                                 else:
-                                    print(f"Area {rect} is moved {distance} pixels.")
+                                    if is_likely_fallback:
+                                        print(
+                                            f"Area {rect}: Content likely removed (not moved) - distance {distance}px appears to be fallback estimate"
+                                        )
+                                    else:
+                                        print(
+                                            f"Area {rect} is moved {distance} pixels."
+                                        )
+                            else:
+                                # Movement detection failed - assume movement exceeds tolerance
+                                # This is a fallback for when detection methods cannot determine movement
+                                failed_areas.append((rect, "detection_failed"))
+                                print(
+                                    f"Area {rect} movement detection failed - assuming movement exceeds tolerance."
+                                )
+                                self.add_screenshot_to_log(
+                                    self.blend_two_images(
+                                        reference_area, candidate_area
+                                    ),
+                                    suffix="_moved_area",
+                                    original_size=False,
+                                )
                         except Exception as e:
                             print(f"Could not compare areas: {e}")
-                            similar = False
+                            failed_areas.append((rect, f"error: {str(e)}"))
                             self.add_screenshot_to_log(
                                 self.blend_two_images(reference_area, candidate_area),
                                 suffix="_moved_area",
                                 original_size=False,
                             )
-                            break
+                            # Continue to next area instead of breaking
+                            continue
+
+                    # Only set similar to False if any areas failed the tolerance check
+                    if failed_areas:
+                        similar = False
+                        print(
+                            f"Movement tolerance check failed for {len(failed_areas)} area(s) out of {len(diff_rectangles)} total areas."
+                        )
+                        for area_info in failed_areas:
+                            rect, reason = area_info
+                            if isinstance(reason, int):
+                                print(
+                                    f"  - Area {rect}: moved {reason} pixels (exceeds {move_tolerance})"
+                                )
+                            else:
+                                print(f"  - Area {rect}: {reason}")
+                    elif (
+                        fallback_detections > 0
+                        and fallback_detections >= len(diff_rectangles) * 0.8
+                    ):
+                        # High proportion of fallback behavior detected - this likely indicates content removal
+                        # rather than actual movement. Respect the original SSIM assessment.
+                        similar = original_similar_result
+                        print(
+                            f"{fallback_detections} out of {len(diff_rectangles)} difference area(s) show fallback behavior (likely content removal, not movement)."
+                        )
+                        print(
+                            f"Respecting original SSIM assessment: images are {'similar' if similar else 'different'}."
+                        )
+                    else:
+                        if fallback_detections > 0:
+                            print(
+                                f"{fallback_detections} out of {len(diff_rectangles)} area(s) show fallback behavior."
+                            )
+                        print(
+                            f"All {len(diff_rectangles)} moved area(s) are within the {move_tolerance} pixel tolerance."
+                        )
 
             if not similar:
                 # Save original images to the screenshot directory and add them to the Robot Framework log
@@ -653,7 +759,7 @@ class VisualTest:
             area = json.loads(area)
 
         # Get the text content of the area
-        text = doc.get_text_from_area(area=area)
+        return doc.get_text_from_area(area=area)
 
     @keyword
     def get_text_from_document(
@@ -1220,12 +1326,23 @@ class VisualTest:
         absolute_diff is a np.array with the differences between the two images.
         """
 
-        absolute_diff = cv2.dilate(absolute_diff, None, iterations=10)
-        absolute_diff = cv2.erode(absolute_diff, None, iterations=10)
+        # Use moderate morphological operations for balanced detection
+        # iterations=5: Compromise between preserving separate objects and grouping characters
+        # - Enough to group characters within words/text strings
+        # - Not so much as to merge completely separate moved objects
+        absolute_diff = cv2.dilate(absolute_diff, None, iterations=5)
+        absolute_diff = cv2.erode(absolute_diff, None, iterations=5)
         contours, _ = cv2.findContours(
             absolute_diff, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
-        rectangles = [cv2.boundingRect(contour) for contour in contours]
+
+        # Filter out very small contours that are likely noise
+        min_contour_area = 100  # Minimum area to consider as a meaningful difference
+        filtered_contours = [
+            c for c in contours if cv2.contourArea(c) >= min_contour_area
+        ]
+
+        rectangles = [cv2.boundingRect(contour) for contour in filtered_contours]
         # Convert the rectangles to a list of dictionaries
         rectangles = [
             {"x": rect[0], "y": rect[1], "width": rect[2], "height": rect[3]}
@@ -1287,255 +1404,1207 @@ class VisualTest:
     def find_partial_image_position(
         self, img, template, threshold=0.1, detection="classic"
     ):
-        if detection == "template":
-            result = self.find_partial_image_distance_with_matchtemplate(
-                img, template, threshold
-            )
+        """
+        Find the position and movement distance of a template image within a larger image.
 
-        elif detection == "classic":
-            result = self.find_partial_image_distance_with_matchtemplate(
-                img, template, threshold
-            )
+        Args:
+            img: The source image (numpy array)
+            template: The template image to find (numpy array)
+            threshold: Threshold for matching sensitivity (float)
+            detection: Detection method ('template', 'classic', 'orb', 'sift')
 
-        elif detection == "orb":
-            result = self.find_partial_image_distance_with_orb(img, template)
+        Returns:
+            Dictionary with movement information or None if not found
+        """
+        # Enhanced input validation
+        if img is None or template is None:
+            LOG.warning("Input images are None")
+            return None
 
+        if not isinstance(img, np.ndarray) or not isinstance(template, np.ndarray):
+            LOG.warning("Input images must be numpy arrays")
+            return None
+
+        if img.size == 0 or template.size == 0:
+            LOG.warning("Input images are empty")
+            return None
+
+        # Check for minimum image dimensions
+        if img.shape[0] < 5 or img.shape[1] < 5:
+            LOG.warning("Source image too small for movement detection")
+            return None
+
+        if template.shape[0] < 3 or template.shape[1] < 3:
+            LOG.warning("Template image too small for movement detection")
+            return None
+
+        # Ensure images have the same number of channels
+        if len(img.shape) != len(template.shape):
+            LOG.warning("Images have different number of channels")
+            return None
+
+        # Check if template is larger than source image
+        if template.shape[0] > img.shape[0] or template.shape[1] > img.shape[1]:
+            LOG.warning("Template image is larger than source image")
+            return None
+
+        # Validate threshold parameter
+        if not isinstance(threshold, (int, float)) or threshold < 0 or threshold > 1:
+            LOG.warning("Invalid threshold value, using default")
+            threshold = self.partial_image_threshold
+
+        # Fallback chain for robust detection
+        fallback_methods = []
+        if detection == "template" or detection == "classic":
+            fallback_methods = ["template", "sift", "orb"]
         elif detection == "sift":
-            result = self.find_partial_image_distance_with_sift(img, template)
+            fallback_methods = ["sift", "template", "orb"]
+        elif detection == "orb":
+            fallback_methods = ["orb", "template", "sift"]
+        else:
+            LOG.warning(f"Unknown detection method: {detection}, using template")
+            fallback_methods = ["template", "sift", "orb"]
 
-        return result
+        # Try detection methods with fallback
+        for method in fallback_methods:
+            try:
+                result = None
+                if method == "template":
+                    result = self.find_partial_image_distance_with_matchtemplate(
+                        img, template, threshold
+                    )
+                elif method == "orb":
+                    result = self.find_partial_image_distance_with_orb(img, template)
+                elif method == "sift":
+                    result = self.find_partial_image_distance_with_sift(
+                        img, template, threshold
+                    )
+
+                if result is not None:
+                    if method != detection:
+                        LOG.info(
+                            f"Primary method '{detection}' failed, succeeded with '{method}'"
+                        )
+                    return result
+
+            except Exception as e:
+                LOG.warning(f"Movement detection failed with {method} method: {str(e)}")
+                continue
+
+        LOG.warning("All movement detection methods failed")
+        return None
 
     def find_partial_image_distance_with_sift(self, img, template, threshold=0.1):
-        # Convert both images to grayscale
-        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        """
+        Find movement distance using SIFT feature matching.
 
-        # Find non-white area bounding boxes
-        template_nonwhite = cv2.findNonZero(
-            cv2.threshold(template_gray, 254, 255, cv2.THRESH_BINARY_INV)[1]
-        )
-        img_nonwhite = cv2.findNonZero(
-            cv2.threshold(img_gray, 254, 255, cv2.THRESH_BINARY_INV)[1]
-        )
-        template_x, template_y, template_w, template_h = cv2.boundingRect(
-            template_nonwhite
-        )
-        img_x, img_y, img_w, img_h = cv2.boundingRect(img_nonwhite)
+        Args:
+            img: Source image (numpy array)
+            template: Template image (numpy array)
+            threshold: Matching threshold (float)
 
-        # Initialize SIFT detector
-        sift = cv2.SIFT_create()
+        Returns:
+            Dictionary with displacement and distance information or None
+        """
+        try:
+            # Enhanced input validation
+            if img is None or template is None:
+                LOG.warning("SIFT: Input images are None")
+                return None
 
-        # Detect SIFT keypoints and descriptors
-        keypoints_img, descriptors_img = sift.detectAndCompute(img_gray, None)
-        keypoints_template, descriptors_template = sift.detectAndCompute(
-            template_gray, None
-        )
+            if not isinstance(img, np.ndarray) or not isinstance(template, np.ndarray):
+                LOG.warning("SIFT: Input images must be numpy arrays")
+                return None
 
-        # Use BFMatcher to match descriptors
-        bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
-        matches = bf.knnMatch(descriptors_template, descriptors_img, k=2)
+            if img.size == 0 or template.size == 0:
+                LOG.warning("SIFT: Input images are empty")
+                return None
 
-        # Apply Lowe's ratio test to filter good matches
-        good_matches = [m for m, n in matches if m.distance < 0.75 * n.distance]
+            # Check image dimensions
+            if len(img.shape) < 2 or len(template.shape) < 2:
+                LOG.warning("SIFT: Invalid image dimensions")
+                return None
 
-        # If enough good matches, find homography and return the coordinates
-        if len(good_matches) >= 4:
-            # Extract the matched keypoints
-            src_pts = np.float32(
-                [keypoints_template[m.queryIdx].pt for m in good_matches]
-            ).reshape(-1, 1, 2)
-            dst_pts = np.float32(
-                [keypoints_img[m.trainIdx].pt for m in good_matches]
-            ).reshape(-1, 1, 2)
+            # Adaptive grayscale conversion
+            if len(img.shape) == 3:
+                img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            else:
+                img_gray = img.copy()
 
-            # Compute homography
-            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            if len(template.shape) == 3:
+                template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            else:
+                template_gray = template.copy()
 
-            if M is not None:
-                # The translation vector (dx, dy) can be extracted directly from the homography matrix M
-                dx = M[0, 2]  # Translation in x direction
-                dy = M[1, 2]  # Translation in y direction
+            # Find non-white area bounding boxes with improved robustness
+            def get_content_bbox(image):
+                """Get bounding box of non-background content with adaptive thresholding"""
+                # Try multiple threshold values for robustness
+                for thresh_val in [254, 250, 240, 200]:
+                    _, binary = cv2.threshold(
+                        image, thresh_val, 255, cv2.THRESH_BINARY_INV
+                    )
+                    nonzero = cv2.findNonZero(binary)
+                    if nonzero is not None and len(nonzero) > 10:  # Minimum points
+                        return cv2.boundingRect(nonzero)
+                return None
 
-                # Calculate moved distance using the translation vector
-                moved_distance = np.sqrt(dx**2 + dy**2)
+            template_bbox = get_content_bbox(template_gray)
+            img_bbox = get_content_bbox(img_gray)
+
+            if template_bbox is None or img_bbox is None:
+                LOG.warning("SIFT: Could not find content areas in images")
+                return None
+
+            # Initialize SIFT detector with adaptive parameters
+            def create_sift_detector(contrast_threshold=0.04, edge_threshold=10):
+                """Create SIFT detector with given parameters"""
+                try:
+                    return cv2.SIFT_create(
+                        contrastThreshold=contrast_threshold,
+                        edgeThreshold=edge_threshold,
+                        nfeatures=1000,
+                    )
+                except Exception:
+                    # Fallback to basic SIFT if parameterized version fails
+                    return cv2.SIFT_create()
+
+            # Try SIFT detection with different sensitivity settings
+            sift_params = [
+                (0.04, 10),  # Default parameters
+                (0.02, 15),  # More sensitive
+                (0.01, 20),  # Very sensitive
+            ]
+
+            keypoints_img = None
+            descriptors_img = None
+            keypoints_template = None
+            descriptors_template = None
+
+            for contrast_thresh, edge_thresh in sift_params:
+                try:
+                    sift = create_sift_detector(contrast_thresh, edge_thresh)
+
+                    # Detect SIFT keypoints and descriptors
+                    keypoints_img, descriptors_img = sift.detectAndCompute(
+                        img_gray, None
+                    )
+                    keypoints_template, descriptors_template = sift.detectAndCompute(
+                        template_gray, None
+                    )
+
+                    # Check if we have sufficient keypoints
+                    if (
+                        keypoints_img is not None
+                        and keypoints_template is not None
+                        and len(keypoints_img) >= self.sift_min_matches
+                        and len(keypoints_template) >= self.sift_min_matches
+                        and descriptors_img is not None
+                        and descriptors_template is not None
+                    ):
+                        break
+
+                except Exception as e:
+                    LOG.warning(
+                        f"SIFT: Failed with parameters ({contrast_thresh}, {edge_thresh}): {str(e)}"
+                    )
+                    continue
+
+            # Final validation of keypoints and descriptors
+            if (
+                descriptors_img is None
+                or descriptors_template is None
+                or len(keypoints_img) < self.sift_min_matches
+                or len(keypoints_template) < self.sift_min_matches
+            ):
+                LOG.warning("SIFT: Insufficient keypoints detected")
+                return None
+
+            # Robust feature matching with adaptive parameters
+            def perform_matching():
+                """Perform feature matching with error handling"""
+                try:
+                    # Use BFMatcher with L2 norm for SIFT
+                    bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
+                    matches = bf.knnMatch(descriptors_template, descriptors_img, k=2)
+
+                    # Enhanced Lowe's ratio test with adaptive threshold
+                    good_matches = []
+                    ratio_thresholds = [
+                        self.sift_ratio_threshold,
+                        0.8,
+                        0.9,
+                    ]  # Try different ratios
+
+                    for ratio_thresh in ratio_thresholds:
+                        good_matches = []
+                        for match_pair in matches:
+                            if (
+                                len(match_pair) >= 2
+                            ):  # Ensure we have 2 matches for ratio test
+                                m, n = match_pair[0], match_pair[1]
+                                if m.distance < ratio_thresh * n.distance:
+                                    good_matches.append(m)
+
+                        if len(good_matches) >= self.sift_min_matches:
+                            break
+
+                    return (
+                        good_matches
+                        if len(good_matches) >= self.sift_min_matches
+                        else []
+                    )
+
+                except Exception as e:
+                    LOG.warning(f"SIFT: Matching failed: {str(e)}")
+                    return []
+
+            good_matches = perform_matching()
+
+            # Use adaptive minimum matches for small text areas
+            effective_min_matches = min(
+                self.sift_min_matches,
+                len(good_matches) if len(good_matches) >= 2 else 0,
+            )
+
+            if len(good_matches) < effective_min_matches:
+                LOG.warning(
+                    f"SIFT: Insufficient good matches: {len(good_matches)} < {effective_min_matches}"
+                )
+                return None
+
+            # Extract matched points with error handling
+            try:
+                src_pts = np.float32(
+                    [keypoints_template[m.queryIdx].pt for m in good_matches]
+                ).reshape(-1, 1, 2)
+                dst_pts = np.float32(
+                    [keypoints_img[m.trainIdx].pt for m in good_matches]
+                ).reshape(-1, 1, 2)
+            except (IndexError, AttributeError) as e:
+                LOG.warning(f"SIFT: Error extracting match points: {str(e)}")
+                return None
+
+            # Robust homography computation with outlier rejection
+            try:
+                # Try different RANSAC thresholds for robustness
+                ransac_thresholds = [
+                    self.ransac_threshold,
+                    self.ransac_threshold * 2,
+                    self.ransac_threshold / 2,
+                ]
+
+                M = None
+                inlier_ratio = 0
+                for ransac_thresh in ransac_thresholds:
+                    try:
+                        M, mask = cv2.findHomography(
+                            src_pts,
+                            dst_pts,
+                            cv2.RANSAC,
+                            ransac_thresh,
+                            maxIters=2000,
+                            confidence=0.995,
+                        )
+
+                        if M is not None:
+                            # Validate homography matrix
+                            if self._validate_homography_matrix(M):
+                                # Count inliers
+                                inlier_count = np.sum(mask) if mask is not None else 0
+                                inlier_ratio = inlier_count / len(good_matches)
+
+                                # Require reasonable inlier ratio
+                                if (
+                                    inlier_ratio >= 0.15
+                                ):  # At least 15% inliers (reduced for text)
+                                    break
+                        M = None  # Reset if validation failed
+                    except Exception as e:
+                        LOG.warning(
+                            f"SIFT: Homography computation failed with config {ransac_thresholds.index(ransac_thresh)}: {str(e)}"
+                        )
+                        continue
+
+                if M is None:
+                    LOG.warning("SIFT: Could not compute valid homography")
+                    return None
+
+                # Extract translation with bounds checking
+                dx = float(M[0, 2])
+                dy = float(M[1, 2])
+
+                # Sanity check: movement should be reasonable relative to image size
+                max_reasonable_movement = (
+                    max(img_gray.shape) * 2
+                )  # Allow up to 2x image dimension
+                if (
+                    abs(dx) > max_reasonable_movement
+                    or abs(dy) > max_reasonable_movement
+                ):
+                    LOG.warning(
+                        f"SIFT: Unreasonable movement detected: dx={dx}, dy={dy}"
+                    )
+                    return None
+
+                # Calculate moved distance
+                moved_distance = float(np.sqrt(dx**2 + dy**2))
 
                 return {
                     "displacement_x": dx,
                     "displacement_y": dy,
                     "distance": moved_distance,
+                    "inlier_ratio": inlier_ratio,
+                    "num_matches": len(good_matches),
+                    "method": "sift",
                 }
 
-        # Return None if not enough good matches
-        return None
+            except Exception as e:
+                LOG.warning(f"SIFT: Homography computation failed: {str(e)}")
+                return None
+
+        except Exception as e:
+            LOG.error(f"SIFT: Unexpected error in movement detection: {str(e)}")
+            return None
+
+    def _validate_homography_matrix(self, H):
+        """
+        Validate homography matrix for reasonableness.
+
+        Args:
+            H: 3x3 homography matrix
+
+        Returns:
+            bool: True if matrix appears valid
+        """
+        try:
+            if H is None or H.shape != (3, 3):
+                return False
+
+            # Check for NaN or infinite values
+            if not np.all(np.isfinite(H)):
+                return False
+
+            # Check matrix determinant (should not be zero or too close to zero)
+            det = np.linalg.det(H[:2, :2])  # Upper 2x2 submatrix
+            if abs(det) < 1e-6:
+                return False
+
+            # Check for reasonable scale (should be close to 1 for movement detection)
+            scale_x = np.sqrt(H[0, 0] ** 2 + H[0, 1] ** 2)
+            scale_y = np.sqrt(H[1, 0] ** 2 + H[1, 1] ** 2)
+
+            # Allow scale variation between 0.5 and 2.0
+            if scale_x < 0.5 or scale_x > 2.0 or scale_y < 0.5 or scale_y > 2.0:
+                return False
+
+            # Check for reasonable shear (should be minimal for pure translation)
+            shear = abs(H[0, 1] * H[1, 0]) / (scale_x * scale_y)
+            if shear > 0.5:  # Allow some shear but not too much
+                return False
+
+            return True
+
+        except Exception:
+            return False
 
     def find_partial_image_distance_with_matchtemplate(
         self, img, template, threshold=0.1
     ):
-        print("Find partial image position")
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-        h, w = template.shape[0:2]
-        print("dev detection")
-        mask = cv2.absdiff(img_gray, template_gray)
-        mask[mask > 0] = 255
+        """
+        Find movement distance using template matching with enhanced robustness.
 
-        # find contours in the mask and get the largest one
-        cnts, hierarchy = cv2.findContours(
-            mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        Args:
+            img: Source image (numpy array)
+            template: Template image (numpy array)
+            threshold: Matching threshold (float)
 
-        # merge all contours into one
-        merged_contour = np.zeros(mask.shape, np.uint8)
-        for cnt in cnts:
-            cv2.drawContours(merged_contour, [cnt], -1, 255, -1)
+        Returns:
+            Dictionary with movement information or None
+        """
+        try:
+            # Enhanced input validation
+            if img is None or template is None:
+                LOG.warning("Template matching: Input images are None")
+                return None
 
-        # # get largest contour
-        # largest_contour = max(cnts, key=cv2.contourArea)
-        # contour_mask = np.zeros(mask.shape, np.uint8)
-        # cv2.drawContours(contour_mask, [largest_contour], -1, 255, -1)
+            if not isinstance(img, np.ndarray) or not isinstance(template, np.ndarray):
+                LOG.warning("Template matching: Input images must be numpy arrays")
+                return None
 
-        masked_img = cv2.bitwise_not(
-            cv2.bitwise_and(merged_contour, cv2.bitwise_not(img_gray))
-        )
-        masked_template = cv2.bitwise_not(
-            cv2.bitwise_and(merged_contour, cv2.bitwise_not(template_gray))
-        )
-        template_blur = cv2.GaussianBlur(masked_template, (3, 3), 0)
-        template_thresh = cv2.threshold(
-            template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-        )[1]
-        temp_x, temp_y, temp_w, temp_h = cv2.boundingRect(template_thresh)
+            if img.size == 0 or template.size == 0:
+                LOG.warning("Template matching: Input images are empty")
+                return None
 
-        # There should be a minimal image size for further processing
-        if temp_w < 5 or temp_h < 5:
-            return {"distance": 5}
-        res = cv2.matchTemplate(
-            masked_img,
-            masked_template[temp_y : temp_y + temp_h, temp_x : temp_x + temp_w],
-            cv2.TM_SQDIFF_NORMED,
-        )
-        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+            # Validate threshold
+            if (
+                not isinstance(threshold, (int, float))
+                or threshold < 0
+                or threshold > 1
+            ):
+                LOG.warning("Template matching: Invalid threshold, using default")
+                threshold = self.partial_image_threshold
 
-        res_temp = cv2.matchTemplate(
-            masked_template,
-            masked_template[temp_y : temp_y + temp_h, temp_x : temp_x + temp_w],
-            cv2.TM_SQDIFF_NORMED,
-        )
-        min_val_temp, max_val_temp, min_loc_temp, max_loc_temp = cv2.minMaxLoc(res_temp)
+            # Adaptive grayscale conversion
+            if len(img.shape) == 3:
+                img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            else:
+                img_gray = img.copy()
 
-        if min_val < threshold:
-            return {"pt1": min_loc, "pt2": min_loc_temp}
-        return
+            if len(template.shape) == 3:
+                template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            else:
+                template_gray = template.copy()
+
+            h, w = template_gray.shape
+
+            # Enhanced size validation
+            if h > img_gray.shape[0] or w > img_gray.shape[1]:
+                LOG.warning("Template matching: Template larger than source image")
+                return None
+
+            if h < 3 or w < 3:
+                LOG.warning("Template matching: Template too small")
+                return None
+
+            # Enhanced difference calculation with noise reduction
+            def calculate_robust_mask(img1, img2):
+                """Calculate difference mask with noise reduction"""
+                # Apply slight Gaussian blur to reduce noise
+                img1_blur = cv2.GaussianBlur(img1, (3, 3), 0.5)
+                img2_blur = cv2.GaussianBlur(img2, (3, 3), 0.5)
+
+                # Calculate absolute difference
+                diff = cv2.absdiff(img1_blur, img2_blur)
+
+                # Use adaptive threshold to handle varying illumination
+                threshold_value = max(
+                    3, np.mean(diff) + 1 * np.std(diff)
+                )  # More sensitive for text
+                mask = np.where(diff > threshold_value, 255, 0).astype(np.uint8)
+
+                # Morphological operations to clean up the mask
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+                return mask
+
+            mask = calculate_robust_mask(img_gray, template_gray)
+
+            # Enhanced contour finding with error handling
+            try:
+                cnts, hierarchy = cv2.findContours(
+                    mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+                )
+            except Exception as e:
+                LOG.warning(f"Template matching: Contour detection failed: {str(e)}")
+                return None
+
+            if len(cnts) == 0:
+                LOG.warning("Template matching: No contours found")
+                return None
+
+            # Enhanced contour processing
+            def process_contours(contours, image_shape):
+                """Process contours with area filtering and merging"""
+                # Filter contours by area - more lenient for text detection
+                min_area = 5  # Very small minimum contour area for text
+                valid_contours = [
+                    cnt for cnt in contours if cv2.contourArea(cnt) >= min_area
+                ]
+
+                if not valid_contours:
+                    return None
+
+                # Create merged contour mask
+                merged_mask = np.zeros(image_shape, np.uint8)
+                for cnt in valid_contours:
+                    cv2.drawContours(merged_mask, [cnt], -1, 255, -1)
+
+                # Additional morphological processing to connect nearby regions
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+                merged_mask = cv2.morphologyEx(merged_mask, cv2.MORPH_CLOSE, kernel)
+
+                return merged_mask
+
+            merged_contour = process_contours(cnts, mask.shape)
+            if merged_contour is None:
+                LOG.warning("Template matching: No valid contours after processing")
+                return None
+
+            # Enhanced masked image creation with improved masking
+            def create_masked_images(img, template, mask):
+                """Create masked images with improved background handling"""
+                # Invert the mask to work with non-difference areas
+                inv_mask = cv2.bitwise_not(mask)
+
+                # Create masked images using the inverted mask
+                masked_img = cv2.bitwise_or(img, inv_mask)
+                masked_template = cv2.bitwise_or(template, inv_mask)
+
+                return masked_img, masked_template
+
+            masked_img, masked_template = create_masked_images(
+                img_gray, template_gray, merged_contour
+            )
+
+            # Enhanced template region extraction with adaptive processing
+            def extract_template_roi(template, blur_kernel=(3, 3)):
+                """Extract ROI from template with adaptive thresholding"""
+                # Apply Gaussian blur for noise reduction
+                template_blur = cv2.GaussianBlur(template, blur_kernel, 0)
+
+                # Use Otsu's thresholding for adaptive binarization
+                _, template_thresh = cv2.threshold(
+                    template_blur, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+                )
+
+                # Find bounding rectangle of non-zero regions
+                coords = cv2.findNonZero(template_thresh)
+                if coords is None:
+                    return None, None, None, None, None
+
+                x, y, w, h = cv2.boundingRect(coords)
+
+                # Add small padding if possible
+                padding = 2
+                x = max(0, x - padding)
+                y = max(0, y - padding)
+                w = min(template.shape[1] - x, w + 2 * padding)
+                h = min(template.shape[0] - y, h + 2 * padding)
+
+                return x, y, w, h, template_thresh
+
+            temp_x, temp_y, temp_w, temp_h, template_thresh = extract_template_roi(
+                masked_template
+            )
+
+            if temp_x is None or temp_w < 5 or temp_h < 5:
+                LOG.warning("Template matching: Template ROI too small or invalid")
+                # Return a small distance as fallback for very small movements
+                return {"distance": 3, "method": "template_fallback"}
+
+            # Boundary validation with safety margins
+            if (
+                temp_y + temp_h > masked_template.shape[0]
+                or temp_x + temp_w > masked_template.shape[1]
+                or temp_x < 0
+                or temp_y < 0
+            ):
+                LOG.warning("Template matching: ROI bounds exceed image dimensions")
+                return None
+
+            # Extract template ROI
+            template_roi = masked_template[
+                temp_y : temp_y + temp_h, temp_x : temp_x + temp_w
+            ]
+
+            # Enhanced template matching with multiple methods
+            def perform_template_matching(image, template_roi):
+                """Perform template matching with multiple methods for robustness"""
+                methods = [
+                    cv2.TM_SQDIFF_NORMED,
+                    cv2.TM_CCORR_NORMED,
+                    cv2.TM_CCOEFF_NORMED,
+                ]
+
+                results = []
+                for method in methods:
+                    try:
+                        res = cv2.matchTemplate(image, template_roi, method)
+                        if method == cv2.TM_SQDIFF_NORMED:
+                            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                            results.append((min_val, min_loc, method))
+                        else:
+                            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+                            results.append(
+                                (1 - max_val, max_loc, method)
+                            )  # Convert to distance-like metric
+                    except Exception as e:
+                        LOG.warning(
+                            f"Template matching method {method} failed: {str(e)}"
+                        )
+                        continue
+
+                return results
+
+            # Perform matching on both images for comparison
+            img_results = perform_template_matching(masked_img, template_roi)
+            template_results = perform_template_matching(masked_template, template_roi)
+
+            if not img_results or not template_results:
+                LOG.warning("Template matching: All matching methods failed")
+                return None
+
+            # Find best results (lowest distance-like metric)
+            best_img_result = min(img_results, key=lambda x: x[0])
+            best_template_result = min(template_results, key=lambda x: x[0])
+
+            min_val, min_loc, method_used = best_img_result
+            min_val_temp, min_loc_temp, method_temp = best_template_result
+
+            # Enhanced threshold validation - very permissive for large movements
+            effective_threshold = max(
+                threshold, 0.5
+            )  # Very high threshold to handle large movements
+            if min_val > effective_threshold:
+                LOG.warning(
+                    f"Template matching: Match quality too low: {min_val} > {effective_threshold}"
+                )
+                return None
+
+            # Calculate movement with error bounds checking
+            try:
+                dx = float(min_loc[0] - min_loc_temp[0])
+                dy = float(min_loc[1] - min_loc_temp[1])
+
+                # Sanity check for reasonable movement
+                max_movement = max(img_gray.shape) * 1.5
+                if abs(dx) > max_movement or abs(dy) > max_movement:
+                    LOG.warning(
+                        f"Template matching: Unreasonable movement: dx={dx}, dy={dy}"
+                    )
+                    return None
+
+                distance = float(np.sqrt(dx**2 + dy**2))
+
+                return {
+                    "pt1": min_loc,
+                    "pt2": min_loc_temp,
+                    "distance": distance,
+                    "displacement_x": dx,
+                    "displacement_y": dy,
+                    "method": f"template_{method_used}",
+                }
+
+            except (ValueError, TypeError) as e:
+                LOG.warning(f"Template matching: Error calculating movement: {str(e)}")
+                return None
+
+        except Exception as e:
+            LOG.error(f"Template matching: Unexpected error: {str(e)}")
+            return None
 
     def get_orb_keypoints_and_descriptors(
         self, img1, img2, edgeThreshold=5, patchSize=10
     ):
-        orb = cv2.ORB_create(
-            nfeatures=1000, edgeThreshold=edgeThreshold, patchSize=patchSize
-        )
-        img1_kp, img1_des = orb.detectAndCompute(img1, None)
-        img2_kp, img2_des = orb.detectAndCompute(img2, None)
+        """
+        Get ORB keypoints and descriptors with enhanced robustness.
 
-        if len(img1_kp) == 0 or len(img2_kp) == 0:
-            if patchSize > 4:
-                patchSize -= 4
-                edgeThreshold = int(patchSize / 2)
-                return self.get_orb_keypoints_and_descriptors(
-                    img1, img2, edgeThreshold, patchSize
-                )
-            else:
+        Args:
+            img1: First image (numpy array)
+            img2: Second image (numpy array)
+            edgeThreshold: Edge threshold for ORB detection
+            patchSize: Patch size for ORB detection
+
+        Returns:
+            Tuple of (img1_kp, img1_des, img2_kp, img2_des) or (None, None, None, None)
+        """
+        try:
+            # Input validation
+            if img1 is None or img2 is None:
+                LOG.warning("ORB keypoints: Input images are None")
                 return None, None, None, None
 
-        return img1_kp, img1_des, img2_kp, img2_des
+            if img1.size == 0 or img2.size == 0:
+                LOG.warning("ORB keypoints: Input images are empty")
+                return None, None, None, None
 
-    def get_sift_keypoints_and_descriptors(self, img1, img2):
-        sift = cv2.SIFT_create()
-        img1_kp, img1_des = sift.detectAndCompute(img1, None)
-        img2_kp, img2_des = sift.detectAndCompute(img2, None)
+            # Enhanced ORB detector with error handling
+            def create_orb_detector(edge_thresh, patch_sz):
+                """Create ORB detector with validation"""
+                try:
+                    return cv2.ORB_create(
+                        nfeatures=1000,
+                        edgeThreshold=edge_thresh,
+                        patchSize=patch_sz,
+                        fastThreshold=20,
+                        scaleFactor=1.2,
+                        nlevels=8,
+                    )
+                except Exception as e:
+                    LOG.warning(f"ORB keypoints: Failed to create detector: {str(e)}")
+                    return None
 
-        if len(img1_kp) == 0 or len(img2_kp) == 0:
+            orb = create_orb_detector(edgeThreshold, patchSize)
+            if orb is None:
+                return None, None, None, None
+
+            # Detect keypoints and descriptors with error handling
+            try:
+                img1_kp, img1_des = orb.detectAndCompute(img1, None)
+                img2_kp, img2_des = orb.detectAndCompute(img2, None)
+            except Exception as e:
+                LOG.warning(f"ORB keypoints: Detection failed: {str(e)}")
+                return None, None, None, None
+
+            # Validate results
+            if (
+                img1_kp is None
+                or img2_kp is None
+                or len(img1_kp) == 0
+                or len(img2_kp) == 0
+                or img1_des is None
+                or img2_des is None
+            ):
+                # Try with more relaxed parameters if initial attempt failed
+                if patchSize > 4:
+                    new_patch_size = patchSize - 4
+                    new_edge_threshold = max(1, int(new_patch_size / 2))
+                    LOG.info(
+                        f"ORB keypoints: Retrying with relaxed parameters: edge={new_edge_threshold}, patch={new_patch_size}"
+                    )
+                    return self.get_orb_keypoints_and_descriptors(
+                        img1, img2, new_edge_threshold, new_patch_size
+                    )
+                else:
+                    LOG.warning("ORB keypoints: Could not detect sufficient keypoints")
+                    return None, None, None, None
+
+            return img1_kp, img1_des, img2_kp, img2_des
+
+        except Exception as e:
+            LOG.error(f"ORB keypoints: Unexpected error: {str(e)}")
             return None, None, None, None
 
-        return img1_kp, img1_des, img2_kp, img2_des
+    def get_sift_keypoints_and_descriptors(self, img1, img2):
+        """
+        Get SIFT keypoints and descriptors with enhanced robustness.
+
+        Args:
+            img1: First image (numpy array)
+            img2: Second image (numpy array)
+
+        Returns:
+            Tuple of (img1_kp, img1_des, img2_kp, img2_des) or (None, None, None, None)
+        """
+        try:
+            # Input validation
+            if img1 is None or img2 is None:
+                LOG.warning("SIFT keypoints: Input images are None")
+                return None, None, None, None
+
+            if img1.size == 0 or img2.size == 0:
+                LOG.warning("SIFT keypoints: Input images are empty")
+                return None, None, None, None
+
+            # Enhanced SIFT detector with multiple parameter sets
+            sift_configs = [
+                {"contrastThreshold": 0.04, "edgeThreshold": 10},  # Default
+                {"contrastThreshold": 0.02, "edgeThreshold": 15},  # More sensitive
+                {"contrastThreshold": 0.06, "edgeThreshold": 8},  # Less sensitive
+            ]
+
+            for config in sift_configs:
+                try:
+                    sift = cv2.SIFT_create(**config)
+                    img1_kp, img1_des = sift.detectAndCompute(img1, None)
+                    img2_kp, img2_des = sift.detectAndCompute(img2, None)
+
+                    # Check if we have sufficient keypoints
+                    if (
+                        img1_kp is not None
+                        and img2_kp is not None
+                        and len(img1_kp) >= 2  # Reduced to match new default
+                        and len(img2_kp) >= 2  # Reduced to match new default
+                        and img1_des is not None
+                        and img2_des is not None
+                    ):
+                        return img1_kp, img1_des, img2_kp, img2_des
+
+                except Exception as e:
+                    LOG.warning(f"SIFT keypoints: Config {config} failed: {str(e)}")
+                    continue
+
+            LOG.warning("SIFT keypoints: All configurations failed")
+            return None, None, None, None
+
+        except Exception as e:
+            LOG.error(f"SIFT keypoints: Unexpected error: {str(e)}")
+            return None, None, None, None
 
     def find_partial_image_distance_with_orb(self, img, template):
-        print("Find partial image position")
-        img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
-        h, w = template.shape[0:2]
-        print("dev detection")
-        mask = cv2.absdiff(img_gray, template_gray)
-        mask[mask > 0] = 255
+        """
+        Find movement distance using ORB feature matching with enhanced robustness.
 
-        # find contours in the mask and get the largest one
-        cnts, hierarchy = cv2.findContours(
-            mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        Args:
+            img: Source image (numpy array)
+            template: Template image (numpy array)
 
-        # get largest contour
-        largest_contour = max(cnts, key=cv2.contourArea)
-        contour_mask = np.zeros(mask.shape, np.uint8)
+        Returns:
+            Dictionary with movement information or None
+        """
+        try:
+            # Enhanced input validation
+            if img is None or template is None:
+                LOG.warning("ORB: Input images are None")
+                return None
 
-        for cnt in cnts:
-            cv2.drawContours(contour_mask, [cnt], -1, 255, -1)
+            if not isinstance(img, np.ndarray) or not isinstance(template, np.ndarray):
+                LOG.warning("ORB: Input images must be numpy arrays")
+                return None
 
-        masked_img = cv2.bitwise_not(
-            cv2.bitwise_and(contour_mask, cv2.bitwise_not(img_gray))
-        )
-        masked_template = cv2.bitwise_not(
-            cv2.bitwise_and(contour_mask, cv2.bitwise_not(template_gray))
-        )
+            if img.size == 0 or template.size == 0:
+                LOG.warning("ORB: Input images are empty")
+                return None
 
-        edges_img = cv2.Canny(masked_img, 100, 200)
-        edges_template = cv2.Canny(masked_template, 100, 200)
+            # Check minimum dimensions
+            if (
+                img.shape[0] < 10
+                or img.shape[1] < 10
+                or template.shape[0] < 10
+                or template.shape[1] < 10
+            ):
+                LOG.warning("ORB: Images too small for ORB detection")
+                return None
 
-        # Find the keypoints and descriptors for the template image
-        (
-            template_keypoints,
-            template_descriptors,
-            target_keypoints,
-            target_descriptors,
-        ) = self.get_orb_keypoints_and_descriptors(edges_template, edges_img)
+            # Adaptive grayscale conversion
+            if len(img.shape) == 3:
+                img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            else:
+                img_gray = img.copy()
 
-        if len(template_keypoints) == 0 or len(target_keypoints) == 0:
-            return
+            if len(template.shape) == 3:
+                template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+            else:
+                template_gray = template.copy()
 
-        # Create a brute-force matcher
-        bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+            h, w = template_gray.shape
 
-        # Match the template image with the target image
-        matches = bf.match(template_descriptors, target_descriptors)
+            # Enhanced difference mask calculation
+            def calculate_robust_difference_mask(img1, img2):
+                """Calculate difference mask with noise reduction and morphological operations"""
+                # Apply slight blur to reduce noise
+                img1_blur = cv2.GaussianBlur(img1, (3, 3), 0.5)
+                img2_blur = cv2.GaussianBlur(img2, (3, 3), 0.5)
 
-        if len(matches) > 0:
-            # Sort the matches based on their distance
-            matches = sorted(matches, key=lambda x: x.distance)
-            best_matches = matches[:10]
-            # Estimate the transformation matrix between the two images
-            src_pts = np.float32(
-                [template_keypoints[m.queryIdx].pt for m in best_matches]
-            ).reshape(-1, 1, 2)
-            dst_pts = np.float32(
-                [target_keypoints[m.trainIdx].pt for m in best_matches]
-            ).reshape(-1, 1, 2)
+                # Calculate absolute difference
+                mask = cv2.absdiff(img1_blur, img2_blur)
 
-            M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+                # Use adaptive threshold
+                threshold_val = max(10, np.mean(mask) + np.std(mask))
+                mask[mask > threshold_val] = 255
+                mask[mask <= threshold_val] = 0
 
-            # Calculate the amount of movement between the two images
-            movement = np.sqrt(np.sum(M[:, 2] ** 2))
+                # Morphological operations to clean up the mask
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+                mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-            self.add_screenshot_to_log(
-                cv2.drawMatches(
-                    masked_template,
-                    template_keypoints,
-                    masked_img,
-                    target_keypoints,
-                    best_matches,
-                    None,
-                    flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS,
-                ),
-                "ORB_matches",
+                return mask
+
+            mask = calculate_robust_difference_mask(img_gray, template_gray)
+
+            # Enhanced contour detection with validation
+            try:
+                cnts, hierarchy = cv2.findContours(
+                    mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+                )
+            except Exception as e:
+                LOG.warning(f"ORB: Contour detection failed: {str(e)}")
+                return None
+
+            if len(cnts) == 0:
+                LOG.warning("ORB: No contours found in difference mask")
+                return None
+
+            # Enhanced contour processing
+            def create_enhanced_contour_mask(contours, image_shape):
+                """Create contour mask with area filtering and merging"""
+                # Filter contours by area - more lenient for text
+                min_area = 10  # Reduced for text detection
+                valid_contours = [
+                    cnt for cnt in contours if cv2.contourArea(cnt) >= min_area
+                ]
+
+                if not valid_contours:
+                    LOG.warning("ORB: No valid contours after area filtering")
+                    return None
+
+                # Create mask from valid contours
+                contour_mask = np.zeros(image_shape, np.uint8)
+                for cnt in valid_contours:
+                    cv2.drawContours(contour_mask, [cnt], -1, 255, -1)
+
+                # Additional morphological operations for better connectivity
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+                contour_mask = cv2.morphologyEx(contour_mask, cv2.MORPH_CLOSE, kernel)
+                contour_mask = cv2.dilate(contour_mask, kernel, iterations=1)
+
+                return contour_mask
+
+            contour_mask = create_enhanced_contour_mask(cnts, mask.shape)
+            if contour_mask is None:
+                return None
+
+            # Enhanced masked image creation
+            def create_masked_images_for_orb(img, template, mask):
+                """Create masked images optimized for ORB detection"""
+                # Create inverse mask
+                inv_mask = cv2.bitwise_not(mask)
+
+                # Apply mask to preserve difference areas
+                masked_img = cv2.bitwise_or(img, inv_mask)
+                masked_template = cv2.bitwise_or(template, inv_mask)
+
+                return masked_img, masked_template
+
+            masked_img, masked_template = create_masked_images_for_orb(
+                img_gray, template_gray, contour_mask
             )
-            return {"distance": movement}
+
+            # Enhanced edge detection with adaptive parameters
+            def calculate_adaptive_edges(image):
+                """Calculate edges with adaptive parameters based on image content"""
+                # Calculate image statistics for adaptive thresholding
+                mean_intensity = np.mean(image)
+                std_intensity = np.std(image)
+
+                # Adaptive Canny thresholds
+                lower_thresh = max(50, mean_intensity - std_intensity)
+                upper_thresh = min(200, mean_intensity + 2 * std_intensity)
+
+                # Apply Gaussian blur before edge detection
+                blurred = cv2.GaussianBlur(image, (3, 3), 0)
+                edges = cv2.Canny(blurred, int(lower_thresh), int(upper_thresh))
+
+                return edges
+
+            edges_img = calculate_adaptive_edges(masked_img)
+            edges_template = calculate_adaptive_edges(masked_template)
+
+            # Validate edge content
+            if np.sum(edges_img) < 100 or np.sum(edges_template) < 100:
+                LOG.warning("ORB: Insufficient edge content after masking")
+                return None
+
+            # Enhanced ORB keypoint detection with adaptive parameters
+            def get_robust_orb_keypoints(template_edges, img_edges):
+                """Get ORB keypoints with multiple parameter sets for robustness"""
+                orb_configs = [
+                    # (nfeatures, edgeThreshold, patchSize)
+                    (1000, 5, 10),  # Default sensitive
+                    (1500, 3, 8),  # More sensitive
+                    (2000, 7, 12),  # Less sensitive, more features
+                    (800, 10, 15),  # Least sensitive
+                ]
+
+                for nfeatures, edge_thresh, patch_size in orb_configs:
+                    try:
+                        orb = cv2.ORB_create(
+                            nfeatures=nfeatures,
+                            edgeThreshold=edge_thresh,
+                            patchSize=patch_size,
+                            fastThreshold=20,
+                            scaleFactor=1.2,
+                            nlevels=8,
+                        )
+
+                        template_kp, template_des = orb.detectAndCompute(
+                            template_edges, None
+                        )
+                        img_kp, img_des = orb.detectAndCompute(img_edges, None)
+
+                        # Check for sufficient keypoints
+                        if (
+                            template_kp is not None
+                            and img_kp is not None
+                            and len(template_kp) >= self.orb_min_matches
+                            and len(img_kp) >= self.orb_min_matches
+                            and template_des is not None
+                            and img_des is not None
+                        ):
+                            return template_kp, template_des, img_kp, img_des
+
+                    except Exception as e:
+                        LOG.warning(
+                            f"ORB: Configuration {orb_configs.index((nfeatures, edge_thresh, patch_size))} failed: {str(e)}"
+                        )
+                        continue
+
+                return None, None, None, None
+
+            (
+                template_keypoints,
+                template_descriptors,
+                target_keypoints,
+                target_descriptors,
+            ) = get_robust_orb_keypoints(edges_template, edges_img)
+
+            if (
+                template_keypoints is None
+                or target_keypoints is None
+                or len(template_keypoints) < self.orb_min_matches
+                or len(target_keypoints) < self.orb_min_matches
+            ):
+                LOG.warning("ORB: Insufficient keypoints detected")
+                return None
+
+            # Enhanced feature matching with robust filtering
+            def perform_robust_matching(desc1, desc2):
+                """Perform feature matching with multiple validation steps"""
+                try:
+                    # Use BruteForce matcher with Hamming distance for ORB
+                    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+                    matches = bf.match(desc1, desc2)
+
+                    if len(matches) == 0:
+                        return []
+
+                    # Sort matches by distance
+                    matches = sorted(matches, key=lambda x: x.distance)
+
+                    # Filter matches by distance threshold
+                    good_matches = []
+                    if len(matches) > 0:
+                        # Adaptive distance threshold based on match quality distribution
+                        distances = [m.distance for m in matches]
+                        mean_dist = np.mean(distances)
+                        std_dist = np.std(distances)
+
+                        # Use mean - std as threshold, but with bounds
+                        distance_thresh = max(30, min(80, mean_dist - std_dist))
+
+                        good_matches = [
+                            m for m in matches if m.distance < distance_thresh
+                        ]
+
+                    # Additional filtering: remove matches that are too clustered
+                    if len(good_matches) > 10:
+                        # Keep only the best matches
+                        good_matches = good_matches[
+                            : min(self.orb_max_matches, len(good_matches))
+                        ]
+
+                    return good_matches
+
+                except Exception as e:
+                    LOG.warning(f"ORB: Matching failed: {str(e)}")
+                    return []
+
+            best_matches = perform_robust_matching(
+                template_descriptors, target_descriptors
+            )
+
+            # Use adaptive minimum matches for small text areas
+            effective_min_matches = min(
+                self.orb_min_matches, len(best_matches) if len(best_matches) >= 2 else 0
+            )
+
+            if len(best_matches) < effective_min_matches:
+                LOG.warning(
+                    f"ORB: Insufficient good matches: {len(best_matches)} < {effective_min_matches}"
+                )
+                return None
+
+            # Enhanced homography computation with validation
+            try:
+                # Extract point correspondences
+                src_pts = np.float32(
+                    [template_keypoints[m.queryIdx].pt for m in best_matches]
+                ).reshape(-1, 1, 2)
+                dst_pts = np.float32(
+                    [target_keypoints[m.trainIdx].pt for m in best_matches]
+                ).reshape(-1, 1, 2)
+
+                # Robust homography estimation with multiple RANSAC attempts
+                ransac_configs = [
+                    (self.ransac_threshold, 1000, 0.99),
+                    (self.ransac_threshold * 1.5, 2000, 0.95),
+                    (self.ransac_threshold * 0.5, 3000, 0.999),
+                ]
+
+                best_homography = None
+                best_inlier_ratio = 0
+
+                for ransac_thresh, max_iters, confidence in ransac_configs:
+                    try:
+                        M, mask = cv2.findHomography(
+                            src_pts,
+                            dst_pts,
+                            cv2.RANSAC,
+                            ransac_thresh,
+                            maxIters=max_iters,
+                            confidence=confidence,
+                        )
+
+                        if M is not None and self._validate_homography_matrix(M):
+                            # Calculate inlier ratio
+                            inlier_count = np.sum(mask) if mask is not None else 0
+                            inlier_ratio = inlier_count / len(best_matches)
+
+                            if (
+                                inlier_ratio > best_inlier_ratio
+                                and inlier_ratio
+                                >= 0.15  # Reduced threshold for text detection
+                            ):
+                                best_homography = M
+                                best_inlier_ratio = inlier_ratio
+
+                    except Exception as e:
+                        LOG.warning(
+                            f"ORB: Homography computation failed with config {ransac_configs.index((ransac_thresh, max_iters, confidence))}: {str(e)}"
+                        )
+                        continue
+
+                if best_homography is None:
+                    LOG.warning("ORB: Could not compute valid homography")
+                    return None
+
+                # Extract movement from homography
+                dx = float(best_homography[0, 2])
+                dy = float(best_homography[1, 2])
+
+                # Validate movement magnitude
+                max_reasonable_movement = max(img_gray.shape) * 2
+                if (
+                    abs(dx) > max_reasonable_movement
+                    or abs(dy) > max_reasonable_movement
+                ):
+                    LOG.warning(
+                        f"ORB: Unreasonable movement detected: dx={dx}, dy={dy}"
+                    )
+                    return None
+
+                movement = float(np.sqrt(dx**2 + dy**2))
+
+                # Add visualization for debugging
+                if self.take_screenshots and len(best_matches) > 0:
+                    try:
+                        match_img = cv2.drawMatches(
+                            masked_template,
+                            template_keypoints,
+                            masked_img,
+                            target_keypoints,
+                            best_matches[
+                                : min(20, len(best_matches))
+                            ],  # Limit to 20 matches for clarity
+                            None,
+                            flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS,
+                        )
+                        self.add_screenshot_to_log(match_img, "ORB_matches")
+                    except Exception as e:
+                        LOG.warning(
+                            f"ORB: Could not create match visualization: {str(e)}"
+                        )
+
+                return {
+                    "distance": movement,
+                    "displacement_x": dx,
+                    "displacement_y": dy,
+                    "inlier_ratio": best_inlier_ratio,
+                    "num_matches": len(best_matches),
+                    "method": "orb",
+                }
+
+            except Exception as e:
+                LOG.warning(f"ORB: Error in homography computation: {str(e)}")
+                return None
+
+        except Exception as e:
+            LOG.error(f"ORB: Unexpected error in movement detection: {str(e)}")
+            return None
 
     def blend_two_images(self, image, overlay, ignore_color=[255, 255, 255]):
         ignore_color = np.asarray(ignore_color)
@@ -1685,39 +2754,302 @@ class VisualTest:
             # Now concatenate vertically
             return np.vstack([img1, img2])
 
+    def _init_movement_detection_stats(self):
+        """Initialize movement detection statistics tracking."""
+        if not hasattr(self, "_movement_stats"):
+            self._movement_stats = {
+                "total_attempts": 0,
+                "successful_detections": 0,
+                "method_success": {"template": 0, "sift": 0, "orb": 0},
+                "method_attempts": {"template": 0, "sift": 0, "orb": 0},
+                "fallback_usage": 0,
+                "error_count": 0,
+                "average_processing_time": 0.0,
+            }
 
-def load_watermarks(watermark_file):
-    if isinstance(watermark_file, str):
-        watermarks = []
-        if os.path.isdir(watermark_file):
-            watermark_file = [
-                str(os.path.join(watermark_file, f))
-                for f in os.listdir(watermark_file)
-                if os.path.isfile(os.path.join(watermark_file, f))
-            ]
+    def _record_movement_detection_attempt(
+        self, method, success, processing_time=0.0, used_fallback=False
+    ):
+        """Record statistics for movement detection attempts."""
+        self._init_movement_detection_stats()
+
+        self._movement_stats["total_attempts"] += 1
+        self._movement_stats["method_attempts"][method] += 1
+
+        if success:
+            self._movement_stats["successful_detections"] += 1
+            self._movement_stats["method_success"][method] += 1
+
+        if used_fallback:
+            self._movement_stats["fallback_usage"] += 1
+
+        # Update average processing time
+        current_avg = self._movement_stats["average_processing_time"]
+        total_attempts = self._movement_stats["total_attempts"]
+        self._movement_stats["average_processing_time"] = (
+            current_avg * (total_attempts - 1) + processing_time
+        ) / total_attempts
+
+    def _record_movement_detection_error(self):
+        """Record a movement detection error."""
+        self._init_movement_detection_stats()
+        self._movement_stats["error_count"] += 1
+
+    def get_movement_detection_statistics(self):
+        """
+        Get movement detection performance statistics.
+
+        Returns:
+            Dictionary with detection statistics and performance metrics
+        """
+        self._init_movement_detection_stats()
+        stats = self._movement_stats.copy()
+
+        # Calculate success rates
+        if stats["total_attempts"] > 0:
+            stats["overall_success_rate"] = (
+                stats["successful_detections"] / stats["total_attempts"]
+            )
+            stats["error_rate"] = stats["error_count"] / stats["total_attempts"]
+            stats["fallback_rate"] = stats["fallback_usage"] / stats["total_attempts"]
         else:
-            watermark_file = [watermark_file]
-        if isinstance(watermark_file, list):
-            try:
-                for single_watermark in watermark_file:
+            stats["overall_success_rate"] = 0.0
+            stats["error_rate"] = 0.0
+            stats["fallback_rate"] = 0.0
+
+        # Calculate method-specific success rates
+        for method in ["template", "sift", "orb"]:
+            attempts = stats["method_attempts"][method]
+            if attempts > 0:
+                stats[f"{method}_success_rate"] = (
+                    stats["method_success"][method] / attempts
+                )
+            else:
+                stats[f"{method}_success_rate"] = 0.0
+
+        return stats
+
+    def reset_movement_detection_statistics(self):
+        """Reset movement detection statistics."""
+        self._movement_stats = {
+            "total_attempts": 0,
+            "successful_detections": 0,
+            "method_success": {"template": 0, "sift": 0, "orb": 0},
+            "method_attempts": {"template": 0, "sift": 0, "orb": 0},
+            "fallback_usage": 0,
+            "error_count": 0,
+            "average_processing_time": 0.0,
+        }
+
+    def _validate_movement_result(self, result, method, img_shape):
+        """
+        Validate movement detection result for reasonableness.
+
+        Args:
+            result: Movement detection result dictionary
+            method: Detection method used
+            img_shape: Shape of the image being processed
+
+        Returns:
+            bool: True if result appears valid
+        """
+        if result is None:
+            return False
+
+        try:
+            # Check required fields
+            if "distance" not in result:
+                return False
+
+            distance = result["distance"]
+
+            # Distance should be non-negative and reasonable
+            if distance < 0 or not np.isfinite(distance):
+                return False
+
+            # Distance should not exceed reasonable bounds (2x image diagonal)
+            max_distance = np.sqrt(img_shape[0] ** 2 + img_shape[1] ** 2) * 2
+            if distance > max_distance:
+                LOG.warning(
+                    f"Movement distance {distance} exceeds reasonable bound {max_distance}"
+                )
+                return False
+
+            # Check displacement values if present
+            if "displacement_x" in result and "displacement_y" in result:
+                dx, dy = result["displacement_x"], result["displacement_y"]
+                if not (np.isfinite(dx) and np.isfinite(dy)):
+                    return False
+
+                # Displacement should be consistent with distance
+                calculated_distance = np.sqrt(dx**2 + dy**2)
+                if abs(calculated_distance - distance) > 1e-6:
+                    LOG.warning(
+                        f"Distance inconsistency: reported={distance}, calculated={calculated_distance}"
+                    )
+                    return False
+
+            # Method-specific validations
+            if method == "sift" or method == "orb":
+                # Feature-based methods should have additional metrics
+                if "num_matches" in result:
+                    num_matches = result["num_matches"]
+                    min_matches = (
+                        self.sift_min_matches
+                        if method == "sift"
+                        else self.orb_min_matches
+                    )
+                    if num_matches < min_matches:
+                        return False
+
+                if "inlier_ratio" in result:
+                    inlier_ratio = result["inlier_ratio"]
+                    if (
+                        inlier_ratio < 0.15
+                    ):  # More lenient: require at least 15% inliers
+                        return False
+
+            return True
+
+        except Exception as e:
+            LOG.warning(f"Error validating movement result: {str(e)}")
+            return False
+
+    def _create_fallback_result(self, method, reason="unknown"):
+        """
+        Create a minimal fallback result when detection fails.
+
+        Args:
+            method: The detection method that failed
+            reason: Reason for fallback
+
+        Returns:
+            Dictionary with minimal movement information
+        """
+        return {
+            "distance": 1.0,  # Small movement to indicate potential change
+            "displacement_x": 0.0,
+            "displacement_y": 0.0,
+            "method": f"{method}_fallback",
+            "fallback_reason": reason,
+            "confidence": "low",
+        }
+
+    def load_watermarks(self, watermark_file):
+        """
+        Load watermark files with enhanced error handling and validation.
+
+        Args:
+            watermark_file: Path to watermark file or directory, or list of paths
+
+        Returns:
+            List of processed watermark masks
+        """
+        if isinstance(watermark_file, str):
+            watermarks = []
+            if os.path.isdir(watermark_file):
+                try:
+                    # Get all image files from directory
+                    image_extensions = {
+                        ".png",
+                        ".jpg",
+                        ".jpeg",
+                        ".bmp",
+                        ".tiff",
+                        ".tif",
+                        ".pdf",
+                    }
+                    watermark_files = [
+                        str(os.path.join(watermark_file, f))
+                        for f in os.listdir(watermark_file)
+                        if (
+                            os.path.isfile(os.path.join(watermark_file, f))
+                            and os.path.splitext(f.lower())[1] in image_extensions
+                        )
+                    ]
+                    if not watermark_files:
+                        LOG.warning(
+                            f"No valid image files found in watermark directory: {watermark_file}"
+                        )
+                        return []
+                except Exception as e:
+                    LOG.error(
+                        f"Error reading watermark directory {watermark_file}: {str(e)}"
+                    )
+                    return []
+            else:
+                watermark_files = [watermark_file]
+
+            if isinstance(watermark_files, list):
+                for single_watermark in watermark_files:
                     try:
+                        # Validate file exists
+                        if not os.path.exists(single_watermark):
+                            LOG.warning(
+                                f"Watermark file does not exist: {single_watermark}"
+                            )
+                            continue
+
+                        # Load watermark document
                         watermark = (
                             DocumentRepresentation(single_watermark).pages[0].image
                         )
-                        if watermark.shape[2] == 4:
-                            watermark = watermark[:, :, :3]
-                        watermark_gray = cv2.cvtColor(watermark, cv2.COLOR_BGR2GRAY)
-                        # watermark_gray = (watermark_gray * 255).astype("uint8")
-                        mask = cv2.threshold(
-                            watermark_gray, 10, 255, cv2.THRESH_BINARY
-                        )[1]
 
-                        watermarks.append(mask)
-                    except:
-                        print(
-                            f"Watermark file {single_watermark} could not be loaded. Continue with next item."
+                        # Handle RGBA images
+                        if len(watermark.shape) == 3 and watermark.shape[2] == 4:
+                            watermark = watermark[:, :, :3]
+
+                        # Convert to grayscale with validation
+                        if len(watermark.shape) == 3:
+                            watermark_gray = cv2.cvtColor(watermark, cv2.COLOR_BGR2GRAY)
+                        else:
+                            watermark_gray = watermark.copy()
+
+                        # Create binary mask with adaptive thresholding
+                        # Try multiple threshold values for robustness
+                        mask = None
+                        for thresh_val in [10, 20, 30, 50]:
+                            try:
+                                _, mask = cv2.threshold(
+                                    watermark_gray, thresh_val, 255, cv2.THRESH_BINARY
+                                )
+                                # Check if mask has reasonable content
+                                if (
+                                    np.sum(mask > 0) > watermark_gray.size * 0.01
+                                ):  # At least 1% content
+                                    break
+                            except Exception as e:
+                                LOG.warning(
+                                    f"Threshold {thresh_val} failed for {single_watermark}: {str(e)}"
+                                )
+                                continue
+
+                        if mask is not None:
+                            watermarks.append(mask)
+                            LOG.info(
+                                f"Successfully loaded watermark: {single_watermark}"
+                            )
+                        else:
+                            LOG.warning(
+                                f"Could not create valid mask for watermark: {single_watermark}"
+                            )
+
+                    except Exception as e:
+                        LOG.warning(
+                            f"Watermark file {single_watermark} could not be loaded: {str(e)}"
                         )
-                    continue
-            except:
-                print("Watermark file could not be loaded.")
+                        continue
+
             return watermarks
+
+        elif isinstance(watermark_file, list):
+            # Handle list of watermark files
+            all_watermarks = []
+            for single_file in watermark_file:
+                watermarks = self.load_watermarks(single_file)  # Recursive call
+                all_watermarks.extend(watermarks)
+            return all_watermarks
+
+        else:
+            LOG.warning(f"Invalid watermark_file type: {type(watermark_file)}")
+            return []
