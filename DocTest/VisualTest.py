@@ -508,8 +508,20 @@ class VisualTest:
                     # If the areas are moved within the tolerance, the images are considered similar
                     # If the areas are moved outside the tolerance, the images are considered different
                     # The move_tolerance is the maximum number of pixels the areas can be moved
-                    similar = True
+
+                    # IMPORTANT: Store the original SSIM result before movement tolerance processing
+                    # This prevents content removal from being incorrectly treated as acceptable movement
+                    original_similar_result = (
+                        similar  # Should be False from SSIM comparison
+                    )
+
+                    similar = True  # Optimistically assume movement tolerance will resolve differences
                     diff_rectangles = self.get_diff_rectangles(absolute_diff)
+                    failed_areas = []  # Track areas that fail tolerance check
+                    fallback_detections = (
+                        0  # Track areas where detection fell back to minimal distances
+                    )
+
                     for rect in diff_rectangles:
                         # Check if the area is moved within the tolerance
                         reference_area = ref_page.get_area(rect)
@@ -542,10 +554,26 @@ class VisualTest:
                                         )
                                     )
 
-                                if distance > move_tolerance:
-                                    similar = False
+                                # Detect if this is likely a fallback result indicating content removal
+                                # rather than actual movement detection
+                                is_likely_fallback = (
+                                    "method" in result
+                                    and "fallback" in result["method"]
+                                    and distance
+                                    <= 5  # Only very small distances suggest fallback
+                                )
+
+                                if is_likely_fallback:
+                                    # This is likely content removal, not movement - increment fallback counter
+                                    fallback_detections += 1
                                     print(
-                                        f"Area {rect} is moved {distance} pixels which more than the tolerated {move_tolerance} pixels."
+                                        f"Area {rect}: Detected likely content removal (fallback distance: {distance}px, method: {result.get('method', 'unknown')})"
+                                    )
+
+                                if distance > move_tolerance:
+                                    failed_areas.append((rect, distance))
+                                    print(
+                                        f"Area {rect} is moved {distance} pixels which is more than the tolerated {move_tolerance} pixels."
                                     )
                                     self.add_screenshot_to_log(
                                         self.blend_two_images(
@@ -555,11 +583,18 @@ class VisualTest:
                                         original_size=False,
                                     )
                                 else:
-                                    print(f"Area {rect} is moved {distance} pixels.")
+                                    if is_likely_fallback:
+                                        print(
+                                            f"Area {rect}: Content likely removed (not moved) - distance {distance}px appears to be fallback estimate"
+                                        )
+                                    else:
+                                        print(
+                                            f"Area {rect} is moved {distance} pixels."
+                                        )
                             else:
                                 # Movement detection failed - assume movement exceeds tolerance
                                 # This is a fallback for when detection methods cannot determine movement
-                                similar = False
+                                failed_areas.append((rect, "detection_failed"))
                                 print(
                                     f"Area {rect} movement detection failed - assuming movement exceeds tolerance."
                                 )
@@ -572,13 +607,50 @@ class VisualTest:
                                 )
                         except Exception as e:
                             print(f"Could not compare areas: {e}")
-                            similar = False
+                            failed_areas.append((rect, f"error: {str(e)}"))
                             self.add_screenshot_to_log(
                                 self.blend_two_images(reference_area, candidate_area),
                                 suffix="_moved_area",
                                 original_size=False,
                             )
-                            break
+                            # Continue to next area instead of breaking
+                            continue
+
+                    # Only set similar to False if any areas failed the tolerance check
+                    if failed_areas:
+                        similar = False
+                        print(
+                            f"Movement tolerance check failed for {len(failed_areas)} area(s) out of {len(diff_rectangles)} total areas."
+                        )
+                        for area_info in failed_areas:
+                            rect, reason = area_info
+                            if isinstance(reason, int):
+                                print(
+                                    f"  - Area {rect}: moved {reason} pixels (exceeds {move_tolerance})"
+                                )
+                            else:
+                                print(f"  - Area {rect}: {reason}")
+                    elif (
+                        fallback_detections > 0
+                        and fallback_detections >= len(diff_rectangles) * 0.8
+                    ):
+                        # High proportion of fallback behavior detected - this likely indicates content removal
+                        # rather than actual movement. Respect the original SSIM assessment.
+                        similar = original_similar_result
+                        print(
+                            f"{fallback_detections} out of {len(diff_rectangles)} difference area(s) show fallback behavior (likely content removal, not movement)."
+                        )
+                        print(
+                            f"Respecting original SSIM assessment: images are {'similar' if similar else 'different'}."
+                        )
+                    else:
+                        if fallback_detections > 0:
+                            print(
+                                f"{fallback_detections} out of {len(diff_rectangles)} area(s) show fallback behavior."
+                            )
+                        print(
+                            f"All {len(diff_rectangles)} moved area(s) are within the {move_tolerance} pixel tolerance."
+                        )
 
             if not similar:
                 # Save original images to the screenshot directory and add them to the Robot Framework log
@@ -687,7 +759,7 @@ class VisualTest:
             area = json.loads(area)
 
         # Get the text content of the area
-        text = doc.get_text_from_area(area=area)
+        return doc.get_text_from_area(area=area)
 
     @keyword
     def get_text_from_document(
@@ -1181,12 +1253,23 @@ class VisualTest:
         absolute_diff is a np.array with the differences between the two images.
         """
 
-        absolute_diff = cv2.dilate(absolute_diff, None, iterations=10)
-        absolute_diff = cv2.erode(absolute_diff, None, iterations=10)
+        # Use moderate morphological operations for balanced detection
+        # iterations=5: Compromise between preserving separate objects and grouping characters
+        # - Enough to group characters within words/text strings
+        # - Not so much as to merge completely separate moved objects
+        absolute_diff = cv2.dilate(absolute_diff, None, iterations=5)
+        absolute_diff = cv2.erode(absolute_diff, None, iterations=5)
         contours, _ = cv2.findContours(
             absolute_diff, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
-        rectangles = [cv2.boundingRect(contour) for contour in contours]
+
+        # Filter out very small contours that are likely noise
+        min_contour_area = 100  # Minimum area to consider as a meaningful difference
+        filtered_contours = [
+            c for c in contours if cv2.contourArea(c) >= min_contour_area
+        ]
+
+        rectangles = [cv2.boundingRect(contour) for contour in filtered_contours]
         # Convert the rectangles to a list of dictionaries
         rectangles = [
             {"x": rect[0], "y": rect[1], "width": rect[2], "height": rect[3]}
