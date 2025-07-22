@@ -1,13 +1,11 @@
 [tool.poetry]
 name = "robotframework-doctestlibrary"
-version = "0.24.0rc03"
+version = "0.24.0rc09"
 description = "A library for Visual Document Testing"
 authors = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
 maintainers = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
 license = "Apache-2.0"
-packages = [
-    { include = "DocTest" },
-]
+packages = [{ include = "DocTest" }]
 exclude = ["DocTest/data/frozen_east_text_detection.pb"]
 readme = "./README.md"
 homepage = "https://github.com/manykarim/robotframework-doctestlibrary"
@@ -20,29 +18,29 @@ numpy = [
     { version = "<1.25", python = ">=3.8, <3.9" },
     { version = ">=1.25, <2.0", python = ">=3.9, <3.10" },
     { version = ">=1.26", python = ">=3.10, <3.13" },
-    { version = ">=2.1.0", python = ">=3.13" }
+    { version = ">=2.1.0", python = ">=3.13" },
 ]
 opencv-python-headless = "*"
 parsimonious = "*"
 pytesseract = "*"
 robotframework = ">=4"
 scipy = [
-    {version = "<1.11", python = "<=3.8"},
-    {version = "*", python = ">3.8,<3.12"},
-    {version = ">=1.11", python = "^3.12"}
+    { version = "<1.11", python = "<=3.8" },
+    { version = "*", python = ">3.8,<3.12" },
+    { version = ">=1.11", python = "^3.12" },
 ]
 scikit-image = [
-    {version = "<0.22", python = "<=3.8"},
-    {version = "*", python = ">3.8,<3.12"},
-    {version = ">=0.22.0", python = ">=3.12,<3.13"},
-    {version = ">=0.25.0", python = ">=3.13"},   
+    { version = "<0.22", python = "<=3.8" },
+    { version = "*", python = ">3.8,<3.12" },
+    { version = ">=0.22.0", python = ">=3.12,<3.13" },
+    { version = ">=0.25.0", python = ">=3.13" },
 ]
 Wand = "*"
 pylibdmtx = "*"
 deepdiff = [
     { version = "<8.0", python = "<3.9" },
     { version = "*", python = ">=3.9,<3.12" },
-    { version = ">=6.0", python = ">=3.12" }
+    { version = ">=6.0", python = ">=3.12" },
 ]
 pyzbar = "^0.1.9"
 setuptools = { version = "*", python = "^3.12" }
