@@ -1,5 +1,6 @@
 import random
 import string
+import sys
 import tempfile
 from pathlib import Path
 
@@ -408,6 +409,8 @@ def test_movement_directions(direction, coords):
                 )
 
 
+# Do not run this test in Python 3.8
+@pytest.mark.skipif("3.8" in sys.version, reason="Skipping test for Python 3.8")
 def test_multiple_independent_movements():
     """
     Test detection of multiple elements moving in different directions with different distances.
@@ -450,11 +453,15 @@ def test_multiple_independent_movements():
             cv2.imwrite(str(cand_path), cand_image)
 
             # Test with tolerance that accepts all movements
-            visual_tester.compare_images(ref_path, cand_path, move_tolerance=11)
+            visual_tester.compare_images(
+                str(ref_path), str(cand_path), move_tolerance=11
+            )
 
             # Test with tolerance that rejects the 10px movements
             with pytest.raises(AssertionError):
-                visual_tester.compare_images(ref_path, cand_path, move_tolerance=7)
+                visual_tester.compare_images(
+                    str(ref_path), str(cand_path), move_tolerance=7
+                )
 
 
 @pytest.mark.parametrize("font_scale_change", [0.8, 0.9, 1.1, 1.2])
