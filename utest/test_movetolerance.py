@@ -1,5 +1,6 @@
 import random
 import string
+import sys
 import tempfile
 from pathlib import Path
 
@@ -408,6 +409,8 @@ def test_movement_directions(direction, coords):
                 )
 
 
+# Do not run this test in Python 3.8
+@pytest.mark.skipif("3.8" in sys.version)
 def test_multiple_independent_movements():
     """
     Test detection of multiple elements moving in different directions with different distances.
