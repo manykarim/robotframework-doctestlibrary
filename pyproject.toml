@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "robotframework-doctestlibrary"
-version = "0.24.0"
+version = "0.24.1"
 description = "A library for Visual Document Testing"
 authors = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
 maintainers = ["Many Kasiriha <many.kasiriha@dbschenker.com>"]
@@ -12,7 +12,10 @@ homepage = "https://github.com/manykarim/robotframework-doctestlibrary"
 
 [tool.poetry.dependencies]
 python = "^3.8.1"
-PyMuPDF = ">=1.23.1, <1.25.0"
+PyMuPDF = [
+    { version = ">=1.23.1, <1.25.0", python = ">=3.8, <3.9" },
+    { version = ">=1.26.0", python = ">=3.9" },
+]
 imutils = "*"
 numpy = [
     { version = "<1.25", python = ">=3.8, <3.9" },
