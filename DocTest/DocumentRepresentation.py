@@ -303,7 +303,7 @@ class Page:
 
     def _process_pattern_ignore_area_from_pdf(self, ignore_area: Dict):
         import re
-        pattern_type = ignore_area.get('pattern_type')
+        pattern_type = ignore_area.get('type') or ignore_area.get('pattern_type')
         pattern = ignore_area.get('pattern')
         xoffset = int(ignore_area.get('xoffset', 0))
         yoffset = int(ignore_area.get('yoffset', 0))
