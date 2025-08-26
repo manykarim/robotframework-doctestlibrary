@@ -346,14 +346,15 @@ class Page:
     
     def _convert_to_pixels(self, area: Dict, unit: str):
         """Convert dimensions from cm, mm, or px to pixel units."""
-        x, y, w, h = int(area['x']), int(area['y']), int(area['width']), int(area['height'])
+        x, y, w, h = area['x'], area['y'], area['width'], area['height']
         if unit == 'mm':
             constant = self.dpi / 25.4
-            x, y, w, h = int(x * constant), int(y * constant), int(w * constant), int(h * constant)
+            return int(x * constant), int(y * constant), int(w * constant), int(h * constant)
         elif unit == 'cm':
             constant = self.dpi / 2.54
-            x, y, w, h = int(x * constant), int(y * constant), int(w * constant), int(h * constant)
-        return x, y, w, h
+            return int(x * constant), int(y * constant), int(w * constant), int(h * constant)
+        else:
+            return int(x), int(y), int(w), int(h)
         
     def _process_area_ignore_area(self, ignore_area: Dict):
         """Handle area-based ignore areas (e.g., 'top', 'bottom', 'left', 'right') as percentages."""
