@@ -420,6 +420,7 @@ class Page:
         elif self.pdf_text_words:
             text = ""
             import fitz
+            fitz.TOOLS.set_aa_level(0)
             rect = fitz.Rect(
                             area_x*72/self.dpi, area_y*72/self.dpi, (area_x+area_w)*72/self.dpi, (area_y+area_h)*72/self.dpi)
             diff_area_ref_words = [
@@ -509,7 +510,8 @@ class DocumentRepresentation:
     def _load_pdf(self):
         """Load a PDF document, converting each page into a Page object."""
         try:
-            import fitz  # PyMuPDF
+            import fitz
+            fitz.TOOLS.set_aa_level(0)  # PyMuPDF
             doc = fitz.open(str(self.file_path))
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
@@ -662,7 +664,8 @@ class DocumentRepresentation:
             return ""
 
         try:
-            import fitz  # PyMuPDF
+            import fitz
+            fitz.TOOLS.set_aa_level(0)  # PyMuPDF
             with fitz.open(str(self.file_path)) as pdf:
                 text_content = ""
                 for page_num in range(len(pdf)):
