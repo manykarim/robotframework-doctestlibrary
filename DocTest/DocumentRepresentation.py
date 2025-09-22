@@ -312,8 +312,23 @@ class Page:
             if self.pdf_text_words:
                 for word in self.pdf_text_words:
                     if search_pattern.match(word[4]):
-                        (x, y, w, h) = (word[0]*self.dpi/72, word[1]*self.dpi/72, word[2]*self.dpi/72, word[3]*self.dpi/72)
-                        text_mask = {"x": int(x) - xoffset, "y": int(y) - yoffset, "width": int(w) + 2 * xoffset, "height": int(h) + 2 * yoffset}
+                        x0, y0 = word[0], word[1]
+                        x = x0 * self.dpi / 72
+                        y = y0 * self.dpi / 72
+                        if word[2] > x0:
+                            # PyMuPDF >= 1.25 returns (x0, y0, x1, y1, text, ...)
+                            w = (word[2] - x0) * self.dpi / 72
+                            h = (word[3] - y0) * self.dpi / 72
+                        else:
+                            # Older versions return (x0, y0, width, height, text, ...)
+                            w = word[2] * self.dpi / 72
+                            h = word[3] * self.dpi / 72
+                        text_mask = {
+                            "x": int(x) - xoffset,
+                            "y": int(y) - yoffset,
+                            "width": int(w) + 2 * xoffset,
+                            "height": int(h) + 2 * yoffset,
+                        }
                         self.pixel_ignore_areas.append(text_mask)
         else:
             if self.pdf_text_dict:
