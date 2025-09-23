@@ -513,7 +513,7 @@ class VisualTest:
             if move_tolerance and int(move_tolerance) > 0 and not similar:
                 if get_pdf_content:
                     import fitz
-
+                    fitz.TOOLS.set_aa_level(0)
                     similar = True
                     ref_words = ref_page.pdf_text_words
                     cand_words = cand_page.pdf_text_words
