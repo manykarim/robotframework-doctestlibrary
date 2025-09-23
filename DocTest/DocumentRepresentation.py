@@ -4,6 +4,7 @@ import pytesseract
 import numpy as np
 import json
 import logging
+import re
 from pathlib import Path
 from skimage import metrics
 from typing import List, Dict, Optional, Tuple, Union, Literal
@@ -31,31 +32,51 @@ class Page:
         self.ocr_performed = False
         self.pixel_ignore_areas = []
         self.image_rescaled_for_ocr = False
+        self.ocr_tokens: List[str] = []
 
     def apply_ocr(self, ocr_engine: str = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, confidence: int = DEFAULT_CONFIDENCE):
         """Perform OCR on the page image."""
         # re-scale the image to a standard resolution for OCR if needed
+        self.image_rescaled_for_ocr = False
+        original_image = None
+        target_height, target_width = self.image.shape[:2]
+        scale_factor = 1.0
         if self.dpi < MINIMUM_OCR_RESOLUTION:
-            # Rescale the image to a higher resolution for better OCR results            
+            # Rescale the image to a higher resolution for better OCR results
             scale_factor = MINIMUM_OCR_RESOLUTION / self.dpi
             if self.image.shape[0] * scale_factor < 32767 and self.image.shape[1] * scale_factor < 32767:
                 original_image = self.image.copy()
-                self.image = cv2.resize(self.image, (0, 0), fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
+                target_height, target_width = self.image.shape[:2]
+                self.image = cv2.resize(
+                    self.image,
+                    (0, 0),
+                    fx=scale_factor,
+                    fy=scale_factor,
+                    interpolation=cv2.INTER_CUBIC,
+                )
                 self.image_rescaled_for_ocr = True
         if ocr_engine == "tesseract":
             config = tesseract_config
             gray_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
             thresholded_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
             self.ocr_text_data = pytesseract.image_to_data(thresholded_image, config=config, output_type=Output.DICT)
+            self._normalize_ocr_coordinates(scale_factor if self.image_rescaled_for_ocr else 1.0, target_height, target_width)
             self.ocr_performed = True
         elif ocr_engine == "east":
             from DocTest.Ocr import EastTextExtractor
             self.east_text_extractor = EastTextExtractor()
-            text = self.east_text_extractor.get_image_text(self.image)
-            self.ocr_text_data= text
+            text = self.east_text_extractor.get_image_text(
+                self.image,
+                scale_back=scale_factor if self.image_rescaled_for_ocr else 1.0,
+                target_size=(target_height, target_width),
+            )
+            self.ocr_text_data = text
+            self._normalize_ocr_coordinates(scale_factor if self.image_rescaled_for_ocr else 1.0, target_height, target_width)
+            self._refine_east_tokens(original_image if original_image is not None else self.image)
             self.ocr_performed = True
-        if self.image_rescaled_for_ocr:
+        if self.image_rescaled_for_ocr and original_image is not None:
             self.image = original_image
+            self.image_rescaled_for_ocr = False
 
     def get_area(self, area: Dict):
         """Gets the area of the image specified by the coordinates."""
@@ -68,6 +89,108 @@ class Page:
     def get_text_content(self):
         """Return the OCR text content."""
         return self.ocr_text_data['text'] if self.ocr_text_data else ""
+
+    def _normalize_ocr_coordinates(self, scale_factor: float, target_height: int, target_width: int):
+        """Bring OCR bounding boxes back to the original image scale and clamp them."""
+        if not self.ocr_text_data:
+            return
+
+        lefts = self.ocr_text_data.get('left') or []
+        tops = self.ocr_text_data.get('top') or []
+        widths = self.ocr_text_data.get('width') or []
+        heights = self.ocr_text_data.get('height') or []
+
+        if not (lefts and tops and widths and heights):
+            return
+
+        for idx in range(len(lefts)):
+            left = self._coerce_to_float(lefts[idx])
+            top = self._coerce_to_float(tops[idx])
+            width = self._coerce_to_float(widths[idx])
+            height = self._coerce_to_float(heights[idx])
+
+            if scale_factor not in (0, 1):
+                left /= scale_factor
+                top /= scale_factor
+                width /= scale_factor
+                height /= scale_factor
+
+            left = max(0, min(target_width - 1, int(round(left))))
+            top = max(0, min(target_height - 1, int(round(top))))
+            width = max(0, min(target_width - left, int(round(width))))
+            height = max(0, min(target_height - top, int(round(height))))
+
+            lefts[idx] = left
+            tops[idx] = top
+            widths[idx] = width
+            heights[idx] = height
+
+    @staticmethod
+    def _coerce_to_float(value: Union[str, int, float]) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _normalized_ocr_tokens(self) -> List[str]:
+        if self.ocr_tokens:
+            return [token for token in (self._normalize_token(t) for t in self.ocr_tokens) if token]
+
+        if not self.ocr_text_data:
+            return []
+        tokens = []
+        for token in self.ocr_text_data.get('text', []):
+            normalized = self._normalize_token(token)
+            if normalized:
+                tokens.append(normalized)
+        return tokens
+
+    def _normalize_token(self, token: Optional[str]) -> str:
+        if not token:
+            return ""
+        token = token.strip()
+        if not token:
+            return ""
+        token = token.translate(str.maketrans({
+            "»": "",
+            "«": "",
+            "“": "",
+            "”": "",
+            "„": "",
+            "’": "",
+            "‘": "",
+        }))
+        token = token.strip().strip(".,;:!\"'`")
+        if not token:
+            return ""
+        token = re.sub(r"\s+", " ", token)
+
+        return token
+
+    def _refine_east_tokens(self, base_image: np.ndarray):
+        if not self.ocr_text_data:
+            return
+        tokens = []
+        lefts = self.ocr_text_data.get('left') or []
+        tops = self.ocr_text_data.get('top') or []
+        widths = self.ocr_text_data.get('width') or []
+        heights = self.ocr_text_data.get('height') or []
+
+        for left, top, width, height in zip(lefts, tops, widths, heights):
+            if width <= 0 or height <= 0:
+                continue
+            roi = base_image[top:top+height, left:left+width]
+            if roi.size == 0:
+                continue
+            scale_factor = 3 if min(roi.shape[0], roi.shape[1]) < 80 else 1
+            roi_for_ocr = roi
+            if scale_factor > 1:
+                roi_for_ocr = cv2.resize(roi, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
+            text = pytesseract.image_to_string(roi_for_ocr, config='--oem 1 --psm 7 -l eng').strip()
+            if text:
+                tokens.append(text)
+
+        self.ocr_tokens = tokens
 
     def get_image_with_ignore_areas(self):
         """Return the image with ignore areas highlighted."""
@@ -293,13 +416,27 @@ class Page:
         # Iterate through text data to identify matching patterns and mark as ignore areas
         n_boxes = len(self.ocr_text_data['text'])
         for j in range(n_boxes):
-            if int(self.ocr_text_data.get('conf', [0])[j]) > DEFAULT_CONFIDENCE and re.match(pattern, self.ocr_text_data['text'][j]):
-                x, y, w, h = self.ocr_text_data['left'][j], self.ocr_text_data['top'][j], self.ocr_text_data['width'][j], self.ocr_text_data['height'][j]
-                if self.image_rescaled_for_ocr:
-                    pixel_factor = self.dpi / MINIMUM_OCR_RESOLUTION
-                    (x, y, w, h) = (int(x * pixel_factor), int(y * pixel_factor), int(w * pixel_factor), int(h * pixel_factor))
-                text_mask = {"x": int(x) - xoffset, "y": int(y) - yoffset, "width": int(w) + 2 * xoffset, "height": int(h) + 2 * yoffset}
-                self.pixel_ignore_areas.append(text_mask)
+            raw_text = self.ocr_text_data['text'][j]
+            normalized_text = self._normalize_token(raw_text)
+            if not normalized_text:
+                continue
+            match_target = normalized_text.upper()
+            if not re.match(pattern, match_target):
+                continue
+
+            x, y, w, h = (
+                self.ocr_text_data['left'][j],
+                self.ocr_text_data['top'][j],
+                self.ocr_text_data['width'][j],
+                self.ocr_text_data['height'][j],
+            )
+            text_mask = {
+                "x": int(x) - xoffset,
+                "y": int(y) - yoffset,
+                "width": int(w) + 2 * xoffset,
+                "height": int(h) + 2 * yoffset,
+            }
+            self.pixel_ignore_areas.append(text_mask)
 
     def _process_pattern_ignore_area_from_pdf(self, ignore_area: Dict):
         import re
@@ -384,15 +521,15 @@ class Page:
     def _get_text(self, force_ocr: bool = False, ocr_engine: Literal['tesseract', 'east'] = 'tesseract', confidence: int = DEFAULT_CONFIDENCE, tesseract_config: str = TESSERACT_CONFIG, **kwargs):
         """Extract text content from the page image."""
         if force_ocr and not self.ocr_performed:
-            self.apply_ocr(ocr_engine=ocr_engine, confidence=confidence, tesseract_config=tesseract_config)
-            return " ".join(self.ocr_text_data['text'])
+            self.apply_ocr(ocr_engine=ocr_engine, tesseract_config=tesseract_config)
+            return " ".join(self._normalized_ocr_tokens())
         if self.ocr_performed:
-            return " ".join(self.ocr_text_data['text'])
+            return " ".join(self._normalized_ocr_tokens())
         elif self.pdf_text_words:
             return make_text(self.pdf_text_words).split()
         else:
-            self.apply_ocr(ocr_engine=ocr_engine, confidence=confidence, tesseract_config=tesseract_config)
-            return " ".join(self.ocr_text_data['text'])
+            self.apply_ocr(ocr_engine=ocr_engine, tesseract_config=tesseract_config)
+            return " ".join(self._normalized_ocr_tokens())
 
     def _get_text_from_area(self, area: Dict, force_ocr: bool = False):
         """Extract text content from a specific area of the page:
@@ -785,4 +922,3 @@ def make_text(words):
     lines = list(line_dict.items())
     lines.sort()  # sort vertically
     return "\n".join([" ".join(line[1]) for line in lines])
-

@@ -3,8 +3,8 @@ import os
 import cv2
 import numpy as np
 import pytesseract
+from typing import Dict, List
 from pytesseract import Output
-from imutils.object_detection import non_max_suppression
 import urllib
 import re
 import unicodedata
@@ -44,7 +44,7 @@ class EastTextExtractor:
 
         # decoding results from the model
         rectangles, confidences = box_extractor(scores, geometry, confThreshold)
-        
+
         # find countur of all rectangles
 
         mask = np.zeros((height, width), dtype=np.uint8)
@@ -61,20 +61,25 @@ class EastTextExtractor:
             end_x = int((x + w) * ratio_width)
             end_y = int((y + h) * ratio_height)
             # ROI to be recognized
-            roi = loaded_image[start_y:end_y, start_x:end_x]
-            
-            # recognizing text
-            config = '-l eng --oem 1 --psm 7'
-            # text = pytesseract.image_to_string(roi, config=config)
-            text = pytesseract.image_to_data(roi, config=config, output_type=Output.DICT)
+            pad_x = max(5, int((end_x - start_x) * 0.6))
+            pad_y = max(2, int((end_y - start_y) * 0.2))
+            roi_start_x = max(0, start_x - pad_x)
+            roi_start_y = max(0, start_y - pad_y)
+            roi_end_x = min(orig_w, end_x + pad_x)
+            roi_end_y = min(orig_h, end_y + pad_y)
+            roi = loaded_image[roi_start_y:roi_end_y, roi_start_x:roi_end_x]
+            if roi.size == 0:
+                continue
 
+            text = self._recognize_roi(roi)
+            
             # recalculate coordinates in tesseract text dict and add start_x and start_y
             for i in range(len(text['text'])):
                 if text['conf'][i] == '-1':
                     continue
                 text['text'][i] = remove_control_characters(text['text'][i])
-                text['left'][i] = text['left'][i] + start_x
-                text['top'][i] = text['top'][i] + start_y
+                text['left'][i] = text['left'][i] + roi_start_x
+                text['top'][i] = text['top'][i] + roi_start_y
                 text['width'][i] = text['width'][i]
                 text['height'][i] = text['height'][i]
                 text['text'][i] = text['text'][i].strip()
@@ -91,6 +96,22 @@ class EastTextExtractor:
                 results['conf'].append(text['conf'][i])
 
         return results
+
+    def _recognize_roi(self, roi: np.ndarray) -> Dict[str, List[str]]:
+        config = '--oem 1 --psm 7 -l eng'
+        scale_factor = 3 if min(roi.shape[0], roi.shape[1]) < 80 else 1
+        roi_for_ocr = roi
+        if scale_factor > 1:
+            roi_for_ocr = cv2.resize(roi, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
+
+        data = pytesseract.image_to_data(roi_for_ocr, config=config, output_type=Output.DICT)
+
+        # rescale coordinates back to ROI space
+        if scale_factor > 1:
+            for key in ('left', 'top', 'width', 'height'):
+                data[key] = [int(value / scale_factor) for value in data.get(key, [])]
+
+        return data
 
 
 

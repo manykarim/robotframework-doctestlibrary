@@ -416,6 +416,7 @@ def test_multiple_independent_movements():
     Test detection of multiple elements moving in different directions with different distances.
     Verifies that each movement is detected independently.
     """
+    random.seed(42)
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir_path = Path(temp_dir)
 
