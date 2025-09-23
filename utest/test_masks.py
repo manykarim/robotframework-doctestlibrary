@@ -28,3 +28,14 @@ def test_pdf_text_mask(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'sample_1_page.pdf', ignore_area_file=testdata_dir / 'pdf_pattern_mask.json')
     assert len(img.abstract_ignore_areas)==2
     assert np.not_equal(img.pages[0].get_image_with_ignore_areas(), img.pages[0].image).any()
+
+def test_pdf_word_pattern_mask_dimensions(testdata_dir):
+    mask = {
+        'page': 'all',
+        'type': 'word_pattern',
+        'pattern': '12345678901234'
+    }
+    doc = DocumentRepresentation(testdata_dir / 'sample_1_page.pdf', ignore_area=mask)
+    area = doc.pages[0].pixel_ignore_areas[0]
+    assert area['width'] == 233
+    assert area['height'] == 31
