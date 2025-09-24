@@ -540,14 +540,16 @@ class Page:
         Optional: Units can be specified as 'mm' or 'cm' via the 'unit' key.
         """
         if force_ocr:
-        # Shortcut: if OCR is forced, extract text using Tesseract
+            pdf_text = self._get_text_from_area_using_pdf(area)
+            if pdf_text:
+                return pdf_text
             return self._get_text_from_area_with_tesseract(area)
         
         try:
             unit = area.get('unit', 'px')
         except:
             unit = 'px'
-        area_x, area_y, area_h, area_w  = self._convert_to_pixels(area, unit)
+        area_x, area_y, area_w, area_h  = self._convert_to_pixels(area, unit)
 
 
         if self.ocr_performed:
@@ -559,17 +561,30 @@ class Page:
             return text.strip()
         
         elif self.pdf_text_words:
-            text = ""
-            import fitz
-            fitz.TOOLS.set_aa_level(0)
-            rect = fitz.Rect(
-                            area_x*72/self.dpi, area_y*72/self.dpi, (area_x+area_w)*72/self.dpi, (area_y+area_h)*72/self.dpi)
-            diff_area_ref_words = [
-                            w for w in self.pdf_text_words if fitz.Rect(w[:4]).intersects(rect)]
-            return make_text(diff_area_ref_words).split()
+            return self._get_text_from_area_using_pdf(area)
         else:
             return self._get_text_from_area_with_tesseract(area)
         
+    def _get_text_from_area_using_pdf(self, area: Dict) -> str:
+        if not self.pdf_text_words:
+            return ""
+
+        area_x, area_y, area_w, area_h = self._convert_to_pixels(area, area.get('unit', 'px'))
+        import fitz
+        fitz.TOOLS.set_aa_level(0)
+        rect = fitz.Rect(
+            area_x * 72 / self.dpi,
+            area_y * 72 / self.dpi,
+            (area_x + area_w) * 72 / self.dpi,
+            (area_y + area_h) * 72 / self.dpi,
+        )
+        diff_area_ref_words = [
+            w for w in self.pdf_text_words if fitz.Rect(w[:4]).intersects(rect)
+        ]
+        normalized_words = [self._normalize_token(word[4]) for word in diff_area_ref_words]
+        normalized_words = [word for word in normalized_words if word]
+        return " ".join(normalized_words)
+
     def _get_text_from_area_with_tesseract(self, area: Dict):
         """Extract text content from a specific area of the page using Tesseract OCR."""
         x, y, w, h = self._convert_to_pixels(area, area.get('unit', 'px'))
@@ -677,7 +692,9 @@ class DocumentRepresentation:
         import subprocess
         try:
             command = shutil.which('pcl6') or shutil.which('gpcl6win64') or shutil.which('gpcl6win32') or shutil.which('gpcl6')
-        except:
+        except Exception:
+            command = None
+        if not command:
             raise AssertionError("No pcl6 executable found in path. Please install ghostPCL")
         self.opencv_images = []
         
@@ -736,7 +753,9 @@ class DocumentRepresentation:
         from os.path import splitext, split 
         try:
             command = shutil.which('gs') or shutil.which('gswin64c') or shutil.which('gswin32c') or shutil.which('ghostscript')
-        except:
+        except Exception:
+            command = None
+        if not command:
             raise AssertionError("No ghostscript executable found in path. Please install ghostscript")
         self.opencv_images = []
         
