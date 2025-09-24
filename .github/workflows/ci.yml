@@ -24,6 +24,7 @@ jobs:
           sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
           echo "Download Tesseract Models"
           sudo ls /usr/share/tesseract-ocr
+          sudo find /usr/share/ -name "*traineddata*"
           sudo wget -O /usr/share/tesseract-ocr/5/tessdata/eng.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/refs/heads/main/eng.traineddata
           sudo wget -O /usr/share/tesseract-ocr/5/tessdata/osd.traineddata https://github.com/tesseract-ocr/tessdata_best/raw/refs/heads/main/osd.traineddata
           echo "Download Ghostscript and GhostPCL"
