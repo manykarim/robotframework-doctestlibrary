@@ -134,7 +134,7 @@ class Page:
 
     def _normalized_ocr_tokens(self) -> List[str]:
         if self.ocr_tokens:
-            return [token for token in (self._normalize_token(t) for t in self.ocr_tokens) if token]
+            return [token for token in self.ocr_tokens if token]
 
         if not self.ocr_text_data:
             return []
@@ -169,28 +169,126 @@ class Page:
 
     def _refine_east_tokens(self, base_image: np.ndarray):
         if not self.ocr_text_data:
+            self.ocr_tokens = []
             return
-        tokens = []
+
         lefts = self.ocr_text_data.get('left') or []
         tops = self.ocr_text_data.get('top') or []
         widths = self.ocr_text_data.get('width') or []
         heights = self.ocr_text_data.get('height') or []
+        raw_texts = self.ocr_text_data.get('text') or []
+        confidences = self.ocr_text_data.get('conf') or []
 
-        for left, top, width, height in zip(lefts, tops, widths, heights):
-            if width <= 0 or height <= 0:
-                continue
-            roi = base_image[top:top+height, left:left+width]
-            if roi.size == 0:
-                continue
-            scale_factor = 3 if min(roi.shape[0], roi.shape[1]) < 80 else 1
-            roi_for_ocr = roi
-            if scale_factor > 1:
-                roi_for_ocr = cv2.resize(roi, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
-            text = pytesseract.image_to_string(roi_for_ocr, config='--oem 1 --psm 7 -l eng').strip()
-            if text:
-                tokens.append(text)
+        def text_score(text: str) -> float:
+            if not text:
+                return 0.0
+            alnum = sum(ch.isalnum() for ch in text)
+            return alnum / len(text)
 
-        self.ocr_tokens = tokens
+        def iou(a: Dict[str, Union[int, str]], b: Dict[str, Union[int, str]]) -> float:
+            ax1, ay1 = a['left'], a['top']
+            ax2, ay2 = ax1 + a['width'], ay1 + a['height']
+            bx1, by1 = b['left'], b['top']
+            bx2, by2 = bx1 + b['width'], by1 + b['height']
+
+            inter_x1 = max(ax1, bx1)
+            inter_y1 = max(ay1, by1)
+            inter_x2 = min(ax2, bx2)
+            inter_y2 = min(ay2, by2)
+
+            if inter_x2 <= inter_x1 or inter_y2 <= inter_y1:
+                return 0.0
+
+            inter = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
+            area_a = (ax2 - ax1) * (ay2 - ay1)
+            area_b = (bx2 - bx1) * (by2 - by1)
+            union = area_a + area_b - inter
+            if union <= 0:
+                return 0.0
+            return inter / union
+
+        entries: List[Dict[str, Union[int, str]]] = []
+
+        def add_entry(entry: Dict[str, Union[int, str]]):
+            for existing in entries:
+                if iou(entry, existing) > 0.3:
+                    if text_score(entry['text']) > text_score(existing['text']):
+                        existing.update(entry)
+                    return
+            entries.append(entry)
+
+        for raw_text, left, top, width, height, conf in zip(
+            raw_texts, lefts, tops, widths, heights, confidences
+        ):
+            normalized_raw = self._normalize_token(raw_text)
+
+            try:
+                conf_value = float(conf)
+            except (TypeError, ValueError):
+                conf_value = 0.0
+
+            refined_text_normalized = ""
+            if width > 0 and height > 0:
+                roi = base_image[top:top+height, left:left+width]
+                if roi.size > 0:
+                    scale_factor = 3 if min(roi.shape[0], roi.shape[1]) < 80 else 1
+                    if scale_factor > 1:
+                        roi = cv2.resize(
+                            roi,
+                            None,
+                            fx=scale_factor,
+                            fy=scale_factor,
+                            interpolation=cv2.INTER_CUBIC,
+                        )
+                    refined_text = pytesseract.image_to_string(
+                        roi, config='--oem 1 --psm 7 -l eng'
+                    ).strip()
+                    refined_text_normalized = self._normalize_token(refined_text)
+
+            if normalized_raw:
+                final_text = normalized_raw
+                if refined_text_normalized:
+                    score_raw = text_score(normalized_raw)
+                    score_refined = text_score(refined_text_normalized)
+                    digits_raw = sum(ch.isdigit() for ch in normalized_raw)
+                    digits_refined = sum(ch.isdigit() for ch in refined_text_normalized)
+
+                    use_refined = False
+                    if digits_raw == 0:
+                        if score_refined > score_raw or (
+                            score_refined == score_raw
+                            and len(refined_text_normalized) > len(normalized_raw)
+                        ):
+                            use_refined = True
+                    else:
+                        if digits_refined == digits_raw and score_refined > score_raw + 0.1:
+                            use_refined = True
+
+                    if use_refined:
+                        final_text = refined_text_normalized
+
+                add_entry(
+                    {
+                        'left': left,
+                        'top': top,
+                        'width': width,
+                        'height': height,
+                        'text': final_text,
+                    }
+                )
+            elif refined_text_normalized and conf_value <= DEFAULT_CONFIDENCE:
+                add_entry(
+                    {
+                        'left': left,
+                        'top': top,
+                        'width': width,
+                        'height': height,
+                        'text': refined_text_normalized,
+                    }
+                )
+
+        entries.sort(key=lambda e: (e['top'], e['left']))
+        self.ocr_tokens = [entry['text'] for entry in entries]
 
     def get_image_with_ignore_areas(self):
         """Return the image with ignore areas highlighted."""
