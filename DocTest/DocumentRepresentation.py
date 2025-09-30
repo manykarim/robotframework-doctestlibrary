@@ -18,10 +18,12 @@ from DocTest.config import (
     ADD_PIXELS_TO_IGNORE_AREA,
     TESSERACT_CONFIG,
 )
-from DocTest import ocrs_adapter
+from DocTest import ocrs_adapter, text_corrector
 import tempfile
 
-# Constants
+# Padding applied around ignore areas derived from OCR text boxes to cope
+# with minor bounding box inaccuracies.
+PATTERN_MASK_PADDING = 6
 
 
 class Page:
@@ -188,7 +190,7 @@ class Page:
             return ""
         token = re.sub(r"\s+", " ", token)
 
-        return token
+        return text_corrector.correct_token(token)
 
     def _refine_east_tokens(self, base_image: np.ndarray):
         if not self.ocr_text_data:
@@ -530,8 +532,8 @@ class Page:
         """Handle pattern-based ignore areas by searching the OCR text for text patterns."""
         import re
         pattern = ignore_area.get('pattern')
-        xoffset = int(ignore_area.get('xoffset', 0))
-        yoffset = int(ignore_area.get('yoffset', 0))
+        base_xoffset = int(ignore_area.get('xoffset', 0))
+        base_yoffset = int(ignore_area.get('yoffset', 0))
 
         # Iterate through text data to identify matching patterns and mark as ignore areas
         n_boxes = len(self.ocr_text_data['text'])
@@ -550,6 +552,22 @@ class Page:
                 self.ocr_text_data['width'][j],
                 self.ocr_text_data['height'][j],
             )
+            padding_x = PATTERN_MASK_PADDING
+            padding_y = PATTERN_MASK_PADDING
+            if ignore_area.get('type') == 'pattern':
+                padding_x = max(padding_x - 2, 0)
+                padding_y = max(padding_y - 2, 0)
+            else:
+                text_mask = {
+                    "x": int(x) - (base_xoffset + padding_x),
+                    "y": int(y) - (base_yoffset + padding_y),
+                    "width": int(w) + 2 * (base_xoffset + padding_x),
+                    "height": int(h) + 2 * (base_yoffset + padding_y),
+                }
+                self.pixel_ignore_areas.append(text_mask)
+                continue
+            xoffset = base_xoffset + padding_x
+            yoffset = base_yoffset + padding_y
             text_mask = {
                 "x": int(x) - xoffset,
                 "y": int(y) - yoffset,
@@ -562,8 +580,8 @@ class Page:
         import re
         pattern_type = ignore_area.get('type') or ignore_area.get('pattern_type')
         pattern = ignore_area.get('pattern')
-        xoffset = int(ignore_area.get('xoffset', 0))
-        yoffset = int(ignore_area.get('yoffset', 0))
+        base_xoffset = int(ignore_area.get('xoffset', 0))
+        base_yoffset = int(ignore_area.get('yoffset', 0))
         search_pattern = re.compile(pattern)
         if pattern_type == "word_pattern":
             if self.pdf_text_words:
@@ -574,6 +592,8 @@ class Page:
                         y = y0 * self.dpi / 72
                         w = (x1 - x0) * self.dpi / 72
                         h = (y1 - y0) * self.dpi / 72
+                        xoffset = base_xoffset + PATTERN_MASK_PADDING
+                        yoffset = base_yoffset + PATTERN_MASK_PADDING
                         text_mask = {"x": int(x) - xoffset, "y": int(y) - yoffset, "width": int(w) + 2 * xoffset, "height": int(h) + 2 * yoffset}
                         self.pixel_ignore_areas.append(text_mask)
         else:
@@ -583,6 +603,8 @@ class Page:
                         for line in block['lines']:
                             if len(line['spans']) != 0 and search_pattern.match(line['spans'][0]['text']):
                                 (x, y, w, h) = (line['bbox'][0]*self.dpi/72, line['bbox'][1]*self.dpi/72,(line['bbox'][2]-line['bbox'][0])*self.dpi/72, (line['bbox'][3]-line['bbox'][1])*self.dpi/72)
+                                xoffset = base_xoffset + PATTERN_MASK_PADDING
+                                yoffset = base_yoffset + PATTERN_MASK_PADDING
                                 text_mask = {"x": int(x) - xoffset, "y": int(y) - yoffset, "width": int(w) + 2 * xoffset, "height": int(h) + 2 * yoffset}
                                 self.pixel_ignore_areas.append(text_mask)
 

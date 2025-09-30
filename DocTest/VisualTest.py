@@ -214,16 +214,23 @@ class VisualTest:
             ignore_watermarks = os.getenv("IGNORE_WATERMARKS", False)
 
         # Load reference and candidate documents
+        ignore_args = {
+            "ignore_area_file": placeholder_file,
+            "ignore_area": mask,
+        }
         reference_doc = DocumentRepresentation(
             reference_image,
             dpi=dpi,
             ocr_engine=ocr_engine,
-            ignore_area_file=placeholder_file,
-            ignore_area=mask,
+            **ignore_args,
             **kwargs,
         )
         candidate_doc = DocumentRepresentation(
-            candidate_image, dpi=dpi, ocr_engine=ocr_engine, **kwargs
+            candidate_image,
+            dpi=dpi,
+            ocr_engine=ocr_engine,
+            **ignore_args,
+            **kwargs,
         )
 
         watermarks = []

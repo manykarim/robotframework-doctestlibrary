@@ -114,10 +114,8 @@ def ensure_ready() -> bool:
     if _ocrs_extension is None:
         LOGGER.debug("OCRS extension is missing; skipping warm-up")
         return False
-    if not models_available():
-        return False
+    dummy = np.zeros((2, 2, 3), dtype=np.uint8)
     try:
-        dummy = np.zeros((2, 2, 3), dtype=np.uint8)
         _ocrs_extension.run_ocr(dummy, None, False)
     except RuntimeError as exc:
         LOGGER.debug("OCRS warm-up failed: %s", exc)
