@@ -17,6 +17,8 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Install Packages and Binaries
         run: |
           sudo apt-get update
@@ -42,6 +44,17 @@ jobs:
       - name: Install dependencies
         run: poetry install
         if: steps.cache.outputs.cache-hit != 'true'
+      - name: Prefetch OCR models
+        run: |
+          poetry run python - <<'PY'
+          import numpy as np
+          from tasks import _ensure_ocrs_extension
+          from DocTest import ocrs_adapter
+
+          _ensure_ocrs_extension()
+          dummy = np.zeros((8, 8, 3), dtype=np.uint8)
+          ocrs_adapter.run_ocr(dummy)
+          PY
       - name: Run tests
         run: |
           poetry run invoke tests
@@ -64,4 +77,3 @@ jobs:
           name: xUnit Tests ${{ matrix.python-version }} # Name of the check run which will be created
           path: results/pytest.xml,results/xunit.xml # Path to test results
           reporter: java-junit # Format of test results
-
