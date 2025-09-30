@@ -22,7 +22,7 @@ LOG = logging.getLogger(__name__)
 class VisualTest:
     ROBOT_LIBRARY_VERSION = 1.0
     DPI_DEFAULT = 200
-    OCR_ENGINE_DEFAULT = "tesseract"
+    OCR_ENGINE_DEFAULT = "ocrs"
     MOVEMENT_DETECTION_DEFAULT = "template"
     PARTIAL_IMAGE_THRESHOLD_DEFAULT = 0.1
     SIFT_RATIO_THRESHOLD_DEFAULT = 0.75
@@ -47,7 +47,7 @@ class VisualTest:
         dpi: int = DPI_DEFAULT,
         take_screenshots: bool = False,
         show_diff: bool = False,
-        ocr_engine: Literal["tesseract", "east"] = OCR_ENGINE_DEFAULT,
+        ocr_engine: Literal["ocrs", "tesseract", "east"] = OCR_ENGINE_DEFAULT,
         screenshot_format: str = "jpg",
         embed_screenshots: bool = False,
         force_ocr: bool = False,
@@ -71,7 +71,7 @@ class VisualTest:
         | ``dpi`` | DPI to be used for image processing. Default is 200. |
         | ``take_screenshots`` | Whether to take screenshots during image comparison. Default is False. |
         | ``show_diff`` | Whether to show diff screenshot in the images during comparison. Default is False. |
-        | ``ocr_engine`` | OCR engine to be used for text extraction. Options are ``tesseract`` and ``east``. Default is ``tesseract``. |
+        | ``ocr_engine`` | OCR engine to be used for text extraction. Options are ``ocrs``, ``tesseract`` and ``east``. Default is ``ocrs``. |
         | ``screenshot_format`` | Format of the screenshots to be saved. Options are ``jpg`` and ``png``. Default is ``jpg``. |
         | ``embed_screenshots`` | Whether to embed screenshots as base64 in the log. Default is False. |
         | ``force_ocr`` | Whether to force OCR during image comparison. Default is False. |
@@ -131,7 +131,7 @@ class VisualTest:
         watermark_file: Optional[Union[str, list]] = None,
         ignore_watermarks: bool = None,
         force_ocr: bool = False,
-        ocr_engine: Literal["tesseract", "east"] = None,
+        ocr_engine: Literal["ocrs", "tesseract", "east"] = None,
         DPI: int = None,
         resize_candidate: bool = False,
         blur: bool = False,
@@ -159,7 +159,7 @@ class VisualTest:
         | ``DPI`` | Resolution in which documents are rendered before comparison |
         | ``watermark_file`` | Path to an image/document, a folder containing multiple images, or a list of paths. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
         | ``ignore_watermarks`` | Ignores a very special watermark in the middle of the document |
-        | ``ocr_engine`` | Use ``tesseract`` or ``east`` for Text Detection and OCR |
+        | ``ocr_engine`` | Use ``ocrs``, ``tesseract`` or ``east`` for Text Detection and OCR |
         | ``resize_candidate`` | Allow visual comparison, even of documents have different sizes |
         | ``blur`` | Blur the image before comparison to reduce visual difference caused by noise |
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
@@ -966,14 +966,14 @@ class VisualTest:
         return verify_assertion(text, assertion_operator, assertion_expected, message)
 
     @keyword
-    def set_ocr_engine(self, ocr_engine: Literal["tesseract", "east"]):
+    def set_ocr_engine(self, ocr_engine: Literal["ocrs", "tesseract", "east"]):
         """Set the OCR engine to be used for text extraction.
 
         | =Arguments= | =Description= |
-        | ``ocr_engine`` | OCR engine to be used. Options are ``tesseract`` and ``east``. |
+        | ``ocr_engine`` | OCR engine to be used. Options are ``ocrs``, ``tesseract`` and ``east``. |
 
         Examples:
-        | `Set OCR Engine`    tesseract    # Set the OCR engine to Tesseract
+        | `Set OCR Engine`    ocrs    # Set the OCR engine to OCRS
         | `Set OCR Engine`    east    # Set the OCR engine to EAST
 
         """

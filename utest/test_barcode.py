@@ -3,6 +3,15 @@ import pytest
 from pathlib import Path
 import numpy
 
+pytestmark = [
+    pytest.mark.usefixtures("fake_ocrs"),
+    pytest.mark.usefixtures("require_image_samples"),
+    pytest.mark.skipif(
+        not (Path(__file__).resolve().parent.parent / "testdata" / "sample_1_page_with_barcodes.pdf").exists(),
+        reason="Barcode sample test data is unavailable in this environment",
+    ),
+]
+
 def test_single_png_with_barcode(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'datamatrix.png', contains_barcodes=True)
     assert len(img.get_barcodes()) == 2

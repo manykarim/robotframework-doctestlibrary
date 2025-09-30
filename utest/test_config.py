@@ -37,7 +37,7 @@ class TestConfigConstants:
 
     def test_ocr_engine_default_value(self):
         """Test that OCR_ENGINE_DEFAULT has expected value."""
-        assert OCR_ENGINE_DEFAULT == "tesseract"
+        assert OCR_ENGINE_DEFAULT == "ocrs"
         assert isinstance(OCR_ENGINE_DEFAULT, str)
 
     def test_east_confidence_value(self):

@@ -21,7 +21,7 @@ class TestVisualTestInitialization:
         assert vt.dpi == 200
         assert vt.take_screenshots is False
         assert vt.show_diff is False
-        assert vt.ocr_engine == "tesseract"
+        assert vt.ocr_engine == "ocrs"
         assert vt.screenshot_format == "jpg"
         assert vt.embed_screenshots is False
         assert vt.force_ocr is False
@@ -354,11 +354,11 @@ class TestVisualTestCompareImages:
         mock_doc.assert_any_call(
             "ref.pdf",
             dpi=300,
-            ocr_engine="tesseract",
+            ocr_engine="ocrs",
             ignore_area_file=None,
             ignore_area=None,
         )
-        mock_doc.assert_any_call("cand.pdf", dpi=300, ocr_engine="tesseract")
+        mock_doc.assert_any_call("cand.pdf", dpi=300, ocr_engine="ocrs")
 
     @patch("DocTest.VisualTest.DocumentRepresentation")
     def test_compare_images_resize_candidate(self, mock_doc):
@@ -455,9 +455,7 @@ class TestVisualTestTextAndBarcodes:
         result = vt.get_text_from_document("local_file.pdf")
 
         assert result == "Local text content"
-        mock_doc.assert_called_once_with(
-            "local_file.pdf", dpi=200, ocr_engine="tesseract"
-        )
+        mock_doc.assert_called_once_with("local_file.pdf", dpi=200, ocr_engine="ocrs")
 
     @patch("DocTest.VisualTest.is_url")
     @patch("DocTest.VisualTest.download_file_from_url")

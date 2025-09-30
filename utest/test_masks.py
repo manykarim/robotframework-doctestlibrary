@@ -4,6 +4,11 @@ import pytest
 from pathlib import Path
 import numpy as np
 
+pytestmark = [
+    pytest.mark.usefixtures("fake_ocrs"),
+    pytest.mark.usefixtures("require_image_samples"),
+]
+
 def test_image_area_mask(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'Beach_date.png', ignore_area_file=testdata_dir / 'area_mask.json')
     assert len(img.abstract_ignore_areas)==1

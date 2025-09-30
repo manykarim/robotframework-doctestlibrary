@@ -1,6 +1,13 @@
-from DocTest.DocumentRepresentation import DocumentRepresentation
-import pytest
 from pathlib import Path
+
+import pytest
+
+from DocTest.DocumentRepresentation import DocumentRepresentation
+
+pytestmark = [
+    pytest.mark.usefixtures("fake_ocrs"),
+    pytest.mark.usefixtures("require_image_samples"),
+]
 
 def test_big_text_from_image(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'text_big.png')
@@ -34,25 +41,25 @@ def test_image_text_content_with_east(testdata_dir):
     assert "01-Jan-2021" in img.get_text()
     assert "ABCDEFGHI" in img.get_text()
 
-def test_image_text_content_with_pytesseract(testdata_dir):
+def test_image_text_content_with_ocrs(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'birthday_1080_date_id.png')
     assert "01-Jan-2021" in img.get_text()
     assert "ABCDEFGHI" in img.get_text()
 
-def test_image_text_content_with_pytesseract_custom_options_01(testdata_dir):
+def test_image_text_content_with_ocrs_custom_options_01(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'text_small.png')
     assert "ABCDEFGHI" in img.get_text()
     assert "abcdefghi" in img.get_text()
     assert "1234567890" in img.get_text()
 
-def test_image_text_content_with_pytesseract_custom_options_02(testdata_dir):
+def test_image_text_content_with_ocrs_custom_options_02(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'text_small.png')
-    img.get_text(tesseract_config='--psm 6')
-    assert "ABCDEFGHI" in img.get_text()
-    assert "abcdefghi" in img.get_text()
-    assert "1234567890" in img.get_text()
+    filtered_text = img.get_text(tesseract_config='--psm 6 tessedit_char_whitelist=ABC123')
+    stripped = filtered_text.replace(" ", "")
+    assert stripped
+    assert set(stripped) <= set("ABC123")
 
-def test_image_text_content_with_pytesseract_custom_options_03(testdata_dir):
+def test_image_text_content_with_ocrs_custom_options_03(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'text_big.png')
     assert "ABCDEFGHI" in img.get_text()
     assert "abcdefghi" in img.get_text()

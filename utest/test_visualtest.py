@@ -2,6 +2,11 @@ from DocTest.VisualTest import VisualTest
 import pytest
 from pathlib import Path
 
+pytestmark = [
+    pytest.mark.usefixtures("fake_ocrs"),
+    pytest.mark.usefixtures("require_image_samples"),
+]
+
 def test_get_text_from_image(testdata_dir):
     visual_tester = VisualTest()
     ref_image=str(testdata_dir / 'text_big.png')

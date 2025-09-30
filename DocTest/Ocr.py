@@ -2,14 +2,11 @@ import time
 import os
 import cv2
 import numpy as np
-import pytesseract
 from typing import Dict, List
-from pytesseract import Output
 import urllib
 import re
 import unicodedata
-
-PYTESSERACT_CONFIDENCE=20
+from DocTest import ocrs_adapter
 
 def remove_control_characters(s):
     return "".join(ch for ch in s if unicodedata.category(ch)[0]!="C")
@@ -73,7 +70,7 @@ class EastTextExtractor:
 
             text = self._recognize_roi(roi)
             
-            # recalculate coordinates in tesseract text dict and add start_x and start_y
+            # recalculate coordinates in OCRS text dict and add start_x and start_y
             for i in range(len(text['text'])):
                 if text['conf'][i] == '-1':
                     continue
@@ -98,18 +95,23 @@ class EastTextExtractor:
         return results
 
     def _recognize_roi(self, roi: np.ndarray) -> Dict[str, List[str]]:
-        config = '--oem 1 --psm 7 -l eng'
         scale_factor = 3 if min(roi.shape[0], roi.shape[1]) < 80 else 1
         roi_for_ocr = roi
         if scale_factor > 1:
             roi_for_ocr = cv2.resize(roi, None, fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
 
-        data = pytesseract.image_to_data(roi_for_ocr, config=config, output_type=Output.DICT)
+        rgb_roi = cv2.cvtColor(roi_for_ocr, cv2.COLOR_BGR2RGB)
+        data = ocrs_adapter.run_ocr(rgb_roi)
 
-        # rescale coordinates back to ROI space
         if scale_factor > 1:
-            for key in ('left', 'top', 'width', 'height'):
-                data[key] = [int(value / scale_factor) for value in data.get(key, [])]
+            for key in ("left", "top", "width", "height"):
+                adjusted = []
+                for value in data.get(key, []):
+                    try:
+                        adjusted.append(int(int(value) / scale_factor))
+                    except (TypeError, ValueError):
+                        adjusted.append(0)
+                data[key] = adjusted
 
         return data
 
@@ -184,10 +186,11 @@ class EastTextExtractor:
             end_Y = int(end_Y * ratio_height * percent)
 
             ROIImage = image.copy()[start_Y:end_Y, start_X:end_X]
-            config = '--psm 6' if numbers else ''
-            extracted_text.append(pytesseract.image_to_string(
-                ROIImage, config=config)
-            )
+            allowed_chars = None
+            if numbers:
+                allowed_chars = "0123456789"
+            text_blocks = ocrs_adapter.run_ocr(cv2.cvtColor(ROIImage, cv2.COLOR_BGR2RGB), allowed_chars=allowed_chars)
+            extracted_text.append(" ".join(filter(None, text_blocks.get("text", []))))
 
         return extracted_text
 

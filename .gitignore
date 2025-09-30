@@ -8,4 +8,7 @@ robotframework_doctestlibrary.egg-info/
 log.html
 output.xml
 report.html
-results/
+.venv/
+DocTest/_ocrs/_ocrs*.so
+DocTest/_ocrs/_ocrs*.pyd
+rust/ocrs_py/target/
