@@ -4,7 +4,6 @@ from pathlib import Path
 from DocTest.VisualTest import VisualTest
 
 pytestmark = [
-    pytest.mark.usefixtures("fake_ocrs"),
     pytest.mark.usefixtures("require_image_samples"),
     pytest.mark.skipif(
         not (Path(__file__).resolve().parent.parent / "testdata" / "sample_1_page_with_watermark.pdf").exists(),

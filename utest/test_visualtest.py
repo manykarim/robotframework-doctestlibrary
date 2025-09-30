@@ -3,7 +3,6 @@ import pytest
 from pathlib import Path
 
 pytestmark = [
-    pytest.mark.usefixtures("fake_ocrs"),
     pytest.mark.usefixtures("require_image_samples"),
 ]
 

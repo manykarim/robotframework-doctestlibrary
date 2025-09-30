@@ -5,7 +5,6 @@ import pytest
 from DocTest.DocumentRepresentation import DocumentRepresentation
 
 pytestmark = [
-    pytest.mark.usefixtures("fake_ocrs"),
     pytest.mark.usefixtures("require_image_samples"),
 ]
 

@@ -358,7 +358,13 @@ class TestVisualTestCompareImages:
             ignore_area_file=None,
             ignore_area=None,
         )
-        mock_doc.assert_any_call("cand.pdf", dpi=300, ocr_engine="ocrs")
+        mock_doc.assert_any_call(
+            "cand.pdf",
+            dpi=300,
+            ocr_engine="ocrs",
+            ignore_area_file=None,
+            ignore_area=None,
+        )
 
     @patch("DocTest.VisualTest.DocumentRepresentation")
     def test_compare_images_resize_candidate(self, mock_doc):

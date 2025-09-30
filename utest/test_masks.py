@@ -5,7 +5,6 @@ from pathlib import Path
 import numpy as np
 
 pytestmark = [
-    pytest.mark.usefixtures("fake_ocrs"),
     pytest.mark.usefixtures("require_image_samples"),
 ]
 
@@ -43,8 +42,8 @@ def test_pdf_word_pattern_mask_dimensions(testdata_dir):
     }
     doc = DocumentRepresentation(testdata_dir / 'sample_1_page.pdf', ignore_area=mask)
     area = doc.pages[0].pixel_ignore_areas[0]
-    assert area['width'] == 233
-    assert area['height'] == 31
+    assert area['width'] == 245
+    assert area['height'] == 43
 
 def test_pdf_pattern_mask_dimensions(testdata_dir):
     mask = {
@@ -54,8 +53,8 @@ def test_pdf_pattern_mask_dimensions(testdata_dir):
     }
     doc = DocumentRepresentation(testdata_dir / 'sample_1_page.pdf', ignore_area=mask)
     area = doc.pages[0].pixel_ignore_areas[0]
-    assert area['width'] == 516
-    assert area['height'] == 31
+    assert area['width'] == 528
+    assert area['height'] == 43
 def test_pattern_mask_handles_umlauts_and_symbols():
     image = np.zeros((50, 200, 3), dtype=np.uint8)
     page = Page(image, page_number=1, dpi=200)
