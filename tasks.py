@@ -1,6 +1,11 @@
+import importlib
+import os
 import pathlib
 import subprocess
+import sys
+
 from invoke import task
+
 import DocTest
 from DocTest import __version__ as VERSION
 import inspect
@@ -11,9 +16,44 @@ if not hasattr(inspect, 'getargspec'):
 ROOT = pathlib.Path(__file__).parent.resolve().as_posix()
 utests_completed_process = None
 atests_completed_process = None
+RUST_MANIFEST = pathlib.Path(__file__).parent / "rust" / "ocrs_py" / "Cargo.toml"
+
+
+def _ensure_ocrs_extension() -> None:
+    """Compile the OCRS Rust extension if it is not ready."""
+
+    if os.getenv("DOCTEST_SKIP_OCRS_BUILD") == "1":
+        return
+
+    from DocTest import ocrs_adapter
+
+    if ocrs_adapter.ensure_ready():
+        return
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "maturin",
+        "develop",
+        "--release",
+        "--manifest-path",
+        RUST_MANIFEST.as_posix(),
+    ]
+    subprocess.run(cmd, check=True)
+
+    sys.modules.pop("DocTest._ocrs", None)
+    sys.modules.pop("_ocrs", None)
+    importlib.reload(ocrs_adapter)
+
+    if not ocrs_adapter.ensure_ready():
+        raise RuntimeError(
+            "OCRS extension is unavailable after build. Check the Rust toolchain "
+            "and model download connectivity."
+        )
 
 @task
 def utests(context):
+    _ensure_ocrs_extension()
     cmd = [
         "coverage",
         "run",
@@ -29,6 +69,7 @@ def utests(context):
 
 @task
 def atests(context):
+    _ensure_ocrs_extension()
     cmd = [
         "coverage",
         "run",

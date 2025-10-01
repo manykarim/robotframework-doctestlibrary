@@ -52,26 +52,37 @@ Install Tesseract, Ghostscript, GhostPCL, ImageMagick binaries and barcode libra
 
 Linux
 ```bash
-apt-get install imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
+apt-get install imagemagick ghostscript libdmtx0b libzbar0
 ```
 
 Windows
- * https://github.com/UB-Mannheim/tesseract/wiki
+ * https://www.rust-lang.org/tools/install
+ * https://www.maturin.rs/
  * https://ghostscript.com/releases/gsdnld.html
  * https://ghostscript.com/releases/gpcldnld.html
  * https://imagemagick.org/script/download.php
 
 
-## Some special instructions for Windows 
+### Build the OCRS extension
+
+DocTest ships with a bundled Rust extension that wraps the [OCRS](https://github.com/robertknight/ocrs) engine. When developing locally run the following command to compile the module so Python can import it:
+
+```bash
+poetry run python build.py
+```
+
+The script invokes `maturin` behind the scenes and copies the compiled shared library into `DocTest/_ocrs`. If `maturin` is not available yet install it inside the Poetry environment via `poetry run pip install maturin`. By default the OCR models are downloaded automatically on the first OCR invocation; to use pre-downloaded models set the `OCRS_MODEL_DIR` environment variable or point `OCRS_DETECTION_MODEL` and `OCRS_RECOGNITION_MODEL` at explicit files.
+
+
+## Some special instructions for Windows
 
 ### Rename executable for GhostPCL to pcl6.exe (only needed for `.pcl` support)
 The executable for GhostPCL `gpcl6win64.exe` needs to be renamed to `pcl6.exe`
 
 Otherwise it will not be possible to render .pcl files successfully for visual comparison.
 
-### Add tesseract, ghostscript and imagemagick to system path in windows (only needed for OCR, `.pcl` and `.ps` support)
+### Add ghostscript and imagemagick to system path in windows (only needed for OCR, `.pcl` and `.ps` support)
 * C:\Program Files\ImageMagick-7.0.10-Q16-HDRI
-* C:\Program Files\Tesseract-OCR
 * C:\Program Files\gs\gs9.53.1\bin
 * C:\Program Files\gs\ghostpcl-9.53.1-win64
 
@@ -79,7 +90,6 @@ Otherwise it will not be possible to render .pcl files successfully for visual c
 
 That means: When you open the CMD shell you can run the commands
 * `magick.exe`
-* `tesseract.exe`
 * `gswin64.exe`
 * `pcl6.exe`
 

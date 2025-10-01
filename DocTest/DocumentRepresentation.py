@@ -1,20 +1,29 @@
 import os
 import cv2
-import pytesseract
 import numpy as np
 import json
 import logging
 import re
+import warnings
 from pathlib import Path
 from skimage import metrics
 from typing import List, Dict, Optional, Tuple, Union, Literal
 from concurrent.futures import ThreadPoolExecutor
-from pytesseract import Output
 from DocTest.IgnoreAreaManager import IgnoreAreaManager
-from DocTest.config import DEFAULT_DPI, OCR_ENGINE_DEFAULT, DEFAULT_CONFIDENCE, MINIMUM_OCR_RESOLUTION, ADD_PIXELS_TO_IGNORE_AREA, TESSERACT_CONFIG
+from DocTest.config import (
+    DEFAULT_DPI,
+    OCR_ENGINE_DEFAULT,
+    DEFAULT_CONFIDENCE,
+    MINIMUM_OCR_RESOLUTION,
+    ADD_PIXELS_TO_IGNORE_AREA,
+    TESSERACT_CONFIG,
+)
+from DocTest import ocrs_adapter, text_corrector
 import tempfile
 
-# Constants
+# Padding applied around ignore areas derived from OCR text boxes to cope
+# with minor bounding box inaccuracies.
+PATTERN_MASK_PADDING = 6
 
 
 class Page:
@@ -55,12 +64,28 @@ class Page:
                     interpolation=cv2.INTER_CUBIC,
                 )
                 self.image_rescaled_for_ocr = True
-        if ocr_engine == "tesseract":
-            config = tesseract_config
-            gray_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2GRAY)
-            thresholded_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-            self.ocr_text_data = pytesseract.image_to_data(thresholded_image, config=config, output_type=Output.DICT)
-            self._normalize_ocr_coordinates(scale_factor if self.image_rescaled_for_ocr else 1.0, target_height, target_width)
+        if ocr_engine in {"tesseract", "ocrs"}:
+            if ocr_engine == "tesseract":
+                warnings.warn(
+                    "The 'tesseract' OCR engine is deprecated. Using OCRS instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            rgb_image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
+            allowed_chars = ocrs_adapter.extract_allowed_chars(tesseract_config)
+            try:
+                self.ocr_text_data = ocrs_adapter.run_ocr(
+                    rgb_image,
+                    allowed_chars=allowed_chars,
+                )
+            except ocrs_adapter.OcrsError as exc:
+                logging.getLogger(__name__).error("OCRS failed: %s", exc)
+                raise
+            self._normalize_ocr_coordinates(
+                scale_factor if self.image_rescaled_for_ocr else 1.0,
+                target_height,
+                target_width,
+            )
             self.ocr_performed = True
         elif ocr_engine == "east":
             from DocTest.Ocr import EastTextExtractor
@@ -165,7 +190,7 @@ class Page:
             return ""
         token = re.sub(r"\s+", " ", token)
 
-        return token
+        return text_corrector.correct_token(token)
 
     def _refine_east_tokens(self, base_image: np.ndarray):
         if not self.ocr_text_data:
@@ -240,9 +265,8 @@ class Page:
                             fy=scale_factor,
                             interpolation=cv2.INTER_CUBIC,
                         )
-                    refined_text = pytesseract.image_to_string(
-                        roi, config='--oem 1 --psm 7 -l eng'
-                    ).strip()
+                    refined_result = ocrs_adapter.run_ocr(cv2.cvtColor(roi, cv2.COLOR_BGR2RGB))
+                    refined_text = " ".join(filter(None, refined_result.get('text', []))).strip()
                     refined_text_normalized = self._normalize_token(refined_text)
 
             if normalized_raw:
@@ -508,8 +532,8 @@ class Page:
         """Handle pattern-based ignore areas by searching the OCR text for text patterns."""
         import re
         pattern = ignore_area.get('pattern')
-        xoffset = int(ignore_area.get('xoffset', 0))
-        yoffset = int(ignore_area.get('yoffset', 0))
+        base_xoffset = int(ignore_area.get('xoffset', 0))
+        base_yoffset = int(ignore_area.get('yoffset', 0))
 
         # Iterate through text data to identify matching patterns and mark as ignore areas
         n_boxes = len(self.ocr_text_data['text'])
@@ -528,6 +552,22 @@ class Page:
                 self.ocr_text_data['width'][j],
                 self.ocr_text_data['height'][j],
             )
+            padding_x = PATTERN_MASK_PADDING
+            padding_y = PATTERN_MASK_PADDING
+            if ignore_area.get('type') == 'pattern':
+                padding_x = max(padding_x - 2, 0)
+                padding_y = max(padding_y - 2, 0)
+            else:
+                text_mask = {
+                    "x": int(x) - (base_xoffset + padding_x),
+                    "y": int(y) - (base_yoffset + padding_y),
+                    "width": int(w) + 2 * (base_xoffset + padding_x),
+                    "height": int(h) + 2 * (base_yoffset + padding_y),
+                }
+                self.pixel_ignore_areas.append(text_mask)
+                continue
+            xoffset = base_xoffset + padding_x
+            yoffset = base_yoffset + padding_y
             text_mask = {
                 "x": int(x) - xoffset,
                 "y": int(y) - yoffset,
@@ -540,8 +580,8 @@ class Page:
         import re
         pattern_type = ignore_area.get('type') or ignore_area.get('pattern_type')
         pattern = ignore_area.get('pattern')
-        xoffset = int(ignore_area.get('xoffset', 0))
-        yoffset = int(ignore_area.get('yoffset', 0))
+        base_xoffset = int(ignore_area.get('xoffset', 0))
+        base_yoffset = int(ignore_area.get('yoffset', 0))
         search_pattern = re.compile(pattern)
         if pattern_type == "word_pattern":
             if self.pdf_text_words:
@@ -552,6 +592,8 @@ class Page:
                         y = y0 * self.dpi / 72
                         w = (x1 - x0) * self.dpi / 72
                         h = (y1 - y0) * self.dpi / 72
+                        xoffset = base_xoffset + PATTERN_MASK_PADDING
+                        yoffset = base_yoffset + PATTERN_MASK_PADDING
                         text_mask = {"x": int(x) - xoffset, "y": int(y) - yoffset, "width": int(w) + 2 * xoffset, "height": int(h) + 2 * yoffset}
                         self.pixel_ignore_areas.append(text_mask)
         else:
@@ -561,6 +603,8 @@ class Page:
                         for line in block['lines']:
                             if len(line['spans']) != 0 and search_pattern.match(line['spans'][0]['text']):
                                 (x, y, w, h) = (line['bbox'][0]*self.dpi/72, line['bbox'][1]*self.dpi/72,(line['bbox'][2]-line['bbox'][0])*self.dpi/72, (line['bbox'][3]-line['bbox'][1])*self.dpi/72)
+                                xoffset = base_xoffset + PATTERN_MASK_PADDING
+                                yoffset = base_yoffset + PATTERN_MASK_PADDING
                                 text_mask = {"x": int(x) - xoffset, "y": int(y) - yoffset, "width": int(w) + 2 * xoffset, "height": int(h) + 2 * yoffset}
                                 self.pixel_ignore_areas.append(text_mask)
 
@@ -616,7 +660,14 @@ class Page:
                 x = self.image.shape[1] - w
             self.pixel_ignore_areas.append({"x": x, "y": y, "width": w, "height": h})
 
-    def _get_text(self, force_ocr: bool = False, ocr_engine: Literal['tesseract', 'east'] = 'tesseract', confidence: int = DEFAULT_CONFIDENCE, tesseract_config: str = TESSERACT_CONFIG, **kwargs):
+    def _get_text(
+        self,
+        force_ocr: bool = False,
+        ocr_engine: Literal['ocrs', 'tesseract', 'east'] = 'ocrs',
+        confidence: int = DEFAULT_CONFIDENCE,
+        tesseract_config: str = TESSERACT_CONFIG,
+        **kwargs,
+    ):
         """Extract text content from the page image."""
         if force_ocr and not self.ocr_performed:
             self.apply_ocr(ocr_engine=ocr_engine, tesseract_config=tesseract_config)
@@ -641,7 +692,7 @@ class Page:
             pdf_text = self._get_text_from_area_using_pdf(area)
             if pdf_text:
                 return pdf_text
-            return self._get_text_from_area_with_tesseract(area)
+            return self._get_text_from_area_with_ocrs(area)
         
         try:
             unit = area.get('unit', 'px')
@@ -661,7 +712,7 @@ class Page:
         elif self.pdf_text_words:
             return self._get_text_from_area_using_pdf(area)
         else:
-            return self._get_text_from_area_with_tesseract(area)
+            return self._get_text_from_area_with_ocrs(area)
         
     def _get_text_from_area_using_pdf(self, area: Dict) -> str:
         if not self.pdf_text_words:
@@ -683,21 +734,17 @@ class Page:
         normalized_words = [word for word in normalized_words if word]
         return " ".join(normalized_words)
 
-    def _get_text_from_area_with_tesseract(self, area: Dict):
-        """Extract text content from a specific area of the page using Tesseract OCR."""
+    def _get_text_from_area_with_ocrs(self, area: Dict) -> str:
+        """Extract text content from a specific area of the page using OCRS."""
         x, y, w, h = self._convert_to_pixels(area, area.get('unit', 'px'))
         image = self.image[y:y+h, x:x+w]
         # upscale the image if the resolution is too low for OCR
         if self.dpi < MINIMUM_OCR_RESOLUTION:
             scale_factor = MINIMUM_OCR_RESOLUTION / self.dpi
             image = cv2.resize(image, (0, 0), fx=scale_factor, fy=scale_factor, interpolation=cv2.INTER_CUBIC)
-        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        thresholded_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-        # Add a white border around the image to improve OCR accuracy
-        thresholded_image = cv2.copyMakeBorder(thresholded_image, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=(255, 255, 255))
-        config = f'--psm 11 -l eng'
-        text = pytesseract.image_to_string(thresholded_image, config=config)
-        return text.strip()
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        result = ocrs_adapter.run_ocr(rgb_image)
+        return " ".join(filter(None, result.get('text', []))).strip()
 
     def _compare_text_content_in_area_with(self, other_page: 'Page', area: Dict, force_ocr: bool = False):
         """Compare text content in a specific area of the page with another page.
@@ -719,7 +766,18 @@ class Page:
         return self.image[y:y+h, x:x+w]
     
 class DocumentRepresentation:
-    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False, contains_barcodes: bool = False, **kwargs):
+    def __init__(
+        self,
+        file_path: str,
+        dpi: int = DEFAULT_DPI,
+        ocr_engine: Literal['ocrs', 'tesseract', 'east'] = OCR_ENGINE_DEFAULT,
+        tesseract_config: str = TESSERACT_CONFIG,
+        ignore_area_file: Union[str, dict, list] = None,
+        ignore_area: Union[str, dict, list] = None,
+        force_ocr: bool = False,
+        contains_barcodes: bool = False,
+        **kwargs,
+    ):
         self.file_path = Path(file_path)
         self.dpi = dpi
         self.contains_barcodes = contains_barcodes

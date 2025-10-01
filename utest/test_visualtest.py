@@ -2,6 +2,10 @@ from DocTest.VisualTest import VisualTest
 import pytest
 from pathlib import Path
 
+pytestmark = [
+    pytest.mark.usefixtures("require_image_samples"),
+]
+
 def test_get_text_from_image(testdata_dir):
     visual_tester = VisualTest()
     ref_image=str(testdata_dir / 'text_big.png')
@@ -59,6 +63,24 @@ def test_compare_birthday_image_with_noise_and_blurring(testdata_dir):
     ref_image=str(testdata_dir / 'birthday_1080.png')
     cand_image=str(testdata_dir / 'birthday_1080_noise_001.png')
     visual_tester.compare_images(ref_image, cand_image, blur=True)
+
+
+def test_compare_images_with_pattern_placeholder(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / 'birthday_1080_date_id.png')
+    cand_image = str(testdata_dir / 'birthday_1080.png')
+    mask = str(testdata_dir / 'pattern_mask.json')
+
+    visual_tester.compare_images(ref_image, cand_image, placeholder_file=mask)
+
+
+def test_compare_images_without_placeholder_fails(testdata_dir):
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / 'birthday_1080_date_id.png')
+    cand_image = str(testdata_dir / 'birthday_1080.png')
+
+    with pytest.raises(AssertionError, match='The compared images are different.'):
+        visual_tester.compare_images(ref_image, cand_image)
 
 def test_text_on_colored_background_with_east(testdata_dir):
     visual_tester = VisualTest(ocr_engine='east')

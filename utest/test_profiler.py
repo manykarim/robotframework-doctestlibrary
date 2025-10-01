@@ -1,9 +1,15 @@
-from DocTest.VisualTest import VisualTest
-import pytest
-from pathlib import Path
+import os
 import cProfile
 import pstats
-import os
+from pathlib import Path
+
+import pytest
+
+from DocTest.VisualTest import VisualTest
+
+pytestmark = [
+    pytest.mark.usefixtures("require_image_samples"),
+]
 
 @pytest.fixture
 def get_result_dir(request):
@@ -110,7 +116,7 @@ def test_profiler_ocr_east_birthday(testdata_dir, request, get_result_dir):
     stats.sort_stats('cumtime')
     stats.print_stats()
 
-def test_profiler_ocr_pytesseract_birthday(testdata_dir, request, get_result_dir):
+def test_profiler_ocr_ocrs_birthday(testdata_dir, request, get_result_dir):
     img = VisualTest()
     testname = request.node.name
     results_dir = get_result_dir
@@ -122,7 +128,7 @@ def test_profiler_ocr_pytesseract_birthday(testdata_dir, request, get_result_dir
     stats.sort_stats('cumtime')
     stats.print_stats()
 
-def test_profiler_ocr_pytesseract_big_file(testdata_dir, request, get_result_dir):
+def test_profiler_ocr_ocrs_big_file(testdata_dir, request, get_result_dir):
 
     import cv2
     low_res_image = cv2.imread(str(testdata_dir / 'birthday_1080_date_id.png'))
@@ -140,7 +146,7 @@ def test_profiler_ocr_pytesseract_big_file(testdata_dir, request, get_result_dir
     stats.sort_stats('cumtime')
     stats.print_stats()
 
-def test_profiler_east_pytesseract_big_file(testdata_dir, request, get_result_dir):
+def test_profiler_east_ocrs_big_file(testdata_dir, request, get_result_dir):
     
         import cv2
         low_res_image = cv2.imread(str(testdata_dir / 'birthday_1080_date_id.png'))

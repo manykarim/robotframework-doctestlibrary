@@ -1,5 +1,5 @@
 *** Settings ***
-Library    DocTest.VisualTest    take_screenshots=True    ocr_engine=tesseract
+Library    DocTest.VisualTest    take_screenshots=True    ocr_engine=ocrs
 Library    Collections
 Library    BuiltIn
 
@@ -45,8 +45,8 @@ Compare Images With Move Tolerance And Text Check
 Get Text From Document With Different OCR Engines
     [Documentation]    Test text extraction with different OCR engines
     [Tags]    ocr    text_extraction    engines
-    ${text_tesseract}    Get Text From Document    ${TESTDATA_DIR}/sample.pdf
-    Should Not Be Empty    ${text_tesseract}
+    ${text_ocrs}    Get Text From Document    ${TESTDATA_DIR}/sample.pdf
+    Should Not Be Empty    ${text_ocrs}
 
 Test OCR With Different Image Formats
     [Documentation]    Test OCR functionality with various image formats
