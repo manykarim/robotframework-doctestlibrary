@@ -12,3 +12,4 @@ report.html
 DocTest/_ocrs/_ocrs*.so
 DocTest/_ocrs/_ocrs*.pyd
 rust/ocrs_py/target/
+results*/
