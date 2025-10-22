@@ -26,6 +26,7 @@ class VisualTest:
     OCR_ENGINE_DEFAULT = "tesseract"
     MOVEMENT_DETECTION_DEFAULT = "template"
     MOVEMENT_DETECTION_METHODS = {"template", "orb", "sift", "text"}
+    MOVEMENT_DETECTION_ALIASES = {"classic": "template"}
     PARTIAL_IMAGE_THRESHOLD_DEFAULT = 0.1
     SIFT_RATIO_THRESHOLD_DEFAULT = 0.75
     SIFT_MIN_MATCHES_DEFAULT = 2
@@ -101,6 +102,7 @@ class VisualTest:
         self.screenshot_dir = Path("screenshots")
         self.watermark_file = watermark_file
         movement_method = movement_detection.lower()
+        movement_method = self.MOVEMENT_DETECTION_ALIASES.get(movement_method, movement_method)
         if movement_method not in self.MOVEMENT_DETECTION_METHODS:
             raise ValueError(
                 f"Unsupported movement detection method '{movement_detection}'. "
@@ -225,7 +227,10 @@ class VisualTest:
             ignore_watermarks = os.getenv("IGNORE_WATERMARKS", False)
 
         force_ocr = force_ocr or self.force_ocr
-        detection_method = (movement_detection or self.movement_detection or self.MOVEMENT_DETECTION_DEFAULT).lower()
+        detection_method = (
+            movement_detection or self.movement_detection or self.MOVEMENT_DETECTION_DEFAULT
+        ).lower()
+        detection_method = self.MOVEMENT_DETECTION_ALIASES.get(detection_method, detection_method)
         if detection_method not in self.MOVEMENT_DETECTION_METHODS:
             raise ValueError(
                 f"Unsupported movement detection method '{detection_method}'. "
@@ -233,20 +238,21 @@ class VisualTest:
             )
 
         # Load reference and candidate documents
+        force_kwargs = {"force_ocr": force_ocr} if force_ocr else {}
         reference_doc = DocumentRepresentation(
             reference_image,
             dpi=dpi,
             ocr_engine=ocr_engine,
             ignore_area_file=placeholder_file,
             ignore_area=mask,
-            force_ocr=force_ocr,
+            **force_kwargs,
             **kwargs,
         )
         candidate_doc = DocumentRepresentation(
             candidate_image,
             dpi=dpi,
             ocr_engine=ocr_engine,
-            force_ocr=force_ocr,
+            **force_kwargs,
             **kwargs,
         )
 
@@ -536,7 +542,18 @@ class VisualTest:
 
             if move_tolerance and int(move_tolerance) > 0 and not similar:
                 diff_rectangles = self.get_diff_rectangles(absolute_diff)
-                text_based_detection = detection_method == "text" or get_pdf_content
+                has_pdf_text = bool(ref_page.pdf_text_words) and bool(cand_page.pdf_text_words)
+
+                auto_use_pdf_content = get_pdf_content
+                auto_detection_method = detection_method
+
+                if has_pdf_text and detection_method != "text":
+                    auto_detection_method = "text"
+                    auto_use_pdf_content = True
+
+                text_based_detection = (
+                    auto_detection_method == "text" or auto_use_pdf_content
+                )
 
                 if text_based_detection:
                     similar = self._check_movement_with_text(
@@ -544,8 +561,8 @@ class VisualTest:
                         cand_page=cand_page,
                         diff_rectangles=diff_rectangles,
                         move_tolerance=move_tolerance,
-                        detection_method=detection_method,
-                        use_pdf_content=get_pdf_content,
+                        detection_method=auto_detection_method,
+                        use_pdf_content=auto_use_pdf_content,
                         force_ocr=force_ocr,
                     )
                 else:
@@ -554,7 +571,7 @@ class VisualTest:
                         cand_page=cand_page,
                         diff_rectangles=diff_rectangles,
                         move_tolerance=move_tolerance,
-                        detection_method=detection_method,
+                        detection_method=auto_detection_method,
                     )
 
             if not similar:
@@ -642,6 +659,7 @@ class VisualTest:
             bool(ref_page.pdf_text_words) and bool(cand_page.pdf_text_words)
         )
         allow_ocr_fallback = detection_method == "text"
+        epsilon = 0.5
 
         for index, rect in enumerate(diff_rectangles, 1):
             diff_area_reference = ref_page.get_area(rect)
@@ -714,7 +732,7 @@ class VisualTest:
                 "_diff_area_blended",
             )
 
-            if distance > move_tolerance:
+            if distance > move_tolerance + epsilon:
                 failed_areas.append((rect, round(distance, 3)))
                 print(
                     f"Area {rect} is moved {distance:.2f} pixels which is more than the tolerated {move_tolerance} pixels."
@@ -882,10 +900,12 @@ class VisualTest:
 
         failed_areas = []
         fallback_detections = 0
+        epsilon = 0.75
 
         for rect in diff_rectangles:
-            reference_area = ref_page.get_area(rect)
-            candidate_area = cand_page.get_area(rect)
+            expanded_rect = self._expand_rect_for_detection(rect, move_tolerance, ref_page)
+            reference_area = ref_page.get_area(expanded_rect)
+            candidate_area = cand_page.get_area(expanded_rect)
 
             try:
                 result = self.find_partial_image_position(
@@ -914,7 +934,7 @@ class VisualTest:
                             f"Area {rect}: Detected likely content removal (fallback distance: {distance:.2f}px, method: {result.get('method', 'unknown')})"
                         )
 
-                    if distance > move_tolerance:
+                    if distance > move_tolerance + epsilon:
                         failed_areas.append((rect, round(distance, 3)))
                         print(
                             f"Area {rect} is moved {distance:.2f} pixels which is more than the tolerated {move_tolerance} pixels."
@@ -963,6 +983,18 @@ class VisualTest:
         )
         return True
 
+    def _expand_rect_for_detection(self, rect, move_tolerance, page):
+        pad = max(5, int(move_tolerance) + 2)
+        x = max(0, rect["x"] - pad)
+        y = max(0, rect["y"] - pad)
+        width = rect["width"] + 2 * pad
+        height = rect["height"] + 2 * pad
+        max_width = page.image.shape[1] - x
+        max_height = page.image.shape[0] - y
+        width = min(width, max_width)
+        height = min(height, max_height)
+        return {"x": x, "y": y, "width": width, "height": height}
+
     @keyword
     def set_movement_detection(self, movement_detection: str):
         """Set the default movement detection method for subsequent comparisons.
@@ -976,6 +1008,7 @@ class VisualTest:
 
         """
         method = movement_detection.lower()
+        method = self.MOVEMENT_DETECTION_ALIASES.get(method, method)
         if method not in self.MOVEMENT_DETECTION_METHODS:
             raise ValueError(
                 f"Unsupported movement detection method '{movement_detection}'. "

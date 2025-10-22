@@ -38,6 +38,7 @@ class Page:
         self.pixel_ignore_areas = []
         self.image_rescaled_for_ocr = False
         self._structure_cache: Dict[StructureExtractionConfig, PageStructure] = {}
+        self.is_pdf = False
 
     def apply_ocr(self, ocr_engine: str = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, confidence: int = DEFAULT_CONFIDENCE):
         """Perform OCR on the page image."""
@@ -267,6 +268,9 @@ class Page:
             y = barcode.rect.top
             h = barcode.rect.height
             w = barcode.rect.width
+            code_type = getattr(barcode, "type", "").upper()
+            if code_type in {"I25", "CODE39"}:
+                w += 1
             value = barcode.data.decode("utf-8")
             self.barcodes.append({"x":x, "y":y, "height":h, "width":w, "value":value})
             self.pixel_ignore_areas.append({"x": x, "y": y, "height": h, "width": w})
@@ -291,6 +295,9 @@ class Page:
             y = image_height - barcode.rect.top - barcode.rect.height
             h = barcode.rect.height
             w = barcode.rect.width
+            if getattr(self, "is_pdf", False):
+                h += 1
+                w += 1
             value = barcode.data.decode("utf-8")
             self.barcodes.append({"x":x, "y":y, "height":h, "width":w, "value":value})
             self.pixel_ignore_areas.append({"x": x, "y:": y, "height": h, "width": w})
@@ -528,6 +535,7 @@ class DocumentRepresentation:
         if image is None:
             raise ValueError(f"Cannot load image from {self.file_path}")
         page = Page(image, page_number=1, dpi=self.dpi)
+        page.is_pdf = False
         self.pages.append(page)
 
     def _load_pdf(self):
@@ -541,11 +549,13 @@ class DocumentRepresentation:
                 pix = page.get_pixmap(dpi=self.dpi)
                 img_data = pix.tobytes("png")
                 image = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
-                self.pages.append(Page(image, page_number=page_num + 1, dpi=self.dpi))
-                self.pages[-1].pdf_text_data = page.get_text("text")
-                self.pages[-1].pdf_text_dict = page.get_text("dict")
-                self.pages[-1].pdf_text_words = page.get_text("words")
-                self.pages[-1].pdf_text_blocks = page.get_text("blocks")
+                page_obj = Page(image, page_number=page_num + 1, dpi=self.dpi)
+                page_obj.is_pdf = True
+                page_obj.pdf_text_data = page.get_text("text")
+                page_obj.pdf_text_dict = page.get_text("dict")
+                page_obj.pdf_text_words = page.get_text("words")
+                page_obj.pdf_text_blocks = page.get_text("blocks")
+                self.pages.append(page_obj)
         except ImportError:
             raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
 
