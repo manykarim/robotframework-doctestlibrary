@@ -51,6 +51,7 @@ class PdfTest(object):
     
     
     def __init__(self, **kwargs):
+        fitz.TOOLS.set_aa_level(0)
         pass
     
     @keyword

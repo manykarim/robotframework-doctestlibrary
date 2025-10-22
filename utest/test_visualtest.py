@@ -168,7 +168,7 @@ def test_get_barcode_all(testdata_dir):
     ref_image=str(testdata_dir / 'sample_barcodes.pdf')
     barcode_all = visual_tester.get_barcodes_from_document(ref_image)
     barcode_values = [d['value'] for d in barcode_all]
-    barcode_coordinates = [{k: d[k] for k in ('x', 'y', 'width', 'height')} for d in barcode_all]    
+    barcode_coordinates = [{k: d[k] for k in ('x', 'y', 'width', 'height')} for d in barcode_all]
     assert barcode_values == ['This is a QR Code by TEC-IT', 'This is a QR Code by TEC-IT for mobile applications', '1234567890', 'ABC-1234', 'ABC-1234-/+', 'ABC-abc-1234', '0012345000065', '90311017', '0725272730706', '9780201379624', 'This is a Data Matrix by TEC-IT', 'This is a Data Matrix by TEC-IT']
     expected = [{'x':757, 'y':1620, 'width':207, 'height':207}, 
                 {'x':1198, 'y':1598, 'width':244, 'height':244}, 
@@ -190,6 +190,7 @@ def _assert_coordinates_with_tolerance(actual, expected, tolerance=1):
         for key in ('x', 'y', 'width', 'height'):
             diff = abs(act[key] - exp[key])
             assert diff <= tolerance, f"Mismatch at index {idx} for '{key}': {act[key]} vs {exp[key]} (diff {diff})"
+
 
 def test_find_existing_partial_image_with_template(testdata_dir):
     visual_tester = VisualTest()

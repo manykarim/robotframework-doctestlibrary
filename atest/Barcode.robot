@@ -19,7 +19,30 @@ Read Barcodes in PDF
     Should Be True    all(actual['value'] == expected for actual, expected in zip(${data}, ${expected_values}))
     Should Be True    all(abs(actual[key]-exp[key]) <= 1 for actual, exp in zip(${data}, ${expected}) for key in ('x','y','width','height'))
 
+
 Read Datamatrices with Assertion Engine
     Get Barcodes    testdata/datamatrix.png    contains    Stegosaurus
     Get Barcodes    testdata/datamatrix.png    contains    Plesiosaurus
     Get Barcodes    testdata/datamatrix.png    not contains    Brontosaurus
+
+*** Keywords ***
+Assert Barcode Approximately
+    [Arguments]    ${actual}    ${expected}
+    ${actual}=    Convert To Dictionary If Needed    ${actual}
+    ${expected}=    Convert To Dictionary If Needed    ${expected}
+    ${actual_value}=    Get From Dictionary    ${actual}    value
+    ${expected_value}=    Get From Dictionary    ${expected}    value
+    Should Be Equal    ${actual_value}    ${expected_value}
+    FOR    ${key}    IN    x    y    width    height
+        ${actual_coord}=    Get From Dictionary    ${actual}    ${key}
+        ${expected_coord}=    Get From Dictionary    ${expected}    ${key}
+        ${diff}=    Evaluate    abs(${actual_coord} - ${expected_coord})
+        Should Be True    ${diff} <= 1
+    END
+
+Convert To Dictionary If Needed
+    [Arguments]    ${item}
+    ${status}    ${_}=    Run Keyword And Ignore Error    Get From Dictionary    ${item}    value
+    Run Keyword If    '${status}' == 'PASS'    Return From Keyword    ${item}
+    ${literal}=    Evaluate    __import__('ast').literal_eval(${item})
+    Return From Keyword    ${literal}

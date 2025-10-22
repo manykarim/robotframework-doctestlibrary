@@ -543,6 +543,19 @@ class VisualTest:
             if move_tolerance and int(move_tolerance) > 0 and not similar:
                 diff_rectangles = self.get_diff_rectangles(absolute_diff)
                 has_pdf_text = bool(ref_page.pdf_text_words) and bool(cand_page.pdf_text_words)
+                if get_pdf_content:
+                    import fitz
+                    fitz.TOOLS.set_aa_level(0)
+                    similar = True
+                    ref_words = ref_page.pdf_text_words
+                    cand_words = cand_page.pdf_text_words
+
+                    # If no words are fount, proceed with nornmal tolerance check and set check_pdf_content to False
+                    if len(ref_words) == 0 or len(cand_words) == 0:
+                        check_pdf_content = False
+                        print(
+                            "No pdf layout elements found. Proceeding with normal tolerance check."
+                        )
 
                 auto_use_pdf_content = get_pdf_content
                 auto_detection_method = detection_method
