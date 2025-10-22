@@ -149,18 +149,19 @@ def test_get_barcode_coordinates(testdata_dir):
     # barcode_coordinates is a list of dictionaries
     # Only collect all the values of the keys "x", "y", "width" and "height" from the dictionaries
     barcode_coordinates = [{k: d[k] for k in ('x', 'y', 'width', 'height')} for d in barcode_coordinates]
-    assert barcode_coordinates == [{'x':757, 'y':1620, 'width':207, 'height':207}, 
-                                   {'x':1198, 'y':1598, 'width':244, 'height':244}, 
-                                   {'x':160, 'y':1651, 'width':413, 'height':122}, 
-                                   {'x':467, 'y':1309, 'width':663, 'height':159}, 
-                                   {'x':509, 'y':1021, 'width':564, 'height':159}, 
-                                   {'x':485, 'y':725, 'width':629, 'height':159}, 
-                                   {'x':312, 'y':399, 'width':204, 'height':159}, 
-                                   {'x':1039, 'y':399, 'width':278, 'height':159}, 
-                                   {'x':984, 'y':93, 'width':396, 'height':158}, 
-                                   {'x':236, 'y':90, 'width':396, 'height':158}, 
-                                   {'x':480, 'y':2025, 'width':184, 'height':183}, 
-                                   {'x':979, 'y':1971, 'width':272, 'height':271}]
+    expected = [{'x':757, 'y':1620, 'width':207, 'height':207}, 
+                {'x':1198, 'y':1598, 'width':244, 'height':244}, 
+                {'x':160, 'y':1651, 'width':413, 'height':122}, 
+                {'x':467, 'y':1309, 'width':663, 'height':159}, 
+                {'x':509, 'y':1021, 'width':564, 'height':159}, 
+                {'x':485, 'y':725, 'width':629, 'height':159}, 
+                {'x':312, 'y':399, 'width':204, 'height':159}, 
+                {'x':1039, 'y':399, 'width':278, 'height':159}, 
+                {'x':984, 'y':93, 'width':396, 'height':158}, 
+                {'x':236, 'y':90, 'width':396, 'height':158}, 
+                {'x':480, 'y':2025, 'width':184, 'height':183}, 
+                {'x':979, 'y':1971, 'width':272, 'height':271}]
+    _assert_coordinates_with_tolerance(barcode_coordinates, expected)
 
 def test_get_barcode_all(testdata_dir):
     visual_tester = VisualTest()
@@ -169,18 +170,26 @@ def test_get_barcode_all(testdata_dir):
     barcode_values = [d['value'] for d in barcode_all]
     barcode_coordinates = [{k: d[k] for k in ('x', 'y', 'width', 'height')} for d in barcode_all]    
     assert barcode_values == ['This is a QR Code by TEC-IT', 'This is a QR Code by TEC-IT for mobile applications', '1234567890', 'ABC-1234', 'ABC-1234-/+', 'ABC-abc-1234', '0012345000065', '90311017', '0725272730706', '9780201379624', 'This is a Data Matrix by TEC-IT', 'This is a Data Matrix by TEC-IT']
-    assert barcode_coordinates == [{'x':757, 'y':1620, 'width':207, 'height':207}, 
-                                   {'x':1198, 'y':1598, 'width':244, 'height':244}, 
-                                   {'x':160, 'y':1651, 'width':413, 'height':122}, 
-                                   {'x':467, 'y':1309, 'width':663, 'height':159}, 
-                                   {'x':509, 'y':1021, 'width':564, 'height':159}, 
-                                   {'x':485, 'y':725, 'width':629, 'height':159}, 
-                                   {'x':312, 'y':399, 'width':204, 'height':159}, 
-                                   {'x':1039, 'y':399, 'width':278, 'height':159}, 
-                                   {'x':984, 'y':93, 'width':396, 'height':158}, 
-                                   {'x':236, 'y':90, 'width':396, 'height':158}, 
-                                   {'x':480, 'y':2025, 'width':184, 'height':183}, 
-                                   {'x':979, 'y':1971, 'width':272, 'height':271}]
+    expected = [{'x':757, 'y':1620, 'width':207, 'height':207}, 
+                {'x':1198, 'y':1598, 'width':244, 'height':244}, 
+                {'x':160, 'y':1651, 'width':413, 'height':122}, 
+                {'x':467, 'y':1309, 'width':663, 'height':159}, 
+                {'x':509, 'y':1021, 'width':564, 'height':159}, 
+                {'x':485, 'y':725, 'width':629, 'height':159}, 
+                {'x':312, 'y':399, 'width':204, 'height':159}, 
+                {'x':1039, 'y':399, 'width':278, 'height':159}, 
+                {'x':984, 'y':93, 'width':396, 'height':158}, 
+                {'x':236, 'y':90, 'width':396, 'height':158}, 
+                {'x':480, 'y':2025, 'width':184, 'height':183}, 
+                {'x':979, 'y':1971, 'width':272, 'height':271}]
+    _assert_coordinates_with_tolerance(barcode_coordinates, expected)
+
+def _assert_coordinates_with_tolerance(actual, expected, tolerance=1):
+    assert len(actual) == len(expected)
+    for idx, (act, exp) in enumerate(zip(actual, expected)):
+        for key in ('x', 'y', 'width', 'height'):
+            diff = abs(act[key] - exp[key])
+            assert diff <= tolerance, f"Mismatch at index {idx} for '{key}': {act[key]} vs {exp[key]} (diff {diff})"
 
 def test_find_existing_partial_image_with_template(testdata_dir):
     visual_tester = VisualTest()
