@@ -10,6 +10,12 @@ from typing import List, Dict, Optional, Tuple, Union, Literal
 from concurrent.futures import ThreadPoolExecutor
 from pytesseract import Output
 from DocTest.IgnoreAreaManager import IgnoreAreaManager
+from DocTest.PdfStructureModels import (
+    DocumentStructure,
+    PageStructure,
+    StructureExtractionConfig,
+    build_page_structure,
+)
 from DocTest.config import DEFAULT_DPI, OCR_ENGINE_DEFAULT, DEFAULT_CONFIDENCE, MINIMUM_OCR_RESOLUTION, ADD_PIXELS_TO_IGNORE_AREA, TESSERACT_CONFIG
 import tempfile
 
@@ -31,6 +37,7 @@ class Page:
         self.ocr_performed = False
         self.pixel_ignore_areas = []
         self.image_rescaled_for_ocr = False
+        self._structure_cache: Dict[StructureExtractionConfig, PageStructure] = {}
 
     def apply_ocr(self, ocr_engine: str = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, confidence: int = DEFAULT_CONFIDENCE):
         """Perform OCR on the page image."""
@@ -68,6 +75,22 @@ class Page:
     def get_text_content(self):
         """Return the OCR text content."""
         return self.ocr_text_data['text'] if self.ocr_text_data else ""
+
+    def get_pdf_structure(self, config: Optional[StructureExtractionConfig] = None) -> PageStructure:
+        """Build or fetch a cached structural representation for this page."""
+        config = config or StructureExtractionConfig()
+        cached = self._structure_cache.get(config)
+        if cached:
+            return cached
+        structure = build_page_structure(
+            page_number=self.page_number,
+            pdf_dict=self.pdf_text_dict,
+            config=config,
+            dpi=self.dpi,
+            image_shape=self.image.shape,
+        )
+        self._structure_cache[config] = structure
+        return structure
 
     def get_image_with_ignore_areas(self):
         """Return the image with ignore areas highlighted."""
@@ -718,6 +741,14 @@ class DocumentRepresentation:
         for page in self.pages:
             text_content += page._get_text_from_area(area, force_ocr) + " "
         return text_content.strip()
+
+    def get_pdf_structure(self, config: Optional[StructureExtractionConfig] = None) -> DocumentStructure:
+        """Return a structural representation (layout + text) for every PDF page."""
+        if self.file_path.suffix.lower() != '.pdf':
+            raise ValueError("PDF structure extraction is only supported for PDF files.")
+        config = config or StructureExtractionConfig()
+        pages = [page.get_pdf_structure(config=config) for page in self.pages]
+        return DocumentStructure(pages=pages, config=config)
 
     def get_text(self, force_ocr: bool = False, tesseract_config: str = TESSERACT_CONFIG):
         """Extract text content from the document."""

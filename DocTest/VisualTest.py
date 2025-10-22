@@ -14,6 +14,7 @@ from robot.libraries.BuiltIn import BuiltIn
 
 from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import download_file_from_url, is_url
+from DocTest.config import DEFAULT_CONFIDENCE
 
 LOG = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class VisualTest:
     DPI_DEFAULT = 200
     OCR_ENGINE_DEFAULT = "tesseract"
     MOVEMENT_DETECTION_DEFAULT = "template"
+    MOVEMENT_DETECTION_METHODS = {"template", "orb", "sift", "text"}
     PARTIAL_IMAGE_THRESHOLD_DEFAULT = 0.1
     SIFT_RATIO_THRESHOLD_DEFAULT = 0.75
     SIFT_MIN_MATCHES_DEFAULT = 2
@@ -53,7 +55,7 @@ class VisualTest:
         force_ocr: bool = False,
         watermark_file: str = None,
         movement_detection: Literal[
-            "template", "orb", "sift"
+            "template", "orb", "sift", "text"
         ] = MOVEMENT_DETECTION_DEFAULT,
         partial_image_threshold: float = PARTIAL_IMAGE_THRESHOLD_DEFAULT,
         sift_ratio_threshold: float = SIFT_RATIO_THRESHOLD_DEFAULT,
@@ -76,7 +78,7 @@ class VisualTest:
         | ``embed_screenshots`` | Whether to embed screenshots as base64 in the log. Default is False. |
         | ``force_ocr`` | Whether to force OCR during image comparison. Default is False. |
         | ``watermark_file`` | Path to an image/document or a folder containing multiple images. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
-        | ``movement_detection`` | Method to be used for movement detection. Options are ``template``, ``orb`` or ``sift``. Default is ``template``. |
+        | ``movement_detection`` | Method to be used for movement detection. Options are ``template``, ``orb``, ``sift`` or ``text`` (text-based). Default is ``template``. |
         | ``partial_image_threshold`` | The threshold used to identify partial images, e.g. for movement detection. Value is between 0.0 and 1.0. A higher value will tolerate more differences. Default is ``0.1``. |
         | ``sift_ratio_threshold`` | Lowe's ratio test threshold for SIFT feature matching. Lower values are more restrictive. Default is ``0.75``. |
         | ``sift_min_matches`` | Minimum number of good matches required for SIFT homography computation. Default is ``4``. |
@@ -98,7 +100,13 @@ class VisualTest:
         self.embed_screenshots = embed_screenshots
         self.screenshot_dir = Path("screenshots")
         self.watermark_file = watermark_file
-        self.movement_detection = movement_detection
+        movement_method = movement_detection.lower()
+        if movement_method not in self.MOVEMENT_DETECTION_METHODS:
+            raise ValueError(
+                f"Unsupported movement detection method '{movement_detection}'. "
+                f"Supported values are: {', '.join(sorted(self.MOVEMENT_DETECTION_METHODS))}."
+            )
+        self.movement_detection = movement_method
         self.partial_image_threshold = partial_image_threshold
         self.sift_ratio_threshold = sift_ratio_threshold
         self.sift_min_matches = sift_min_matches
@@ -127,6 +135,7 @@ class VisualTest:
         placeholder_file: Union[str, dict, list] = None,
         check_text_content: bool = False,
         move_tolerance: int = None,
+        movement_detection: Optional[str] = None,
         contains_barcodes: bool = False,
         watermark_file: Optional[Union[str, list]] = None,
         ignore_watermarks: bool = None,
@@ -153,6 +162,7 @@ class VisualTest:
         | ``mask`` | Same purpose as ``placeholder_file`` but instead of a file path, this is either ``json`` , a ``dict`` , a ``list`` or a ``string`` which defines the areas to be ignored  |
         | ``check_text_content`` | In case of visual differences: Is it acceptable, if only the text content in the different areas is equal |
         | ``move_tolerance`` | In case of visual differences: Is is acceptable, if only parts in the different areas are moved by ``move_tolerance`` pixels  |
+        | ``movement_detection`` | Override movement detection method for this comparison. Options: ``template``, ``orb``, ``sift``, ``text``. Defaults to the library-level setting. |
         | ``contains_barcodes`` | Shall the image be scanned for barcodes and shall their content be checked (currently only data matrices are supported) |
         | ``get_pdf_content`` | Only relevant in case of using ``move_tolerance`` and ``check_text_content``: Shall the PDF Content like Texts and Boxes be used for calculations |
         | ``force_ocr`` | Always use OCR to find Texts in Images, even for PDF Documents |
@@ -175,6 +185,7 @@ class VisualTest:
         | `Compare Images`   reference.pdf   candidate.pdf   contains_barcodes=${true}      #Identified barcodes in documents and excludes those areas from visual comparison. The barcode data will be checked instead
         | `Compare Images`   reference.pdf   candidate.pdf   check_text_content${true}      #In case of visual differences, the text content in the affected areas will be identified using OCR. If text content it equal, the test is considered passed
         | `Compare Images`   reference.pdf   candidate.pdf   move_tolerance=10              #In case of visual differences, it is checked if difference is caused only by moved areas. If the move distance is within 10 pixels the test is considered as passed. Else it is failed
+        | `Compare Images`   reference.pdf   candidate.pdf   move_tolerance=20   movement_detection=text   #Use text-based movement detection (PDF/OCR) instead of image feature matching
         | `Compare Images`   reference.pdf   candidate.pdf   check_text_content=${true}   get_pdf_content=${true}   #In case of visual differences, the text content in the affected areas will be read directly from  PDF (not OCR). If text content it equal, the test is considered passed
         | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=watermark.pdf     #Provides a watermark file as an argument. In case of visual differences, watermark content will be subtracted
         | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=${CURDIR}${/}watermarks     #Provides a watermark folder as an argument. In case of visual differences, all watermarks in folder will be subtracted
@@ -213,6 +224,14 @@ class VisualTest:
         if ignore_watermarks is None:
             ignore_watermarks = os.getenv("IGNORE_WATERMARKS", False)
 
+        force_ocr = force_ocr or self.force_ocr
+        detection_method = (movement_detection or self.movement_detection or self.MOVEMENT_DETECTION_DEFAULT).lower()
+        if detection_method not in self.MOVEMENT_DETECTION_METHODS:
+            raise ValueError(
+                f"Unsupported movement detection method '{detection_method}'. "
+                f"Supported values are: {', '.join(sorted(self.MOVEMENT_DETECTION_METHODS))}."
+            )
+
         # Load reference and candidate documents
         reference_doc = DocumentRepresentation(
             reference_image,
@@ -220,10 +239,15 @@ class VisualTest:
             ocr_engine=ocr_engine,
             ignore_area_file=placeholder_file,
             ignore_area=mask,
+            force_ocr=force_ocr,
             **kwargs,
         )
         candidate_doc = DocumentRepresentation(
-            candidate_image, dpi=dpi, ocr_engine=ocr_engine, **kwargs
+            candidate_image,
+            dpi=dpi,
+            ocr_engine=ocr_engine,
+            force_ocr=force_ocr,
+            **kwargs,
         )
 
         watermarks = []
@@ -511,294 +535,27 @@ class VisualTest:
                         )
 
             if move_tolerance and int(move_tolerance) > 0 and not similar:
-                if get_pdf_content:
-                    import fitz
+                diff_rectangles = self.get_diff_rectangles(absolute_diff)
+                text_based_detection = detection_method == "text" or get_pdf_content
 
-                    similar = True
-                    ref_words = ref_page.pdf_text_words
-                    cand_words = cand_page.pdf_text_words
-
-                    # If no words are fount, proceed with nornmal tolerance check and set check_pdf_content to False
-                    if len(ref_words) == 0 or len(cand_words) == 0:
-                        check_pdf_content = False
-                        print(
-                            "No pdf layout elements found. Proceeding with normal tolerance check."
-                        )
-
-                    diff_rectangles = self.get_diff_rectangles(absolute_diff)
-                    c = 0
-                    for diff_rect in diff_rectangles:
-                        c += 1
-                        # Get Values for x, y, w, h
-                        (x, y, w, h) = (
-                            diff_rect["x"],
-                            diff_rect["y"],
-                            diff_rect["width"],
-                            diff_rect["height"],
-                        )
-
-                        rect = fitz.Rect(
-                            x * 72 / self.dpi,
-                            y * 72 / self.dpi,
-                            (x + w) * 72 / self.dpi,
-                            (y + h) * 72 / self.dpi,
-                        )
-                        diff_area_ref_words = [
-                            w for w in ref_words if fitz.Rect(w[:4]).intersects(rect)
-                        ]
-                        diff_area_cand_words = [
-                            w for w in cand_words if fitz.Rect(w[:4]).intersects(rect)
-                        ]
-                        # diff_area_ref_words = make_text(diff_area_ref_words)
-                        # diff_area_cand_words = make_text(diff_area_cand_words)
-                        diff_area_reference = ref_page.get_area(diff_rect)
-                        diff_area_candidate = cand_page.get_area(diff_rect)
-                        self.add_screenshot_to_log(
-                            diff_area_reference,
-                            "_page_"
-                            + str(ref_page.page_number + 1)
-                            + "_diff_area_reference_"
-                            + str(c),
-                        )
-                        self.add_screenshot_to_log(
-                            diff_area_candidate,
-                            "_page_"
-                            + str(ref_page.page_number + 1)
-                            + "_diff_area_test_"
-                            + str(c),
-                        )
-
-                        if len(diff_area_ref_words) != len(diff_area_cand_words):
-                            similar = False
-                            print(
-                                "The identified pdf layout elements are different",
-                                diff_area_ref_words,
-                                diff_area_cand_words,
-                            )
-                            raise AssertionError("The compared images are different.")
-                        else:
-                            for ref_Item, cand_Item in zip(
-                                diff_area_ref_words, diff_area_cand_words
-                            ):
-                                if ref_Item == cand_Item:
-                                    pass
-
-                                elif (
-                                    str(ref_Item[4]).strip()
-                                    == str(cand_Item[4]).strip()
-                                ):
-                                    left_moved = (
-                                        abs(ref_Item[0] - cand_Item[0]) * self.dpi / 72
-                                    )
-                                    top_moved = (
-                                        abs(ref_Item[1] - cand_Item[1]) * self.dpi / 72
-                                    )
-                                    right_moved = (
-                                        abs(ref_Item[2] - cand_Item[2]) * self.dpi / 72
-                                    )
-                                    bottom_moved = (
-                                        abs(ref_Item[3] - cand_Item[3]) * self.dpi / 72
-                                    )
-                                    print("Checking pdf elements", ref_Item, cand_Item)
-
-                                    if (
-                                        int(left_moved) > int(move_tolerance)
-                                        or int(top_moved) > int(move_tolerance)
-                                        or int(right_moved) > int(move_tolerance)
-                                        or int(bottom_moved) > int(move_tolerance)
-                                    ):
-                                        print(
-                                            "Image section moved ",
-                                            left_moved,
-                                            top_moved,
-                                            right_moved,
-                                            bottom_moved,
-                                            " pixels",
-                                        )
-                                        print(
-                                            "This is outside of the allowed range of ",
-                                            move_tolerance,
-                                            " pixels",
-                                        )
-                                        similar = False
-                                        self.add_screenshot_to_log(
-                                            self.blend_two_images(
-                                                diff_area_reference, diff_area_candidate
-                                            ),
-                                            "_diff_area_blended",
-                                        )
-                                        raise AssertionError(
-                                            "The compared images are different."
-                                        )
-                                    else:
-                                        print(
-                                            "Image section moved ",
-                                            left_moved,
-                                            top_moved,
-                                            right_moved,
-                                            bottom_moved,
-                                            " pixels",
-                                        )
-                                        print(
-                                            "This is within the allowed range of ",
-                                            move_tolerance,
-                                            " pixels",
-                                        )
-                                        self.add_screenshot_to_log(
-                                            self.blend_two_images(
-                                                diff_area_reference, diff_area_candidate
-                                            ),
-                                            "_diff_area_blended",
-                                        )
-
+                if text_based_detection:
+                    similar = self._check_movement_with_text(
+                        ref_page=ref_page,
+                        cand_page=cand_page,
+                        diff_rectangles=diff_rectangles,
+                        move_tolerance=move_tolerance,
+                        detection_method=detection_method,
+                        use_pdf_content=get_pdf_content,
+                        force_ocr=force_ocr,
+                    )
                 else:
-                    # If the images are not similar, check if the different areas are only moved within the move_tolerance
-                    # If the areas are moved within the tolerance, the images are considered similar
-                    # If the areas are moved outside the tolerance, the images are considered different
-                    # The move_tolerance is the maximum number of pixels the areas can be moved
-
-                    # IMPORTANT: Store the original SSIM result before movement tolerance processing
-                    # This prevents content removal from being incorrectly treated as acceptable movement
-                    original_similar_result = (
-                        similar  # Should be False from SSIM comparison
+                    similar = self._check_movement_with_images(
+                        ref_page=ref_page,
+                        cand_page=cand_page,
+                        diff_rectangles=diff_rectangles,
+                        move_tolerance=move_tolerance,
+                        detection_method=detection_method,
                     )
-
-                    similar = True  # Optimistically assume movement tolerance will resolve differences
-                    diff_rectangles = self.get_diff_rectangles(absolute_diff)
-                    failed_areas = []  # Track areas that fail tolerance check
-                    fallback_detections = (
-                        0  # Track areas where detection fell back to minimal distances
-                    )
-
-                    for rect in diff_rectangles:
-                        # Check if the area is moved within the tolerance
-                        reference_area = ref_page.get_area(rect)
-                        candidate_area = cand_page.get_area(rect)
-
-                        try:
-                            # Find the position of the candidate area in the reference area
-                            # Use multiple detection methods to find the position
-                            # First use the simple template matching method
-                            # If no result is found, use the ORB or SIFT method
-
-                            #                        result = self.find_partial_image_position(reference_area, candidate_area, threshold=0.1, detection="template")
-                            result = self.find_partial_image_position(
-                                reference_area,
-                                candidate_area,
-                                threshold=self.partial_image_threshold,
-                                detection=self.movement_detection,
-                            )
-
-                            if result:
-                                if "distance" in result:
-                                    distance = int(result["distance"])
-                                # Check if result is a dictuinory with pt1 and pt2
-                                if "pt1" in result and "pt2" in result:
-                                    pt1 = result["pt1"]
-                                    pt2 = result["pt2"]
-                                    distance = int(
-                                        np.sqrt(
-                                            np.sum((np.array(pt1) - np.array(pt2)) ** 2)
-                                        )
-                                    )
-
-                                # Detect if this is likely a fallback result indicating content removal
-                                # rather than actual movement detection
-                                is_likely_fallback = (
-                                    "method" in result
-                                    and "fallback" in result["method"]
-                                    and distance
-                                    <= 5  # Only very small distances suggest fallback
-                                )
-
-                                if is_likely_fallback:
-                                    # This is likely content removal, not movement - increment fallback counter
-                                    fallback_detections += 1
-                                    print(
-                                        f"Area {rect}: Detected likely content removal (fallback distance: {distance}px, method: {result.get('method', 'unknown')})"
-                                    )
-
-                                if distance > move_tolerance:
-                                    failed_areas.append((rect, distance))
-                                    print(
-                                        f"Area {rect} is moved {distance} pixels which is more than the tolerated {move_tolerance} pixels."
-                                    )
-                                    self.add_screenshot_to_log(
-                                        self.blend_two_images(
-                                            reference_area, candidate_area
-                                        ),
-                                        suffix="_moved_area",
-                                        original_size=False,
-                                    )
-                                else:
-                                    if is_likely_fallback:
-                                        print(
-                                            f"Area {rect}: Content likely removed (not moved) - distance {distance}px appears to be fallback estimate"
-                                        )
-                                    else:
-                                        print(
-                                            f"Area {rect} is moved {distance} pixels."
-                                        )
-                            else:
-                                # Movement detection failed - assume movement exceeds tolerance
-                                # This is a fallback for when detection methods cannot determine movement
-                                failed_areas.append((rect, "detection_failed"))
-                                print(
-                                    f"Area {rect} movement detection failed - assuming movement exceeds tolerance."
-                                )
-                                self.add_screenshot_to_log(
-                                    self.blend_two_images(
-                                        reference_area, candidate_area
-                                    ),
-                                    suffix="_moved_area",
-                                    original_size=False,
-                                )
-                        except Exception as e:
-                            print(f"Could not compare areas: {e}")
-                            failed_areas.append((rect, f"error: {str(e)}"))
-                            self.add_screenshot_to_log(
-                                self.blend_two_images(reference_area, candidate_area),
-                                suffix="_moved_area",
-                                original_size=False,
-                            )
-                            # Continue to next area instead of breaking
-                            continue
-
-                    # Only set similar to False if any areas failed the tolerance check
-                    if failed_areas:
-                        similar = False
-                        print(
-                            f"Movement tolerance check failed for {len(failed_areas)} area(s) out of {len(diff_rectangles)} total areas."
-                        )
-                        for area_info in failed_areas:
-                            rect, reason = area_info
-                            if isinstance(reason, int):
-                                print(
-                                    f"  - Area {rect}: moved {reason} pixels (exceeds {move_tolerance})"
-                                )
-                            else:
-                                print(f"  - Area {rect}: {reason}")
-                    elif (
-                        fallback_detections > 0
-                        and fallback_detections >= len(diff_rectangles) * 0.8
-                    ):
-                        # High proportion of fallback behavior detected - this likely indicates content removal
-                        # rather than actual movement. Respect the original SSIM assessment.
-                        similar = original_similar_result
-                        print(
-                            f"{fallback_detections} out of {len(diff_rectangles)} difference area(s) show fallback behavior (likely content removal, not movement)."
-                        )
-                        print(
-                            f"Respecting original SSIM assessment: images are {'similar' if similar else 'different'}."
-                        )
-                    else:
-                        if fallback_detections > 0:
-                            print(
-                                f"{fallback_detections} out of {len(diff_rectangles)} area(s) show fallback behavior."
-                            )
-                        print(
-                            f"All {len(diff_rectangles)} moved area(s) are within the {move_tolerance} pixel tolerance."
-                        )
 
             if not similar:
                 # Save original images to the screenshot directory and add them to the Robot Framework log
@@ -865,6 +622,367 @@ class VisualTest:
             self._raise_comparison_failure()
 
         print("Images/Document comparison passed.")
+
+    def _check_movement_with_text(
+        self,
+        ref_page,
+        cand_page,
+        diff_rectangles,
+        move_tolerance: int,
+        detection_method: str,
+        use_pdf_content: bool,
+        force_ocr: bool,
+    ) -> bool:
+        if not diff_rectangles:
+            print("No difference areas detected for movement tolerance check.")
+            return True
+
+        failed_areas = []
+        prefer_pdf = use_pdf_content or (
+            bool(ref_page.pdf_text_words) and bool(cand_page.pdf_text_words)
+        )
+        allow_ocr_fallback = detection_method == "text"
+
+        for index, rect in enumerate(diff_rectangles, 1):
+            diff_area_reference = ref_page.get_area(rect)
+            diff_area_candidate = cand_page.get_area(rect)
+
+            self.add_screenshot_to_log(
+                diff_area_reference,
+                "_page_"
+                + str(ref_page.page_number + 1)
+                + "_diff_area_reference_"
+                + str(index),
+            )
+            self.add_screenshot_to_log(
+                diff_area_candidate,
+                "_page_"
+                + str(ref_page.page_number + 1)
+                + "_diff_area_test_"
+                + str(index),
+            )
+
+            ref_words, ref_source = self._collect_words_for_rect(
+                ref_page,
+                rect,
+                prefer_pdf=prefer_pdf,
+                force_ocr=force_ocr,
+            )
+            cand_words, cand_source = self._collect_words_for_rect(
+                cand_page,
+                rect,
+                prefer_pdf=prefer_pdf,
+                force_ocr=force_ocr,
+            )
+
+            if allow_ocr_fallback and (not ref_words or not cand_words):
+                ref_words, ref_source = self._collect_words_for_rect(
+                    ref_page,
+                    rect,
+                    prefer_pdf=False,
+                    force_ocr=True,
+                )
+                cand_words, cand_source = self._collect_words_for_rect(
+                    cand_page,
+                    rect,
+                    prefer_pdf=False,
+                    force_ocr=True,
+                )
+
+            if not ref_words or not cand_words:
+                failed_areas.append((rect, "no textual elements found"))
+                self.add_screenshot_to_log(
+                    self.blend_two_images(diff_area_reference, diff_area_candidate),
+                    suffix="_moved_area",
+                    original_size=False,
+                )
+                continue
+
+            measurement = self._measure_text_movement(ref_words, cand_words)
+            if measurement["status"] != "ok":
+                failed_areas.append((rect, measurement["message"]))
+                self.add_screenshot_to_log(
+                    self.blend_two_images(diff_area_reference, diff_area_candidate),
+                    suffix="_moved_area",
+                    original_size=False,
+                )
+                continue
+
+            distance = measurement["distance"]
+            self.add_screenshot_to_log(
+                self.blend_two_images(diff_area_reference, diff_area_candidate),
+                "_diff_area_blended",
+            )
+
+            if distance > move_tolerance:
+                failed_areas.append((rect, round(distance, 3)))
+                print(
+                    f"Area {rect} is moved {distance:.2f} pixels which is more than the tolerated {move_tolerance} pixels."
+                )
+            else:
+                source = ref_source or cand_source or "text"
+                print(
+                    f"Area {rect} movement (max {distance:.2f}px) detected via {source}; within tolerance ({move_tolerance}px)."
+                )
+
+        if failed_areas:
+            print(
+                f"Movement tolerance check failed for {len(failed_areas)} area(s) out of {len(diff_rectangles)} total areas."
+            )
+            for rect, reason in failed_areas:
+                print(f"  - Area {rect}: {reason}")
+            raise AssertionError("The compared images are different.")
+
+        print(
+            f"All {len(diff_rectangles)} moved area(s) are within the {move_tolerance} pixel tolerance."
+        )
+        return True
+
+    def _collect_words_for_rect(
+        self,
+        page,
+        rect,
+        *,
+        prefer_pdf: bool,
+        force_ocr: bool,
+    ):
+        import fitz
+
+        rect_bounds = (
+            rect["x"],
+            rect["y"],
+            rect["x"] + rect["width"],
+            rect["y"] + rect["height"],
+        )
+
+        if prefer_pdf and page.pdf_text_words:
+            rect_pts = fitz.Rect(
+                rect_bounds[0] * 72 / page.dpi,
+                rect_bounds[1] * 72 / page.dpi,
+                rect_bounds[2] * 72 / page.dpi,
+                rect_bounds[3] * 72 / page.dpi,
+            )
+            words = []
+            for word in page.pdf_text_words:
+                if fitz.Rect(word[:4]).intersects(rect_pts):
+                    bbox = (
+                        word[0] * page.dpi / 72,
+                        word[1] * page.dpi / 72,
+                        word[2] * page.dpi / 72,
+                        word[3] * page.dpi / 72,
+                    )
+                    words.append(
+                        {
+                            "text": word[4].strip(),
+                            "bbox": bbox,
+                            "sort": (word[5], word[6], word[7], bbox[1], bbox[0]),
+                        }
+                    )
+            if words:
+                words.sort(key=lambda w: w["sort"])
+                return words, "pdf"
+
+        if force_ocr or not prefer_pdf:
+            if not page.ocr_performed:
+                page.apply_ocr(self.ocr_engine)
+            data = page.ocr_text_data or {}
+            texts = data.get("text", [])
+            lefts = data.get("left", [])
+            tops = data.get("top", [])
+            widths = data.get("width", [])
+            heights = data.get("height", [])
+            confs = data.get("conf", [])
+            blocks = data.get("block_num", [])
+            lines = data.get("line_num", [])
+            words_idx = data.get("word_num", [])
+
+            words = []
+            for idx, text in enumerate(texts):
+                if not text or not text.strip():
+                    continue
+                try:
+                    conf_val = float(confs[idx]) if confs else DEFAULT_CONFIDENCE
+                except (TypeError, ValueError):
+                    conf_val = DEFAULT_CONFIDENCE
+                if conf_val < DEFAULT_CONFIDENCE:
+                    continue
+
+                x = lefts[idx]
+                y = tops[idx]
+                w = widths[idx]
+                h = heights[idx]
+                bbox = (x, y, x + w, y + h)
+                if not self._rectangles_intersect(rect_bounds, bbox):
+                    continue
+
+                block = blocks[idx] if blocks else 0
+                line = lines[idx] if lines else 0
+                word_number = words_idx[idx] if words_idx else idx
+
+                words.append(
+                    {
+                        "text": text.strip(),
+                        "bbox": bbox,
+                        "sort": (block, line, word_number, bbox[1], bbox[0]),
+                    }
+                )
+            if words:
+                words.sort(key=lambda w: w["sort"])
+                return words, "ocr"
+
+        return [], None
+
+    def _measure_text_movement(self, reference_words, candidate_words):
+        if len(reference_words) != len(candidate_words):
+            return {
+                "status": "mismatch",
+                "message": "different number of text elements",
+            }
+
+        max_distance = 0.0
+        for ref_word, cand_word in zip(reference_words, candidate_words):
+            if ref_word["text"] != cand_word["text"]:
+                return {
+                    "status": "mismatch",
+                    "message": f"text differs ('{ref_word['text']}' vs '{cand_word['text']}')",
+                }
+
+            ref_bbox = ref_word["bbox"]
+            cand_bbox = cand_word["bbox"]
+            deltas = [
+                abs(ref_bbox[0] - cand_bbox[0]),
+                abs(ref_bbox[1] - cand_bbox[1]),
+                abs(ref_bbox[2] - cand_bbox[2]),
+                abs(ref_bbox[3] - cand_bbox[3]),
+            ]
+            max_distance = max(max_distance, max(deltas))
+
+        return {"status": "ok", "distance": max_distance}
+
+    @staticmethod
+    def _rectangles_intersect(rect_a, rect_b):
+        return not (
+            rect_a[2] <= rect_b[0]
+            or rect_b[2] <= rect_a[0]
+            or rect_a[3] <= rect_b[1]
+            or rect_b[3] <= rect_a[1]
+        )
+
+    def _check_movement_with_images(
+        self,
+        ref_page,
+        cand_page,
+        diff_rectangles,
+        move_tolerance: int,
+        detection_method: str,
+    ) -> bool:
+        if not diff_rectangles:
+            print("No difference areas detected for movement tolerance check.")
+            return True
+
+        failed_areas = []
+        fallback_detections = 0
+
+        for rect in diff_rectangles:
+            reference_area = ref_page.get_area(rect)
+            candidate_area = cand_page.get_area(rect)
+
+            try:
+                result = self.find_partial_image_position(
+                    reference_area,
+                    candidate_area,
+                    threshold=self.partial_image_threshold,
+                    detection=detection_method,
+                )
+
+                if result:
+                    distance = float(result.get("distance", 0.0))
+                    if "pt1" in result and "pt2" in result:
+                        pt1 = np.array(result["pt1"])
+                        pt2 = np.array(result["pt2"])
+                        distance = float(np.linalg.norm(pt1 - pt2))
+
+                    is_likely_fallback = (
+                        "method" in result
+                        and "fallback" in result["method"]
+                        and distance <= 5
+                    )
+
+                    if is_likely_fallback:
+                        fallback_detections += 1
+                        print(
+                            f"Area {rect}: Detected likely content removal (fallback distance: {distance:.2f}px, method: {result.get('method', 'unknown')})"
+                        )
+
+                    if distance > move_tolerance:
+                        failed_areas.append((rect, round(distance, 3)))
+                        print(
+                            f"Area {rect} is moved {distance:.2f} pixels which is more than the tolerated {move_tolerance} pixels."
+                        )
+                        self.add_screenshot_to_log(
+                            self.blend_two_images(reference_area, candidate_area),
+                            suffix="_moved_area",
+                            original_size=False,
+                        )
+                    else:
+                        print(f"Area {rect} is moved {distance:.2f} pixels.")
+                else:
+                    failed_areas.append((rect, "detection_failed"))
+                    print(
+                        f"Area {rect} movement detection failed - assuming movement exceeds tolerance."
+                    )
+                    self.add_screenshot_to_log(
+                        self.blend_two_images(reference_area, candidate_area),
+                        suffix="_moved_area",
+                        original_size=False,
+                    )
+            except Exception as exc:
+                print(f"Could not compare areas: {exc}")
+                failed_areas.append((rect, f"error: {str(exc)}"))
+                self.add_screenshot_to_log(
+                    self.blend_two_images(reference_area, candidate_area),
+                    suffix="_moved_area",
+                    original_size=False,
+                )
+
+        if failed_areas:
+            print(
+                f"Movement tolerance check failed for {len(failed_areas)} area(s) out of {len(diff_rectangles)} total areas."
+            )
+            for rect, reason in failed_areas:
+                print(f"  - Area {rect}: {reason}")
+            raise AssertionError("The compared images are different.")
+
+        if fallback_detections:
+            print(
+                f"{fallback_detections} out of {len(diff_rectangles)} area(s) required fallback movement detection."
+            )
+
+        print(
+            f"All {len(diff_rectangles)} moved area(s) are within the {move_tolerance} pixel tolerance."
+        )
+        return True
+
+    @keyword
+    def set_movement_detection(self, movement_detection: str):
+        """Set the default movement detection method for subsequent comparisons.
+
+        | =Arguments= | =Description= |
+        | ``movement_detection`` | One of ``template``, ``orb``, ``sift``, ``text``. |
+
+        Examples:
+        | `Set Movement Detection`    text    # Switch to text-based movement detection |
+        | `Set Movement Detection`    orb     # Revert to ORB feature matching |
+
+        """
+        method = movement_detection.lower()
+        if method not in self.MOVEMENT_DETECTION_METHODS:
+            raise ValueError(
+                f"Unsupported movement detection method '{movement_detection}'. "
+                f"Supported values are: {', '.join(sorted(self.MOVEMENT_DETECTION_METHODS))}."
+            )
+        self.movement_detection = method
+        print(f"Movement detection method set to '{method}'.")
 
     @keyword
     def get_text_from_area(
