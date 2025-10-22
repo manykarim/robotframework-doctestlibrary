@@ -9,10 +9,10 @@ from DocTest.PdfStructureModels import StructureExtractionConfig
 from DocTest.PdfTest import PdfTest
 
 
-EXAMPLE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "example"))
-REFERENCE_PDF = os.path.join(EXAMPLE_DIR, "reference_SMM.pdf")
-CANDIDATE_PDF = os.path.join(EXAMPLE_DIR, "candidate_SMM.pdf")
-DIFFERENT_CONTENT_PDF = os.path.join(EXAMPLE_DIR, "WWTAN_SVO_CN_FAT.pdf")
+TESTDATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "testdata"))
+REFERENCE_PDF = os.path.join(TESTDATA_DIR, "invoice.pdf")
+CANDIDATE_PDF = os.path.join(TESTDATA_DIR, "invoice_diff_font.pdf")
+DIFFERENT_CONTENT_PDF = os.path.join(TESTDATA_DIR, "invoice_diff_date_id.pdf")
 
 
 @pytest.fixture(scope="module")
