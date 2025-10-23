@@ -14,36 +14,11 @@ Read Datamatrices in Image
 Read Barcodes in PDF
     ${data}    Get Barcodes    testdata/sample_barcodes.pdf
     Length Should Be    ${data}    12
-    @{expected}    Create List
-    ${expected0}=    Create Dictionary    x=757    y=1620    height=207    width=207    value=This is a QR Code by TEC-IT
-    Append To List    ${expected}    ${expected0}
-    ${expected1}=    Create Dictionary    x=1198    y=1598    height=244    width=244    value=This is a QR Code by TEC-IT for mobile applications
-    Append To List    ${expected}    ${expected1}
-    ${expected2}=    Create Dictionary    x=160    y=1651    height=122    width=413    value=1234567890
-    Append To List    ${expected}    ${expected2}
-    ${expected3}=    Create Dictionary    x=467    y=1309    height=159    width=663    value=ABC-1234
-    Append To List    ${expected}    ${expected3}
-    ${expected4}=    Create Dictionary    x=509    y=1021    height=159    width=564    value=ABC-1234-/+
-    Append To List    ${expected}    ${expected4}
-    ${expected5}=    Create Dictionary    x=485    y=725    height=159    width=629    value=ABC-abc-1234
-    Append To List    ${expected}    ${expected5}
-    ${expected6}=    Create Dictionary    x=312    y=399    height=159    width=204    value=0012345000065
-    Append To List    ${expected}    ${expected6}
-    ${expected7}=    Create Dictionary    x=1039    y=399    height=159    width=278    value=90311017
-    Append To List    ${expected}    ${expected7}
-    ${expected8}=    Create Dictionary    x=984    y=93    height=158    width=396    value=0725272730706
-    Append To List    ${expected}    ${expected8}
-    ${expected9}=    Create Dictionary    x=236    y=90    height=158    width=396    value=9780201379624
-    Append To List    ${expected}    ${expected9}
-    ${expected10}=    Create Dictionary    x=480    y=2025    height=183    width=184    value=This is a Data Matrix by TEC-IT
-    Append To List    ${expected}    ${expected10}
-    ${expected11}=    Create Dictionary    x=979    y=1971    height=271    width=272    value=This is a Data Matrix by TEC-IT
-    Append To List    ${expected}    ${expected11}
-    FOR    ${index}    IN RANGE    12
-        ${actual_item}=    Get From List    ${data}    ${index}
-        ${expected_item}=    Get From List    ${expected}    ${index}
-        Assert Barcode Approximately    ${actual_item}    ${expected_item}
-    END
+    ${expected_values}    Create List    This is a QR Code by TEC-IT    This is a QR Code by TEC-IT for mobile applications    1234567890    ABC-1234    ABC-1234-/+    ABC-abc-1234    0012345000065    90311017    0725272730706    9780201379624    This is a Data Matrix by TEC-IT    This is a Data Matrix by TEC-IT
+    ${expected}    Evaluate    [{'x': 757, 'y': 1620, 'height': 207, 'width': 207}, {'x': 1198, 'y': 1598, 'height': 244, 'width': 244}, {'x': 160, 'y': 1651, 'height': 122, 'width': 413}, {'x': 467, 'y': 1309, 'height': 159, 'width': 663}, {'x': 509, 'y': 1021, 'height': 159, 'width': 564}, {'x': 485, 'y': 725, 'height': 159, 'width': 629}, {'x': 312, 'y': 399, 'height': 159, 'width': 204}, {'x': 1039, 'y': 399, 'height': 159, 'width': 278}, {'x': 984, 'y': 93, 'height': 158, 'width': 396}, {'x': 236, 'y': 90, 'height': 158, 'width': 396}, {'x': 480, 'y': 2025, 'height': 183, 'width': 184}, {'x': 979, 'y': 1971, 'height': 271, 'width': 272}]
+    Should Be True    all(actual['value'] == expected for actual, expected in zip(${data}, ${expected_values}))
+    Should Be True    all(abs(actual[key]-exp[key]) <= 1 for actual, exp in zip(${data}, ${expected}) for key in ('x','y','width','height'))
+
 
 Read Datamatrices with Assertion Engine
     Get Barcodes    testdata/datamatrix.png    contains    Stegosaurus

@@ -51,3 +51,15 @@ Compare two different PDF Files
 
 Compare two different PDF Files from URL
     Run Keyword And Expect Error    The compared PDF Document Data is different.    Compare Pdf Documents    https://github.com/manykarim/robotframework-doctestlibrary/raw/main/testdata/sample_1_page.pdf    https://github.com/manykarim/robotframework-doctestlibrary/raw/main/testdata/sample_1_page_changed.pdf
+
+Compare PDF structure while ignoring fonts
+    Compare Pdf Structure    testdata/invoice.pdf    testdata/invoice_diff_font.pdf
+
+Compare PDF structure detects content change
+    Run Keyword And Expect Error    The compared PDF structure is different.    Compare Pdf Structure    testdata/invoice.pdf    testdata/invoice_diff_date_id.pdf
+
+Compare Pdf Documents with structure mode
+    Compare Pdf Documents    testdata/invoice.pdf    testdata/invoice_diff_font.pdf    compare=structure
+
+Compare Pdf Documents with structure mode strict tolerance fails
+    Run Keyword And Expect Error    The compared PDF Document Data is different.    Compare Pdf Documents    testdata/invoice.pdf    testdata/invoice_diff_font.pdf    compare=structure    structure_position_tolerance=0.0    structure_size_tolerance=0.0    structure_relative_tolerance=0.0

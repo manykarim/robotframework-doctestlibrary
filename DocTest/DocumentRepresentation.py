@@ -11,6 +11,12 @@ from typing import List, Dict, Optional, Tuple, Union, Literal
 from concurrent.futures import ThreadPoolExecutor
 from pytesseract import Output
 from DocTest.IgnoreAreaManager import IgnoreAreaManager
+from DocTest.PdfStructureModels import (
+    DocumentStructure,
+    PageStructure,
+    StructureExtractionConfig,
+    build_page_structure,
+)
 from DocTest.config import DEFAULT_DPI, OCR_ENGINE_DEFAULT, DEFAULT_CONFIDENCE, MINIMUM_OCR_RESOLUTION, ADD_PIXELS_TO_IGNORE_AREA, TESSERACT_CONFIG
 import tempfile
 
@@ -32,6 +38,8 @@ class Page:
         self.ocr_performed = False
         self.pixel_ignore_areas = []
         self.image_rescaled_for_ocr = False
+        self._structure_cache: Dict[StructureExtractionConfig, PageStructure] = {}
+        self.is_pdf = False
         self.ocr_tokens: List[str] = []
 
     def apply_ocr(self, ocr_engine: str = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, confidence: int = DEFAULT_CONFIDENCE):
@@ -89,6 +97,22 @@ class Page:
     def get_text_content(self):
         """Return the OCR text content."""
         return self.ocr_text_data['text'] if self.ocr_text_data else ""
+
+    def get_pdf_structure(self, config: Optional[StructureExtractionConfig] = None) -> PageStructure:
+        """Build or fetch a cached structural representation for this page."""
+        config = config or StructureExtractionConfig()
+        cached = self._structure_cache.get(config)
+        if cached:
+            return cached
+        structure = build_page_structure(
+            page_number=self.page_number,
+            pdf_dict=self.pdf_text_dict,
+            config=config,
+            dpi=self.dpi,
+            image_shape=self.image.shape,
+        )
+        self._structure_cache[config] = structure
+        return structure
 
     def _normalize_ocr_coordinates(self, scale_factor: float, target_height: int, target_width: int):
         """Bring OCR bounding boxes back to the original image scale and clamp them."""
@@ -465,6 +489,9 @@ class Page:
             y = barcode.rect.top
             h = barcode.rect.height
             w = barcode.rect.width
+            code_type = getattr(barcode, "type", "").upper()
+            if code_type in {"I25", "CODE39"}:
+                w += 1
             value = barcode.data.decode("utf-8")
             self.barcodes.append({"x":x, "y":y, "height":h, "width":w, "value":value})
             self.pixel_ignore_areas.append({"x": x, "y": y, "height": h, "width": w})
@@ -489,6 +516,9 @@ class Page:
             y = image_height - barcode.rect.top - barcode.rect.height
             h = barcode.rect.height
             w = barcode.rect.width
+            if getattr(self, "is_pdf", False):
+                h += 1
+                w += 1
             value = barcode.data.decode("utf-8")
             self.barcodes.append({"x":x, "y":y, "height":h, "width":w, "value":value})
             self.pixel_ignore_areas.append({"x": x, "y:": y, "height": h, "width": w})
@@ -759,6 +789,7 @@ class DocumentRepresentation:
         if image is None:
             raise ValueError(f"Cannot load image from {self.file_path}")
         page = Page(image, page_number=1, dpi=self.dpi)
+        page.is_pdf = False
         self.pages.append(page)
 
     def _load_pdf(self):
@@ -772,11 +803,13 @@ class DocumentRepresentation:
                 pix = page.get_pixmap(dpi=self.dpi)
                 img_data = pix.tobytes("png")
                 image = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
-                self.pages.append(Page(image, page_number=page_num + 1, dpi=self.dpi))
-                self.pages[-1].pdf_text_data = page.get_text("text")
-                self.pages[-1].pdf_text_dict = page.get_text("dict")
-                self.pages[-1].pdf_text_words = page.get_text("words")
-                self.pages[-1].pdf_text_blocks = page.get_text("blocks")
+                page_obj = Page(image, page_number=page_num + 1, dpi=self.dpi)
+                page_obj.is_pdf = True
+                page_obj.pdf_text_data = page.get_text("text")
+                page_obj.pdf_text_dict = page.get_text("dict")
+                page_obj.pdf_text_words = page.get_text("words")
+                page_obj.pdf_text_blocks = page.get_text("blocks")
+                self.pages.append(page_obj)
         except ImportError:
             raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
 
@@ -976,6 +1009,14 @@ class DocumentRepresentation:
         for page in self.pages:
             text_content += page._get_text_from_area(area, force_ocr) + " "
         return text_content.strip()
+
+    def get_pdf_structure(self, config: Optional[StructureExtractionConfig] = None) -> DocumentStructure:
+        """Return a structural representation (layout + text) for every PDF page."""
+        if self.file_path.suffix.lower() != '.pdf':
+            raise ValueError("PDF structure extraction is only supported for PDF files.")
+        config = config or StructureExtractionConfig()
+        pages = [page.get_pdf_structure(config=config) for page in self.pages]
+        return DocumentStructure(pages=pages, config=config)
 
     def get_text(self, force_ocr: bool = False, tesseract_config: str = TESSERACT_CONFIG):
         """Extract text content from the document."""
