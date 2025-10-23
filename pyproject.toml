@@ -11,7 +11,7 @@ readme = "./README.md"
 homepage = "https://github.com/manykarim/robotframework-doctestlibrary"
 
 [tool.poetry.dependencies]
-python = "^3.8.1"
+python = "^3.9.0"
 PyMuPDF = [
     { version = ">=1.23.1, <1.25.0", python = ">=3.8, <3.9" },
     { version = ">=1.26.0", python = ">=3.9" },
@@ -48,12 +48,17 @@ deepdiff = [
 pyzbar = "*"
 setuptools = { version = "*", python = "^3.12" }
 robotframework-assertion-engine = "*"
+pydantic-ai-slim = { version = "*", optional = true, extras = ["openai"] }
+python-dotenv = { version = "*", optional = true }
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
 invoke = "*"
 coverage = "*"
 robotframework-stacktrace = "*"
+
+[tool.poetry.extras]
+ai = ["pydantic-ai-slim", "python-dotenv"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
