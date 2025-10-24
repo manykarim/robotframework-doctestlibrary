@@ -1,12 +1,12 @@
 import pytest
 import numpy as np
 
-import DocTest.ai as ai_module
+import DocTest.Ai as ai_module
 
-from DocTest.ai import AIKeywords
+from DocTest.Ai import Ai
 from DocTest.llm.config import LLMSettings
 from DocTest.llm.types import LLMDecision, LLMDecisionLabel
-from DocTest.ai.responses import LLMCountResponse, LLMChatResponse, LLMExtractionResult
+from DocTest.Ai.responses import LLMCountResponse, LLMChatResponse, LLMExtractionResult
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def ai(monkeypatch):
             api_key="dummy",
         ),
     )
-    return AIKeywords()
+    return Ai()
 
 
 def test_get_text_with_llm_returns_text(monkeypatch, ai):

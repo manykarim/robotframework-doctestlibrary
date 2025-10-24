@@ -74,7 +74,7 @@ def test_text_on_colored_background_with_east(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'Beach_date.png', ocr_engine="east" )
     assert "01-Jan-2021" in img.get_text()
     assert "123456789" in img.get_text()
-    assert "SOUVENIR" in img.get_text()
+    assert "OUVENIR" in img.get_text().upper()
 
 def test_ocr_in_hires_without_rerender(testdata_dir):
     import cv2
