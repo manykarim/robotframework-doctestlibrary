@@ -3,7 +3,7 @@ import logging
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import cv2
 import imutils
@@ -15,6 +15,9 @@ from robot.libraries.BuiltIn import BuiltIn
 from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import download_file_from_url, is_url
 from DocTest.config import DEFAULT_CONFIDENCE
+from DocTest.llm import LLMDependencyError, load_llm_settings
+from DocTest.llm.client import assess_visual_diff, create_binary_content
+from DocTest.llm.types import LLMDecision, LLMDecisionLabel
 
 LOG = logging.getLogger(__name__)
 
@@ -177,6 +180,9 @@ class VisualTest:
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
         | ``block_based_ssim`` | Uses additional block based block-based comparison, to catch differences in smaller areas. Makes only sense, for ``threshold`` > 0 . Default is `False` |
         | ``block_size`` | Size of the blocks for block-based comparison. Default is 32. Only relevant for ``block_based_ssim`` |
+        | ``llm`` / ``llm_enabled`` | When set to ``${True}`` the detected differences are summarised and forwarded to the configured LLM (see optional keywords below). |
+        | ``llm_override`` | When combined with LLM usage, a positive LLM verdict overrides baseline SSIM failures. |
+        | ``llm_prompt`` / ``llm_visual_prompt`` | Customise the LLM system prompt for this call. |
         | ``**kwargs`` | Everything else |
 
 
@@ -194,6 +200,7 @@ class VisualTest:
         | @{watermarks}    Create List    watermark1.pdf    watermark2.pdf
         | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=${watermarks}     #Provides a list of watermark files. Individual files will be checked first, then combined if individual files don't cover all differences
         | `Compare Images`   reference.pdf   candidate.pdf   move_tolerance=10   get_pdf_content=${true}   #In case of visual differences, it is checked if difference is caused only by moved areas. Move distance is identified directly from PDF data. If the move distance is within 10 pixels the test is considered as passed. Else it is failed
+        | `Compare Images`   reference.pdf   candidate.pdf   llm=${True}   llm_prompt=Please output JSON decision | Summarise differences and ask the configured LLM to decide whether the mismatch may pass
 
         Special Examples with ``mask``:
         | `Compare Images`   reference.pdf   candidate.pdf   mask={"page": "all", type: "coordinate", "x": 0, "y": 0, "width": 100, "height": 100}     #Excludes a rectangle from comparison
@@ -208,6 +215,38 @@ class VisualTest:
 
         | `Compare Images`    reference.pdf    candidate.pdf    mask=top:10;bottom:10   #Excludes two areas top and bottom with 10% from comparison
         """
+        llm_requested = bool(
+            kwargs.pop("llm", False)
+            or kwargs.pop("llm_enabled", False)
+            or kwargs.pop("use_llm", False)
+        )
+        llm_override_result = bool(kwargs.pop("llm_override", False))
+        llm_overrides: Dict[str, Optional[str]] = {}
+        llm_runtime_notes: List[str] = []
+        custom_llm_prompt = kwargs.pop("llm_prompt", None)
+        visual_prompt_override = kwargs.pop("llm_visual_prompt", None)
+        if visual_prompt_override:
+            custom_llm_prompt = visual_prompt_override
+        llm_keys = [
+            "llm_provider",
+            "llm_models",
+            "llm_vision_models",
+            "llm_api_key",
+            "llm_base_url",
+            "llm_temperature",
+            "llm_max_output_tokens",
+            "llm_request_timeout",
+            "azure_openai_endpoint",
+            "azure_openai_deployment",
+            "azure_openai_api_version",
+            "azure_openai_api_key",
+        ]
+        for key in llm_keys:
+            if key in kwargs:
+                value = kwargs.pop(key)
+                if value is not None:
+                    llm_overrides[key] = value
+
         # Download files if URLs are provided
         if is_url(reference_image):
             reference_image = download_file_from_url(reference_image)
@@ -261,9 +300,12 @@ class VisualTest:
         # Apply ignore areas if provided
         abstract_ignore_areas = None
 
-        detected_differences = []
+        detected_differences: List[Dict[str, Any]] = []
         # Compare visual content through the Page class
         for ref_page, cand_page in zip(reference_doc.pages, candidate_doc.pages):
+            page_notes: List[str] = []
+            diff_rectangles_cache: Optional[List[Dict[str, int]]] = None
+            combined_image_with_differences = None
             # Resize the candidate page if needed
             if resize_candidate and ref_page.image.shape != cand_page.image.shape:
                 cand_page.image = cv2.resize(
@@ -273,7 +315,17 @@ class VisualTest:
             # Check if dimensions are different
             if ref_page.image.shape != cand_page.image.shape:
                 detected_differences.append(
-                    (ref_page, cand_page, "Image dimensions are different.")
+                    {
+                        "ref_page": ref_page,
+                        "cand_page": cand_page,
+                        "message": "Image dimensions are different.",
+                        "rectangles": [],
+                        "score": None,
+                        "threshold": threshold,
+                        "absolute_diff": None,
+                        "combined_diff": None,
+                        "notes": page_notes[:],
+                    }
                 )
                 combined_image = self.concatenate_images_safely(
                     ref_page.image, cand_page.image, axis=1, fill_color=(240, 240, 240)
@@ -305,6 +357,7 @@ class VisualTest:
             if not similar and ignore_watermarks:
                 # Get bounding rect of differences
                 diff_rectangles = self.get_diff_rectangles(absolute_diff)
+                diff_rectangles_cache = diff_rectangles
                 # Check if the differences are only in the watermark area
                 if len(diff_rectangles) == 1:
                     diff_rect = diff_rectangles[0]
@@ -499,13 +552,12 @@ class VisualTest:
 
             if check_text_content and not similar:
                 similar = True
-                # Create two new Page objects which only contain absolute differences
-                # Do a simple cv2.absdiff to get the absolute differences between the two images
-
-                # If the images are not similar, we need to compare text content
-                # Only compare the text content in the areas that have differences
-                # For that, the rectangles around the differences are needed
-                diff_rectangles = self.get_diff_rectangles(absolute_diff)
+                diff_rectangles = (
+                    diff_rectangles_cache
+                    if diff_rectangles_cache is not None
+                    else self.get_diff_rectangles(absolute_diff)
+                )
+                diff_rectangles_cache = diff_rectangles
                 # Compare text content only in the areas that have differences
                 for rect in diff_rectangles:
                     same_text, ref_area_text, cand_area_text = (
@@ -522,17 +574,22 @@ class VisualTest:
                     self.add_screenshot_to_log(
                         candidate_area, suffix="_candidate_area", original_size=False
                     )
-
                     if not same_text:
                         similar = False
+                        page_notes.append(
+                            f"Rect {rect} has different text. "
+                            f"Reference: {ref_area_text!r} | Candidate: {cand_area_text!r}"
+                        )
                         # Add log message with the text content differences
                         # Add screenshots to the log of the reference and candidate areas
 
                         print(
                             f"Text content in the area {rect} differs:\n\nReference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}"
                         )
-
                     else:
+                        page_notes.append(
+                            f"Rect {rect} visual change but identical text."
+                        )
                         print(
                             f"Visual differences in the area {rect} but text content is the same."
                         )
@@ -541,7 +598,12 @@ class VisualTest:
                         )
 
             if move_tolerance and int(move_tolerance) > 0 and not similar:
-                diff_rectangles = self.get_diff_rectangles(absolute_diff)
+                diff_rectangles = (
+                    diff_rectangles_cache
+                    if diff_rectangles_cache is not None
+                    else self.get_diff_rectangles(absolute_diff)
+                )
+                diff_rectangles_cache = diff_rectangles
                 has_pdf_text = bool(ref_page.pdf_text_words) and bool(cand_page.pdf_text_words)
                 if get_pdf_content:
                     import fitz
@@ -639,19 +701,162 @@ class VisualTest:
                     absolute_diff, suffix="_absolute_diff", original_size=False
                 )
 
+                if diff_rectangles_cache is None:
+                    diff_rectangles_cache = self.get_diff_rectangles(absolute_diff)
+
                 detected_differences.append(
-                    (
-                        ref_page,
-                        cand_page,
-                        f"Visual differences detected. SSIM score: {score:.20f}",
-                    )
+                    {
+                        "ref_page": ref_page,
+                        "cand_page": cand_page,
+                        "message": f"Visual differences detected. SSIM score: {score:.20f}",
+                        "rectangles": diff_rectangles_cache,
+                        "score": score,
+                        "threshold": threshold,
+                        "absolute_diff": absolute_diff.copy() if absolute_diff is not None else None,
+                        "combined_diff": combined_image_with_differences.copy()
+                        if combined_image_with_differences is not None
+                        else None,
+                        "notes": page_notes[:],
+                    }
                 )
 
-        for ref_page, cand_page, message in detected_differences:
-            print(message)
+        if detected_differences and llm_requested:
+            llm_runtime_notes.append(f"Threshold: {threshold}")
+            if check_text_content:
+                llm_runtime_notes.append("Text content verification was enabled.")
+            if move_tolerance:
+                llm_runtime_notes.append(f"Movement tolerance: {move_tolerance}")
+            llm_decision = self._handle_llm_for_visual_differences(
+                reference_image=reference_image,
+                candidate_image=candidate_image,
+                differences=detected_differences,
+                overrides=llm_overrides,
+                notes=llm_runtime_notes,
+                custom_prompt=custom_llm_prompt,
+            )
+            if llm_decision:
+                print(
+                    f"LLM decision: {llm_decision.decision.value} "
+                    f"(confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
+                )
+                if llm_decision.notes:
+                    print(f"LLM notes: {llm_decision.notes}")
+                if llm_override_result and llm_decision.is_positive:
+                    print("LLM approved differences. Overriding baseline failure.")
+                    detected_differences = []
+                elif llm_decision.decision == LLMDecisionLabel.FLAG:
+                    print("LLM returned FLAG - keeping original comparison result.")
+                elif not llm_decision.is_positive and llm_override_result:
+                    print("LLM rejected differences. Baseline failure will be raised.")
+
+        for diff in detected_differences:
+            print(diff["message"])
             self._raise_comparison_failure()
 
         print("Images/Document comparison passed.")
+
+    @keyword
+    def compare_images_with_llm(self, *args, llm_override: bool = False, **kwargs):
+        """Compare two documents and optionally consult an LLM before failing.
+
+        Works like ``Compare Images`` but, when visual differences are detected,
+        the library will gather contextual information and forward it to the
+        configured LLM. The LLM can then decide whether the run should continue.
+
+        ``llm_override`` – When set to ``${True}``, a positive LLM verdict will
+        override baseline SSIM failures. The keyword also accepts ``llm_prompt``
+        or ``llm_visual_prompt`` to provide a custom system prompt for the model.
+
+        Example:
+        | `Compare Images With LLM`   reference.pdf   candidate.pdf   llm_override=${True}   llm_prompt=Always respond with JSON
+        """
+
+        kwargs["llm_enabled"] = kwargs.get("llm_enabled", True)
+        if "llm_override" not in kwargs:
+            kwargs["llm_override"] = llm_override
+        return self.compare_images(*args, **kwargs)
+
+    def _handle_llm_for_visual_differences(
+        self,
+        reference_image: str,
+        candidate_image: str,
+        differences: List[Dict[str, Any]],
+        overrides: Dict[str, Optional[str]],
+        notes: List[str],
+        custom_prompt: Optional[str],
+    ) -> Optional[LLMDecision]:
+        overrides = {key: (str(value) if value is not None else None) for key, value in overrides.items()}
+        overrides.setdefault("llm_enabled", "true")
+        overrides.setdefault("llm_visual_enabled", "true")
+
+        try:
+            settings = load_llm_settings(overrides)
+        except Exception as exc:  # pragma: no cover - defensive
+            LOG.warning("Failed to load LLM settings: %s", exc)
+            return None
+
+        if not settings.visual_enabled:
+            print("LLM visual evaluation requested but disabled via settings.")
+            return None
+
+        attachments = []
+        summary_lines = [
+            f"Reference file: {reference_image}",
+            f"Candidate file: {candidate_image}",
+        ]
+
+        extra_messages: List[str] = list(notes or [])
+
+        try:
+            for index, diff in enumerate(differences, 1):
+                ref_page = diff.get("ref_page")
+                page_number = getattr(ref_page, "page_number", None)
+                score = diff.get("score")
+                rects = diff.get("rectangles") or []
+                summary_lines.append(
+                    f"Difference {index}: page={page_number}, score={score}, rectangles={rects}"
+                )
+                for note in diff.get("notes") or []:
+                    extra_messages.append(str(note))
+
+                combined = diff.get("combined_diff")
+                if combined is not None:
+                    attachments.append(
+                        create_binary_content(self._encode_image_to_png(combined), "image/png")
+                    )
+                absolute = diff.get("absolute_diff")
+                if absolute is not None:
+                    attachments.append(
+                        create_binary_content(self._encode_image_to_png(absolute), "image/png")
+                    )
+        except LLMDependencyError as exc:
+            print(str(exc))
+            return None
+        except Exception as exc:  # pragma: no cover - defensive
+            LOG.warning("Failed to prepare LLM payload: %s", exc)
+            return None
+
+        try:
+            decision = assess_visual_diff(
+                settings=settings,
+                textual_summary="\n".join(summary_lines),
+                attachments=tuple(attachments),
+                extra_messages=extra_messages,
+                system_prompt=custom_prompt,
+            )
+        except LLMDependencyError as exc:
+            print(str(exc))
+            return None
+        except Exception as exc:  # pragma: no cover - defensive
+            LOG.warning("LLM evaluation failed: %s", exc)
+            return None
+        return decision
+
+    def _encode_image_to_png(self, image) -> bytes:
+        success, encoded = cv2.imencode(".png", image)
+        if not success:
+            raise ValueError("Failed to encode image to PNG format.")
+        return encoded.tobytes()
 
     def _check_movement_with_text(
         self,

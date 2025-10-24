@@ -1,15 +1,20 @@
 from inspect import signature
-from pprint import pprint
+from pprint import pprint, pformat
 from deepdiff import DeepDiff
 from robot.api import logger
 from robot.api.deco import keyword, library
 import fitz
 import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 from DocTest.config import DEFAULT_DPI
 from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import is_url, download_file_from_url
 from DocTest.PdfStructureComparator import StructureTolerance, compare_document_structures
 from DocTest.PdfStructureModels import StructureExtractionConfig
+from DocTest.llm import LLMDependencyError, load_llm_settings
+from DocTest.llm.client import assess_pdf_diff, create_binary_content
+from DocTest.llm.types import LLMDecision, LLMDecisionLabel
 
 
 def _as_bool(value, default=False):
@@ -83,6 +88,9 @@ class PdfTest(object):
             - ``structure_whitespace_replacement`` (str, default single space)
             - ``structure_round_precision`` (int or ``None``, default ``3``) – rounding precision for coordinates
             - ``structure_dpi`` (int, default: library DPI) – DPI used when rasterising PDFs prior to structure extraction
+            - ``llm`` / ``llm_enabled`` – Forward detected differences to the configured LLM for advisory review.
+            - ``llm_override`` – Allow an approving LLM verdict to override baseline comparison failures.
+            - ``llm_prompt`` / ``llm_pdf_prompt`` – Customise the LLM prompt for a single invocation.
 
         Result passes only if every requested facet matches.
 
@@ -91,10 +99,44 @@ class PdfTest(object):
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=text
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=structure
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=structure|metadata    structure_position_tolerance=5.0
+        | `Compare Pdf Documents`    reference.pdf    candidate.pdf    llm=${True}    llm_prompt=Summarise differences using JSON
 
         """
+        llm_requested = bool(
+            kwargs.pop("llm", False)
+            or kwargs.pop("llm_enabled", False)
+            or kwargs.pop("use_llm", False)
+        )
+        llm_override_result = bool(kwargs.pop("llm_override", False))
+        llm_overrides: Dict[str, Optional[str]] = {}
+        llm_general_notes: List[str] = []
+        llm_differences: List[Dict[str, Any]] = []
+        custom_llm_prompt = kwargs.pop("llm_prompt", None)
+        pdf_prompt_override = kwargs.pop("llm_pdf_prompt", None)
+        if pdf_prompt_override:
+            custom_llm_prompt = pdf_prompt_override
+        llm_keys = [
+            "llm_provider",
+            "llm_models",
+            "llm_api_key",
+            "llm_base_url",
+            "llm_temperature",
+            "llm_max_output_tokens",
+            "llm_request_timeout",
+            "azure_openai_endpoint",
+            "azure_openai_deployment",
+            "azure_openai_api_version",
+            "azure_openai_api_key",
+        ]
+        for key in llm_keys:
+            if key in kwargs:
+                value = kwargs.pop(key)
+                if value is not None:
+                    llm_overrides[key] = value
+
         mask = kwargs.pop('mask', None)
         check_pdf_text = _as_bool(kwargs.pop('check_pdf_text', False))
+        llm_general_notes.append(f"check_pdf_text={check_pdf_text}")
 
         compare_value = kwargs.pop('compare', "all")
         compare_value = compare_value.replace('|', ',')
@@ -102,6 +144,7 @@ class PdfTest(object):
         if not compare_tokens:
             compare_tokens = ['all']
         compare_set = set(compare_tokens)
+        llm_general_notes.append(f"Compare facets: {sorted(compare_set)}")
 
         structure_position_tolerance = _as_float(kwargs.pop('structure_position_tolerance', 15.0), 15.0)
         structure_size_tolerance = _as_float(kwargs.pop('structure_size_tolerance', structure_position_tolerance), structure_position_tolerance)
@@ -118,6 +161,11 @@ class PdfTest(object):
             structure_dpi = _as_int_or_none(kwargs.get('dpi'))
         if structure_dpi is None:
             structure_dpi = DEFAULT_DPI
+        structure_requested = 'structure' in compare_set
+        if structure_requested:
+            llm_general_notes.append(
+                f"structure_tolerance(position={structure_position_tolerance}, size={structure_size_tolerance}, relative={structure_relative_tolerance})"
+            )
 
         extraction_config = StructureExtractionConfig(
             collapse_whitespace=structure_collapse_whitespace,
@@ -128,7 +176,6 @@ class PdfTest(object):
             round_precision=structure_round_precision,
         )
 
-        structure_requested = 'structure' in compare_set
 
         reference_document = self._ensure_local_document(reference_document)
         candidate_document = self._ensure_local_document(candidate_document)
@@ -169,18 +216,39 @@ class PdfTest(object):
                 differences_detected=True
                 print("Different metadata")
                 pprint(diff, width=200)
+                llm_differences.append(
+                    {
+                        "facet": "metadata",
+                        "description": "Metadata differs between reference and candidate.",
+                        "details": pformat(diff, width=200),
+                    }
+                )
         if 'signatures' in compare_set or 'all' in compare_set:
             diff = DeepDiff(reference['sigflags'], candidate['sigflags'])
             if diff != {}:
                 differences_detected=True
                 print("Different signature")
                 pprint(diff, width=200)
+                llm_differences.append(
+                    {
+                        "facet": "signatures",
+                        "description": "PDF signature flags differ.",
+                        "details": pformat(diff, width=200),
+                    }
+                )
         for ref_page, cand_page in zip(reference['pages'], candidate['pages']):
             diff = DeepDiff(ref_page['rotation'], cand_page['rotation'])
             if diff != {}:
                 differences_detected=True
                 print("Different rotation")
                 pprint(diff, width=200)
+                llm_differences.append(
+                    {
+                        "facet": "rotation",
+                        "description": f"Page {ref_page['number']} rotation differs.",
+                        "details": pformat(diff, width=200),
+                    }
+                )
             # diff = DeepDiff(ref_page['mediabox'], cand_page['mediabox'])
             # if diff != {}:
             #     differences_detected=True
@@ -192,24 +260,52 @@ class PdfTest(object):
                     differences_detected=True
                     print("Different text")
                     pprint(diff, width=200)
+                    llm_differences.append(
+                        {
+                            "facet": "text",
+                            "description": f"Page {ref_page['number']} text content differs.",
+                            "details": pformat(diff, width=200),
+                        }
+                    )
             if 'fonts' in compare_set or 'all' in compare_set:
                 diff = DeepDiff(ref_page['fonts'], cand_page['fonts'])
                 if diff != {}:
                     differences_detected=True
                     print("Different fonts")
                     pprint(diff, width=200)
+                    llm_differences.append(
+                        {
+                            "facet": "fonts",
+                            "description": f"Page {ref_page['number']} font usage differs.",
+                            "details": pformat(diff, width=200),
+                        }
+                    )
             if 'images' in compare_set or 'all' in compare_set:
                 diff = DeepDiff(ref_page['images'], cand_page['images'])
                 if diff != {}:
                     differences_detected=True
                     print("Different images")
                     pprint(diff, width=200)
+                    llm_differences.append(
+                        {
+                            "facet": "images",
+                            "description": f"Page {ref_page['number']} embedded images differ.",
+                            "details": pformat(diff, width=200),
+                        }
+                    )
             if 'signatures' in compare_set or 'all' in compare_set:
                 diff = DeepDiff(ref_page['signatures'], cand_page['signatures'])
                 if diff != {}:
                     differences_detected=True
                     print("Different signatures")
                     pprint(diff, width=200)
+                    llm_differences.append(
+                        {
+                            "facet": "signatures",
+                            "description": f"Page {ref_page['number']} form signatures differ.",
+                            "details": pformat(diff, width=200),
+                        }
+                    )
 
         if structure_requested:
             tolerance = StructureTolerance(
@@ -227,6 +323,47 @@ class PdfTest(object):
             )
             if not structure_result.passed:
                 differences_detected = True
+                summary = getattr(structure_result, "summary", None)
+                page_diffs = getattr(structure_result, "page_differences", None)
+                details_parts: List[str] = []
+                if summary:
+                    details_parts.extend(str(item) for item in summary)
+                if page_diffs:
+                    for page, diffs in page_diffs.items():
+                        for diff in diffs:
+                            details_parts.append(f"Page {page}: {diff.message}")
+                llm_differences.append(
+                    {
+                        "facet": "structure",
+                        "description": "PDF structural comparison failed.",
+                        "details": "\n".join(details_parts) if details_parts else "Structure comparison differences detected.",
+                    }
+                )
+
+        if differences_detected and llm_requested:
+            llm_general_notes.append(f"mask_applied={'yes' if mask else 'no'}")
+            decision = self._handle_llm_for_pdf_differences(
+                reference_document=reference_document,
+                candidate_document=candidate_document,
+                differences=llm_differences,
+                overrides=llm_overrides,
+                notes=llm_general_notes,
+                custom_prompt=custom_llm_prompt,
+            )
+            if decision:
+                print(
+                    f"LLM decision: {decision.decision.value} "
+                    f"(confidence={decision.confidence!r}) - {decision.reason}"
+                )
+                if decision.notes:
+                    print(f"LLM notes: {decision.notes}")
+                if llm_override_result and decision.is_positive:
+                    print("LLM approved PDF differences. Overriding baseline failure.")
+                    differences_detected = False
+                elif decision.decision == LLMDecisionLabel.FLAG:
+                    print("LLM returned FLAG - keeping original PDF comparison result.")
+                elif not decision.is_positive and llm_override_result:
+                    print("LLM rejected PDF differences. Baseline failure will stand.")
 
         if differences_detected:
             ref_doc = None
@@ -426,6 +563,23 @@ class PdfTest(object):
             print('None of the non-expected texts were found in document')
             print(f"Missing Texts:\n{missing_text_list}")
     
+    @keyword
+    def compare_pdf_documents_with_llm(self, *args, llm_override: bool = False, **kwargs):
+        """Compare PDF files and consult an LLM before failing.
+
+        The behaviour mirrors ``Compare Pdf Documents`` while collecting any
+        detected differences and forwarding them to the configured LLM.  Provide
+        ``llm_override`` to let a positive verdict override baseline failures and
+        set ``llm_prompt`` or ``llm_pdf_prompt`` to customise the model prompt.
+
+        Example:
+        | `Compare Pdf Documents With LLM`   reference.pdf   candidate.pdf   compare=text   llm_override=${True}
+        """
+        kwargs["llm_enabled"] = kwargs.get("llm_enabled", True)
+        if "llm_override" not in kwargs:
+            kwargs["llm_override"] = llm_override
+        return self.compare_pdf_documents(*args, **kwargs)
+
     def _perform_structure_comparison(
         self,
         reference_document: str,
@@ -473,6 +627,85 @@ class PdfTest(object):
 
     def _ensure_local_document(self, document):
         return download_file_from_url(document) if is_url(document) else document
+
+    def _handle_llm_for_pdf_differences(
+        self,
+        reference_document: str,
+        candidate_document: str,
+        differences: List[Dict[str, Any]],
+        overrides: Dict[str, Optional[str]],
+        notes: List[str],
+        custom_prompt: Optional[str],
+    ) -> Optional[LLMDecision]:
+        overrides = {key: (str(value) if value is not None else None) for key, value in overrides.items()}
+        overrides.setdefault("llm_enabled", "true")
+        overrides.setdefault("llm_pdf_enabled", "true")
+
+        try:
+            settings = load_llm_settings(overrides)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warn(f"Failed to load LLM settings: {exc}")
+            return None
+
+        if not settings.pdf_enabled:
+            print("LLM PDF evaluation requested but disabled via settings.")
+            return None
+
+        summary_lines = [
+            f"Reference document: {reference_document}",
+            f"Candidate document: {candidate_document}",
+        ]
+        attachments = []
+        try:
+            reference_bytes = Path(reference_document).read_bytes()
+            attachments.append(create_binary_content(reference_bytes, "application/pdf"))
+        except FileNotFoundError:
+            logger.warn("Reference document not found for LLM attachment: %s", reference_document)
+        except LLMDependencyError as exc:
+            print(str(exc))
+            return None
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warn("Failed to attach reference document for LLM: %s", exc)
+
+        try:
+            candidate_bytes = Path(candidate_document).read_bytes()
+            attachments.append(create_binary_content(candidate_bytes, "application/pdf"))
+        except FileNotFoundError:
+            logger.warn("Candidate document not found for LLM attachment: %s", candidate_document)
+        except LLMDependencyError as exc:
+            print(str(exc))
+            return None
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warn("Failed to attach candidate document for LLM: %s", exc)
+
+        for item in differences:
+            facet = item.get("facet", "unknown")
+            description = item.get("description", "")
+            detail = item.get("details")
+            summary_lines.append(f"{facet}: {description}")
+            if detail:
+                detail_text = str(detail)
+                if len(detail_text) > 2000:
+                    detail_text = f"{detail_text[:2000]} ... (truncated)"
+                summary_lines.append(detail_text)
+
+        extra_messages = list(notes or [])
+
+        try:
+            decision = assess_pdf_diff(
+                settings=settings,
+                textual_summary="\n".join(summary_lines),
+                attachments=tuple(attachments),
+                extra_messages=extra_messages,
+                system_prompt=custom_prompt,
+            )
+        except LLMDependencyError as exc:
+            print(str(exc))
+            return None
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warn("LLM PDF evaluation failed: %s", exc)
+            return None
+        return decision
 
 def is_masked(text, mask):
     if isinstance(mask, str):

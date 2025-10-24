@@ -25,6 +25,10 @@ Compare two Images and highlight differences
 
 `pip install --upgrade robotframework-doctestlibrary`
 
+For optional LLM-assisted reviews install the extra dependencies with
+`pip install "robotframework-doctestlibrary[ai]"` and supply credentials using a
+`.env` file (an example template ships as `.env.example`).
+
 Only Python 3.X or newer is supported. Tested with Python 3.8/3.11/3.12
 
 ## Install robotframework-doctestlibrary
@@ -377,6 +381,17 @@ In order of appearance.
 
 This project is community driven and becomes a reality only through the work of all the people who contribute.
 """
+try:  # pragma: no cover
+    from DocTest.llm import ensure_dotenv_loaded  # type: ignore
+except Exception:  # pragma: no cover - LLM extra not installed
+    ensure_dotenv_loaded = None  # type: ignore
+
+if ensure_dotenv_loaded is not None:  # pragma: no cover - optional
+    try:
+        ensure_dotenv_loaded()
+    except Exception:
+        pass
+
 from importlib import metadata
 
 try:

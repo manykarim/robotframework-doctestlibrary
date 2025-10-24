@@ -64,6 +64,49 @@ Windows
 - https://ghostscript.com/releases/gpcldnld.html
 - https://imagemagick.org/script/download.php
 
+## Optional LLM-Assisted Comparisons
+
+You can optionally rely on a large language model to review detected differences and
+decide whether a comparison should pass. This path is fully opt-in; nothing changes
+for users who skip these dependencies.
+
+1. Install the optional extra only when needed:
+   ```bash
+   pip install "robotframework-doctestlibrary[ai]"
+   ```
+2. Create a `.env` file at the repository root (values here override existing environment variables):
+   ```ini
+   # OpenAI-compatible endpoints
+   OPENAI_API_KEY=sk-...
+   DOCTEST_LLM_MODEL=gpt-5,gpt-4o
+   DOCTEST_LLM_VISION_MODEL=gpt-5-mini,gpt-4o-mini
+   ```
+   Azure OpenAI deployments can be configured with:
+   ```ini
+   AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/
+   AZURE_OPENAI_API_KEY=...
+   AZURE_OPENAI_DEPLOYMENT=gpt-4o
+   AZURE_OPENAI_API_VERSION=2024-06-01
+   DOCTEST_LLM_PROVIDER=azure
+   ```
+   See `.env.example` for a combined template covering both providers.
+3. Use the dedicated keywords (or pass `llm_enabled=${True}` to existing ones):
+   ```RobotFramework
+   *** Test Cases ***
+   Review Visual Differences With LLM
+       Compare Images With LLM    Reference.pdf    Candidate.pdf    llm_override=${True}
+
+   Review Pdf Structure With LLM
+       Compare Pdf Documents With LLM    reference.pdf    candidate.pdf    compare=structure
+   ```
+
+Set `llm_override=${True}` when an LLM approval should override SSIM/DeepDiff failures.
+Without the override flag the AI feedback is logged for investigation while the original
+assertion result is preserved.
+
+Pass `llm_prompt=` (or the specialty variants `llm_visual_prompt=` / `llm_pdf_prompt=`) to
+customise the prompt sent to the model for a particular comparison.
+
 ## Some special instructions for Windows
 
 ### Rename executable for GhostPCL to pcl6.exe (only needed for `.pcl` support)
