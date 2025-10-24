@@ -76,6 +76,7 @@ for users who skip these dependencies.
    ```
    See `.env.example` for a combined template covering both providers.
 3. Use the dedicated keywords (or pass `llm_enabled=${True}` to existing ones):
+
    ```RobotFramework
    *** Test Cases ***
    Review Visual Differences With LLM
@@ -191,10 +192,12 @@ Have a look at
 * [Visual Comparison Tests](./atest/Compare.robot)
 * [PDF Content Tests](./atest/PdfContent.robot)
 * [Print Job Tests](./atest/PrintJobs.robot)
+* [AI-Assisted Tests](./atest/LLM.robot)
 
 for more examples.
 
 ### Testing with [Robot Framework](https://robotframework.org)
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest
@@ -287,6 +290,7 @@ Accept differences if text content is the same from PDF Data
 ```
 
 #### Different options to detect moved parts/objects
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   movement_detection=orb
@@ -315,12 +319,15 @@ Accept if parts are moved up to 20 pixels by pure visual check
 ```	
 
 ### Options for taking additional screenshots, screenshot format and render resolution
+
 Take additional screenshots or reference and candidate file.
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   take_screenshots=${true}    screenshot_format=png
 ```
 Take diff screenshots to highlight differences
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   show_diff=${true}    DPI=300
@@ -364,6 +371,7 @@ Store the watermark in a separate B/W image or PDF.
 Watermark area needs to be filled with black color.
 <br>
 Watermark content will be subtracted from Visual Comparison result.
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest
@@ -380,6 +388,7 @@ Compare two Images and ignore watermark folder
 ```
 
 Watermarks can also be passed on Library import. This setting will apply to all Test Cases in Test Suite
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   watermark_file=${CURDIR}${/}watermarks

@@ -193,6 +193,7 @@ Have a look at
 * [Visual Comparison Tests](./atest/Compare.robot)
 * [PDF Content Tests](./atest/PdfContent.robot)
 * [Print Job Tests](./atest/PrintJobs.robot)
+* [AI-Assisted Tests](./atest/LLM.robot)
 
 for more examples.
 
