@@ -88,9 +88,13 @@ class PdfTest(object):
             - ``structure_whitespace_replacement`` (str, default single space)
             - ``structure_round_precision`` (int or ``None``, default ``3``) – rounding precision for coordinates
             - ``structure_dpi`` (int, default: library DPI) – DPI used when rasterising PDFs prior to structure extraction
-            - ``llm`` / ``llm_enabled`` – Forward detected differences to the configured LLM for advisory review.
-            - ``llm_override`` – Allow an approving LLM verdict to override baseline comparison failures.
-            - ``llm_prompt`` / ``llm_pdf_prompt`` – Customise the LLM prompt for a single invocation.
+
+        Optional LLM integration parameters:
+
+        | =Arguments= | =Description= |
+        | ``llm`` / ``llm_enabled`` | When ``${True}``, forward detected differences to the configured LLM. Default ``${False}``. |
+        | ``llm_override`` | Allow an approving LLM verdict to override baseline comparison failures. Default ``${False}``. |
+        | ``llm_prompt`` / ``llm_pdf_prompt`` | Custom prompt for this comparison. Default ``None`` uses the built-in prompt. |
 
         Result passes only if every requested facet matches.
 
@@ -565,12 +569,12 @@ class PdfTest(object):
     
     @keyword
     def compare_pdf_documents_with_llm(self, *args, llm_override: bool = False, **kwargs):
-        """Compare PDF files and consult an LLM before failing.
+        """Compare PDF files and consult the configured LLM before failing.
 
-        The behaviour mirrors ``Compare Pdf Documents`` while collecting any
-        detected differences and forwarding them to the configured LLM.  Provide
-        ``llm_override`` to let a positive verdict override baseline failures and
-        set ``llm_prompt`` or ``llm_pdf_prompt`` to customise the model prompt.
+        | =Arguments= | =Description= |
+        | ``*args`` | Positional arguments forwarded to ``Compare Pdf Documents`` (reference and candidate). |
+        | ``llm_override`` | When ``${True}``, allow an approving LLM verdict to override baseline failures. Default ``${False}``. |
+        | ``**kwargs`` | Keyword arguments forwarded to ``Compare Pdf Documents``. ``llm_prompt`` / ``llm_pdf_prompt`` may be used to customise the LLM prompt. |
 
         Example:
         | `Compare Pdf Documents With LLM`   reference.pdf   candidate.pdf   compare=text   llm_override=${True}
