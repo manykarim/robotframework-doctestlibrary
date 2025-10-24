@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Iterable, List, Optional, Sequence
+from typing import Any, Iterable, List, Optional, Sequence, Type
+
+from pydantic import BaseModel, ValidationError
 
 from .config import LLMSettings
 from .exceptions import LLMDependencyError
@@ -137,13 +139,51 @@ def _parse_decision(payload) -> LLMDecision:
     return LLMDecision(decision=decision, confidence=confidence, reason=reason, notes=notes)
 
 
+def _normalise_output(result: Any, output_type: Type[Any]) -> Any:
+    if isinstance(result, output_type):
+        return result
+
+    direct_output = getattr(result, "output", None)
+    if direct_output is not None:
+        if isinstance(direct_output, output_type):
+            return direct_output
+        if issubclass(output_type, BaseModel):
+            try:
+                return output_type.model_validate(direct_output)
+            except (ValidationError, TypeError, ValueError):
+                pass
+
+    if issubclass(output_type, BaseModel):
+        candidates: List[Any] = []
+        if hasattr(result, "parts"):
+            for part in getattr(result, "parts", []):
+                args = getattr(part, "args", None)
+                if args is not None:
+                    candidates.append(args)
+        if isinstance(result, dict):
+            candidates.append(result)
+        if isinstance(result, str):
+            try:
+                candidates.append(json.loads(result))
+            except json.JSONDecodeError:
+                pass
+
+        for candidate in candidates:
+            try:
+                return output_type.model_validate(candidate)
+            except (ValidationError, TypeError, ValueError):
+                continue
+        raise AssertionError("LLM returned data that could not be parsed into the expected schema.")
+
+    return result
+
+
 def _run_agent(
     settings: LLMSettings,
     purpose: str,
-    summary: str,
-    attachments: Sequence,
-    extra_messages: Optional[Iterable[str]] = None,
-) -> LLMDecision:
+    messages: Sequence,
+    output_type: Type[Any],
+) -> Any:
     Agent, _ = _import_runtime()
     _configure_environment(settings)
 
@@ -151,27 +191,16 @@ def _run_agent(
     if not identifier:
         raise RuntimeError("No LLM model configured for the requested operation.")
 
-    agent = Agent(identifier, output_type=LLMDecision)
-
-    message_blocks: List = []
-    message_blocks.append(summary)
-    if extra_messages:
-        message_blocks.extend(extra_messages)
-
-    for attachment in attachments:
-        message_blocks.append(attachment)
+    agent = Agent(identifier, output_type=output_type)
 
     try:
-        result = agent.run_sync(message_blocks)
+        raw = agent.run_sync(list(messages))
+        return _normalise_output(raw, output_type)
     except Exception as exc:
         partial = getattr(exc, "partial_response", None)
         if partial is not None:
-            return _parse_decision(partial)
+            return _normalise_output(partial, output_type)
         raise
-
-    if isinstance(result, LLMDecision):
-        return result
-    return _parse_decision(result)
 
 
 def assess_visual_diff(
@@ -182,8 +211,14 @@ def assess_visual_diff(
     system_prompt: Optional[str] = None,
 ) -> LLMDecision:
     prompt = system_prompt.strip() if system_prompt else VISUAL_SYSTEM_PROMPT
-    summary = f"{prompt}\n\n{textual_summary.strip()}"
-    return _run_agent(settings, "vision", summary, attachments, extra_messages)
+    blocks: List = [f"{prompt}\n\n{textual_summary.strip()}"]
+    if extra_messages:
+        blocks.extend(extra_messages)
+    blocks.extend(attachments)
+    result = _run_agent(settings, "vision", blocks, LLMDecision)
+    if isinstance(result, LLMDecision):
+        return result
+    return _parse_decision(result)
 
 
 def assess_pdf_diff(
@@ -194,5 +229,26 @@ def assess_pdf_diff(
     system_prompt: Optional[str] = None,
 ) -> LLMDecision:
     prompt = system_prompt.strip() if system_prompt else PDF_SYSTEM_PROMPT
-    summary = f"{prompt}\n\n{textual_summary.strip()}"
-    return _run_agent(settings, "text", summary, attachments, extra_messages)
+    blocks: List = [f"{prompt}\n\n{textual_summary.strip()}"]
+    if extra_messages:
+        blocks.extend(extra_messages)
+    blocks.extend(attachments)
+    result = _run_agent(settings, "text", blocks, LLMDecision)
+    if isinstance(result, LLMDecision):
+        return result
+    return _parse_decision(result)
+
+
+def run_structured_prompt(
+    settings: LLMSettings,
+    purpose: str,
+    prompt: str,
+    attachments: Sequence,
+    extra_messages: Optional[Iterable[str]] = None,
+    output_type: Type[Any] = str,
+) -> Any:
+    blocks: List = [prompt]
+    if extra_messages:
+        blocks.extend(extra_messages)
+    blocks.extend(attachments)
+    return _run_agent(settings, purpose, blocks, output_type)

@@ -9,6 +9,7 @@ See **keyword documentation** for
 - [Visual Document Tests](https://manykarim.github.io/robotframework-doctestlibrary/VisualTest.html)
 - [Print Job Tests](https://manykarim.github.io/robotframework-doctestlibrary/PrintJobTest.html)
 - [Pdf Tests (very basic)](https://manykarim.github.io/robotframework-doctestlibrary/PdfTest.html)
+- [Ai Keywords (optional)](https://manykarim.github.io/robotframework-doctestlibrary/Ai.html)
 
 ```RobotFramework
 *** Settings ***
@@ -19,15 +20,79 @@ Compare two Images and highlight differences
     Compare Images    Reference.jpg    Candidate.jpg
 ```
 
+[Optional LLM for image comparison](https://manykarim.github.io/robotframework-doctestlibrary/Ai.html)
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.Ai
+Library    DocTest.VisualTest
+Library    DocTest.PdfTest
+
+*** Test Cases ***
+Review Visual Differences With LLM
+    Compare Images With LLM    Reference.pdf    Candidate.pdf    llm_override=${True}
+
+Extract Text From Document With LLM
+    ${text}=    Get Text With LLM    Candidate.pdf    prompt=Return text and table contents
+    Log    ${text}
+
+Image Should Contain Object With LLM
+    Image Should Contain    Candidate.png    Missing product logo
+
+Count Items With LLM
+    ${count}=    Get Item Count From Image    Candidate.png    item_description=number of pallets
+    Should Be True    ${count} >= 0
+```
+
 [![DocTest Library presentation at robocon.io 2021](https://img.youtube.com/vi/qmpwlQoJ-nE/0.jpg)](https://youtu.be/qmpwlQoJ-nE "DocTest Library presentation at robocon.io 2021")
 
 # Installation instructions
 
 `pip install --upgrade robotframework-doctestlibrary`
 
-For optional LLM-assisted reviews install the extra dependencies with
-`pip install "robotframework-doctestlibrary[ai]"` and supply credentials using a
-`.env` file (an example template ships as `.env.example`).
+## Optional LLM-Assisted Comparisons
+
+You can optionally rely on a large language model to review detected differences and
+decide whether a comparison should pass. This path is fully opt-in; nothing changes
+for users who skip these dependencies.
+
+1. Install the optional extra only when needed:
+   ```bash
+   pip install "robotframework-doctestlibrary[ai]"
+   ```
+2. Create a `.env` file at the repository root (values here override existing environment variables):
+   ```ini
+   # OpenAI-compatible endpoints
+   OPENAI_API_KEY=sk-...
+   DOCTEST_LLM_MODEL=gpt-5,gpt-4o
+   DOCTEST_LLM_VISION_MODEL=gpt-5-mini,gpt-4o-mini
+   ```
+   Azure OpenAI deployments can be configured with:
+   ```ini
+   AZURE_OPENAI_ENDPOINT=https://your-endpoint.openai.azure.com/
+   AZURE_OPENAI_API_KEY=...
+   AZURE_OPENAI_DEPLOYMENT=gpt-4o
+   AZURE_OPENAI_API_VERSION=2024-06-01
+   DOCTEST_LLM_PROVIDER=azure
+   ```
+   See `.env.example` for a combined template covering both providers.
+3. Use the dedicated keywords (or pass `llm_enabled=${True}` to existing ones):
+
+   ```RobotFramework
+   *** Test Cases ***
+   Review Visual Differences With LLM
+       Compare Images With LLM    Reference.pdf    Candidate.pdf    llm_override=${True}
+
+   Review Pdf Structure With LLM
+       Compare Pdf Documents With LLM    reference.pdf    candidate.pdf    compare=structure
+   ```
+
+Set `llm_override=${True}` when an LLM approval should override SSIM/DeepDiff failures.
+Without the override flag the AI feedback is logged for investigation while the original
+assertion result is preserved.
+
+Pass `llm_prompt=` (or the specialty variants `llm_visual_prompt=` / `llm_pdf_prompt=`) to
+customise the prompt sent to the model for a particular comparison.
 
 Only Python 3.X or newer is supported. Tested with Python 3.8/3.11/3.12
 
@@ -128,10 +193,12 @@ Have a look at
 * [Visual Comparison Tests](./atest/Compare.robot)
 * [PDF Content Tests](./atest/PdfContent.robot)
 * [Print Job Tests](./atest/PrintJobs.robot)
+* [AI-Assisted Tests](./atest/LLM.robot)
 
 for more examples.
 
 ### Testing with [Robot Framework](https://robotframework.org)
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest
@@ -224,6 +291,7 @@ Accept differences if text content is the same from PDF Data
 ```
 
 #### Different options to detect moved parts/objects
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   movement_detection=orb
@@ -252,12 +320,15 @@ Accept if parts are moved up to 20 pixels by pure visual check
 ```	
 
 ### Options for taking additional screenshots, screenshot format and render resolution
+
 Take additional screenshots or reference and candidate file.
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   take_screenshots=${true}    screenshot_format=png
 ```
 Take diff screenshots to highlight differences
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   show_diff=${true}    DPI=300
@@ -301,6 +372,7 @@ Store the watermark in a separate B/W image or PDF.
 Watermark area needs to be filled with black color.
 <br>
 Watermark content will be subtracted from Visual Comparison result.
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest
@@ -317,6 +389,7 @@ Compare two Images and ignore watermark folder
 ```
 
 Watermarks can also be passed on Library import. This setting will apply to all Test Cases in Test Suite
+
 ```RobotFramework
 *** Settings ***
 Library    DocTest.VisualTest   watermark_file=${CURDIR}${/}watermarks

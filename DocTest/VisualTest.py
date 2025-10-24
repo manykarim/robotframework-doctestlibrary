@@ -180,9 +180,9 @@ class VisualTest:
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
         | ``block_based_ssim`` | Uses additional block based block-based comparison, to catch differences in smaller areas. Makes only sense, for ``threshold`` > 0 . Default is `False` |
         | ``block_size`` | Size of the blocks for block-based comparison. Default is 32. Only relevant for ``block_based_ssim`` |
-        | ``llm`` / ``llm_enabled`` | When set to ``${True}`` the detected differences are summarised and forwarded to the configured LLM (see optional keywords below). |
-        | ``llm_override`` | When combined with LLM usage, a positive LLM verdict overrides baseline SSIM failures. |
-        | ``llm_prompt`` / ``llm_visual_prompt`` | Customise the LLM system prompt for this call. |
+        | ``llm`` / ``llm_enabled`` | When ``${True}``, summarise differences and forward them to the configured LLM. Default ``${False}``. |
+        | ``llm_override`` | Allow an approving LLM verdict to override SSIM/structural failures. Default ``${False}``. |
+        | ``llm_prompt`` / ``llm_visual_prompt`` | Custom per-call LLM prompt. Default ``None`` uses the library default. |
         | ``**kwargs`` | Everything else |
 
 
@@ -757,15 +757,12 @@ class VisualTest:
 
     @keyword
     def compare_images_with_llm(self, *args, llm_override: bool = False, **kwargs):
-        """Compare two documents and optionally consult an LLM before failing.
+        """Compare images while consulting the configured LLM before raising a failure.
 
-        Works like ``Compare Images`` but, when visual differences are detected,
-        the library will gather contextual information and forward it to the
-        configured LLM. The LLM can then decide whether the run should continue.
-
-        ``llm_override`` – When set to ``${True}``, a positive LLM verdict will
-        override baseline SSIM failures. The keyword also accepts ``llm_prompt``
-        or ``llm_visual_prompt`` to provide a custom system prompt for the model.
+        | =Arguments= | =Description= |
+        | ``*args`` | Positional arguments passed through to ``Compare Images`` (typically reference and candidate paths). |
+        | ``llm_override`` | When ``${True}``, a positive LLM verdict overrides baseline SSIM failures. Default ``${False}``. |
+        | ``**kwargs`` | Keyword arguments forwarded to ``Compare Images``. Use ``llm_prompt`` or ``llm_visual_prompt`` to customise the LLM prompt. |
 
         Example:
         | `Compare Images With LLM`   reference.pdf   candidate.pdf   llm_override=${True}   llm_prompt=Always respond with JSON
