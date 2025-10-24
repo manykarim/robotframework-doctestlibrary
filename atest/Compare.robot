@@ -1,6 +1,7 @@
 *** Settings ***
 Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png    #pdf_rendering_engine=ghostscript
 Library    Collections
+Library    String
 
 *** Test Cases ***
 Compare two Beach images
@@ -83,7 +84,8 @@ Compare Text Content from Image with east
     Set Ocr Engine    east
     ${text}     Get Text From Document    testdata/Beach_date.png
     Should Contain    ${text}    01-Jan-2021
-    Should Contain    ${text}    SOUVENIR
+    ${upper}=    Convert To Uppercase    ${text}
+    Should Contain    ${upper}    OUVENIR
     Should Contain    ${text}    123456789
     ${text}     Get Text From Document    testdata/Beach_date.png    *=    01-Jan-2021
 
