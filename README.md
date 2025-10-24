@@ -8,7 +8,7 @@ See **keyword documentation** for
 - [Visual Document Tests](https://manykarim.github.io/robotframework-doctestlibrary/VisualTest.html)
 - [Print Job Tests](https://manykarim.github.io/robotframework-doctestlibrary/PrintJobTest.html)
 - [Pdf Tests (very basic)](https://manykarim.github.io/robotframework-doctestlibrary/PdfTest.html)
-- [AI-Assisted Keywords (optional)](https://manykarim.github.io/robotframework-doctestlibrary/AI.html)
+- [Ai Keywords (optional)](https://manykarim.github.io/robotframework-doctestlibrary/Ai.html)
 
 ```RobotFramework
 *** Settings ***
