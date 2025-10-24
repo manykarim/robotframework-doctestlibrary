@@ -4,10 +4,15 @@ on: [push, pull_request]
 
 jobs:
   test:
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DOCTEST_LLM_MODEL: ${{ vars.DOCTEST_LLM_MODEL }}
+      DOCTEST_LLM_VISION_MODEL: ${{ vars.DOCTEST_LLM_VISION_MODEL }}
+      DOCTEST_LLM_PROVIDER: ${{ vars.DOCTEST_LLM_PROVIDER }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.8", "3.11", "3.12", "3.13"]
+        python-version: ["3.9", "3.11", "3.12", "3.13"]
       fail-fast: false
     steps:
       - uses: actions/checkout@v1
