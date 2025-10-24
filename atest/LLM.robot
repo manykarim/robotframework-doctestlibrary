@@ -2,7 +2,7 @@
 Library    OperatingSystem
 Library    DocTest.VisualTest
 Library    DocTest.PdfTest
-Library    DocTest.ai
+Library    DocTest.Ai
 
 Suite Setup    Require LLM Credentials
 
@@ -49,6 +49,10 @@ Get Text From Area With LLM Keyword
 Chat With Document Keyword
     ${answer}=    Chat With Document    prompt=Summarise the document total.    documents=${CURDIR}/../testdata/invoice.pdf
     Should Not Be Empty    ${answer}
+
+Compare Colored Background With LLM
+    Run Keyword And Expect Error    Expected object 'Moved object outside tolerance' not found*
+    ...    Image Should Contain    ${CURDIR}/../utest/testdata/Pattern_with_objects.png    Moved object outside tolerance    llm_prompt=Inspect the coloured background and determine whether any object has shifted outside the allowed tolerance. Reply with JSON {"decision":"approve"|"reject","reason":""}.
 
 Get Item Count From Image Keyword
     ${count}=    Get Item Count From Image    ${CURDIR}/../testdata/invoice.pdf    item_description=distinct table sections
