@@ -339,7 +339,14 @@ class AIKeywords:
         if not isinstance(decision, LLMDecision):
             raise AssertionError(f"LLM returned an unexpected response while checking '{expected}'.")
         if decision.decision == decision.decision.APPROVE:
-            return
+            found_text = any(
+                expected.lower() in (page.get("text") or "").lower()
+                for page in pages
+            )
+            if found_text:
+                return
+            print("LLM approved but keyword could not verify the expected content in document text; treating as failure.")
+            raise AssertionError(f"Expected object '{expected}' not found in '{document}'.")
         if decision.reason:
             print(f"LLM reason: {decision.reason}")
         raise AssertionError(f"Expected object '{expected}' not found in '{document}'.")
