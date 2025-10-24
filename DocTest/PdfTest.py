@@ -88,6 +88,9 @@ class PdfTest(object):
             - ``structure_whitespace_replacement`` (str, default single space)
             - ``structure_round_precision`` (int or ``None``, default ``3``) – rounding precision for coordinates
             - ``structure_dpi`` (int, default: library DPI) – DPI used when rasterising PDFs prior to structure extraction
+            - ``llm`` / ``llm_enabled`` – Forward detected differences to the configured LLM for advisory review.
+            - ``llm_override`` – Allow an approving LLM verdict to override baseline comparison failures.
+            - ``llm_prompt`` / ``llm_pdf_prompt`` – Customise the LLM prompt for a single invocation.
 
         Result passes only if every requested facet matches.
 
@@ -96,6 +99,7 @@ class PdfTest(object):
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=text
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=structure
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=structure|metadata    structure_position_tolerance=5.0
+        | `Compare Pdf Documents`    reference.pdf    candidate.pdf    llm=${True}    llm_prompt=Summarise differences using JSON
 
         """
         llm_requested = bool(
@@ -567,6 +571,9 @@ class PdfTest(object):
         detected differences and forwarding them to the configured LLM.  Provide
         ``llm_override`` to let a positive verdict override baseline failures and
         set ``llm_prompt`` or ``llm_pdf_prompt`` to customise the model prompt.
+
+        Example:
+        | `Compare Pdf Documents With LLM`   reference.pdf   candidate.pdf   compare=text   llm_override=${True}
         """
         kwargs["llm_enabled"] = kwargs.get("llm_enabled", True)
         if "llm_override" not in kwargs:

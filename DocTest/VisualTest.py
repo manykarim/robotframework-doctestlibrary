@@ -180,6 +180,9 @@ class VisualTest:
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
         | ``block_based_ssim`` | Uses additional block based block-based comparison, to catch differences in smaller areas. Makes only sense, for ``threshold`` > 0 . Default is `False` |
         | ``block_size`` | Size of the blocks for block-based comparison. Default is 32. Only relevant for ``block_based_ssim`` |
+        | ``llm`` / ``llm_enabled`` | When set to ``${True}`` the detected differences are summarised and forwarded to the configured LLM (see optional keywords below). |
+        | ``llm_override`` | When combined with LLM usage, a positive LLM verdict overrides baseline SSIM failures. |
+        | ``llm_prompt`` / ``llm_visual_prompt`` | Customise the LLM system prompt for this call. |
         | ``**kwargs`` | Everything else |
 
 
@@ -197,6 +200,7 @@ class VisualTest:
         | @{watermarks}    Create List    watermark1.pdf    watermark2.pdf
         | `Compare Images`   reference.pdf   candidate.pdf   watermark_file=${watermarks}     #Provides a list of watermark files. Individual files will be checked first, then combined if individual files don't cover all differences
         | `Compare Images`   reference.pdf   candidate.pdf   move_tolerance=10   get_pdf_content=${true}   #In case of visual differences, it is checked if difference is caused only by moved areas. Move distance is identified directly from PDF data. If the move distance is within 10 pixels the test is considered as passed. Else it is failed
+        | `Compare Images`   reference.pdf   candidate.pdf   llm=${True}   llm_prompt=Please output JSON decision | Summarise differences and ask the configured LLM to decide whether the mismatch may pass
 
         Special Examples with ``mask``:
         | `Compare Images`   reference.pdf   candidate.pdf   mask={"page": "all", type: "coordinate", "x": 0, "y": 0, "width": 100, "height": 100}     #Excludes a rectangle from comparison
@@ -762,6 +766,9 @@ class VisualTest:
         ``llm_override`` – When set to ``${True}``, a positive LLM verdict will
         override baseline SSIM failures. The keyword also accepts ``llm_prompt``
         or ``llm_visual_prompt`` to provide a custom system prompt for the model.
+
+        Example:
+        | `Compare Images With LLM`   reference.pdf   candidate.pdf   llm_override=${True}   llm_prompt=Always respond with JSON
         """
 
         kwargs["llm_enabled"] = kwargs.get("llm_enabled", True)
