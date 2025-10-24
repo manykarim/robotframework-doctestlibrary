@@ -80,7 +80,7 @@ def libdoc(context):
         ("VisualTest", "DocTest/VisualTest.py"),
         ("PdfTest", "DocTest/PdfTest.py"),
         ("PrintJobTest", "DocTest/PrintJobTests.py"),
-        ("AI", "DocTest/ai/__init__.py"),
+        ("Ai", "DocTest/Ai/__init__.py"),
     ]
 
     for name, source_path in libraries:
