@@ -14,15 +14,15 @@ from DocTest.llm import load_llm_settings
 from DocTest.llm.client import create_binary_content, run_structured_prompt
 from DocTest.llm.types import LLMDecision
 
-from DocTest.ai.prompts import (
+from DocTest.Ai.prompts import (
     AREA_EXTRACTION_PROMPT,
     CHAT_SYSTEM_PROMPT,
     COUNT_PROMPT,
     OBJECT_DETECTION_PROMPT,
     TEXT_EXTRACTION_PROMPT,
 )
-from DocTest.ai.renderers import load_document_pages, prepare_image_attachments
-from DocTest.ai.responses import LLMChatResponse, LLMCountResponse, LLMExtractionResult
+from DocTest.Ai.renderers import load_document_pages, prepare_image_attachments
+from DocTest.Ai.responses import LLMChatResponse, LLMCountResponse, LLMExtractionResult
 
 
 def _coerce_override(value) -> Optional[str]:
@@ -58,16 +58,41 @@ def _summaries_from_text(pages: Iterable[Dict], char_limit: int = 1200) -> List[
     return summaries
 
 
-@library(scope="GLOBAL", doc_format="ROBOT")
-class AIKeywords:
-    """Optional LLM-assisted keywords for document analysis. Install with `[ai]` extra."""
+@library
+class Ai:
+    """Optional LLM-assisted keywords backed by Large Language Models.
+
+    This library is distributed as part of :mod:`robotframework-doctestlibrary`.
+    The keywords exposed here require the optional ``[ai]`` extra to be installed,
+    appropriate API credentials to be configured (for example via ``.env``), and
+    access to a compatible multimodal LLM.
+
+    Keywords provided:
+        - ``Get Text With LLM`` – extract text from whole documents or images.
+        - ``Get Text From Area With LLM`` – extract text from a defined region.
+        - ``Chat With Document`` – run question/answer conversations over one or
+          more attachments.
+        - ``Image Should Contain`` – assert whether specified objects are present.
+        - ``Get Item Count From Image`` – count occurrences of described objects.
+
+    See the project documentation for configuration guidance and examples.
+    """
 
     def __init__(self, dpi: int = DEFAULT_DPI):
+        """
+        Initialize the Ai library.
+
+        | =Arguments= | =Description= |
+        | ``dpi`` | DPI to use when rasterising PDFs or images prior to sending them to the LLM. Default is 200. |
+
+        The constructor accepts no other positional arguments; LLM settings are
+        controlled via environment variables and per-keyword overrides.
+        """
         self.dpi = dpi
 
     # ---------------- Text Extraction ---------------- #
 
-    @keyword
+    @keyword(name="Get Text With LLM", tags=("ai",))
     def get_text_with_llm(
         self,
         document: str,
@@ -82,18 +107,20 @@ class AIKeywords:
     ) -> str:
         """Extract textual content from a document using an LLM.
 
-        Args:
-            document: Path or URL to the source image/PDF.
-            prompt: Optional custom instructions for the LLM.
-            include_pdf_text: If ``${True}``, include direct PDF text in the prompt.
-            model / provider / temperature / max_output_tokens / request_timeout: Override LLM settings.
-            max_pages: Limit how many pages are sent to the model.
+        | =Arguments= | =Description= |
+        | ``document`` | Path or URL to the source file (image or PDF). |
+        | ``prompt`` | Optional instructions for the LLM. Default is ``None`` which uses the built-in transcription prompt. |
+        | ``include_pdf_text`` | When ``${True}``, embed direct PDF text alongside rendered pages. Default ``${True}``. |
+        | ``model`` | Override the configured LLM model name. Default ``None`` uses environment defaults. |
+        | ``provider`` | Override the provider identifier (for example ``openai`` or ``azure``). Default ``None``. |
+        | ``temperature`` | Sampling temperature for the model. Default ``None`` (provider default). |
+        | ``max_output_tokens`` | Hard limit for generated tokens. Default ``None``. |
+        | ``request_timeout`` | Timeout in seconds for the API call. Default ``None``. |
+        | ``max_pages`` | Maximum number of pages to send to the LLM. Default ``None`` (all pages). |
 
-        Returns:
-            The extracted text as a string.
+        Returns the extracted text as a string.
 
-        Raises:
-            AssertionError: When the document cannot be read or produces no pages.
+        Raises ``AssertionError`` when the document cannot be loaded or produces no renderable pages.
 
         Example:
         | ${text}=    Get Text With LLM    testdata/invoice.pdf    prompt=Transcribe all text exactly
@@ -131,7 +158,7 @@ class AIKeywords:
             raise AssertionError("LLM returned an unexpected response for text extraction.")
         return result.text
 
-    @keyword
+    @keyword(name="Get Text From Area With LLM", tags=("ai",))
     def get_text_from_area_with_llm(
         self,
         document: str,
@@ -144,17 +171,18 @@ class AIKeywords:
     ) -> str:
         """Extract text from a specified area using an LLM.
 
-        Args:
-            document: Path or URL to the source image/PDF.
-            area: Mapping describing the region (keys ``x``, ``y``, ``width``, ``height``, optional ``page``/``unit``).
-            prompt: Optional custom instructions for the LLM.
-            model/provider/temperature/request_timeout: Override LLM settings.
+        | =Arguments= | =Description= |
+        | ``document`` | Path or URL to the source file (image or PDF). |
+        | ``area`` | Dictionary describing the region. Keys: ``x``, ``y``, ``width``, ``height`` and optional ``page`` / ``unit``. |
+        | ``prompt`` | Optional instructions for the LLM. Default ``None`` uses a generic area-transcription prompt. |
+        | ``model`` | Override the configured model name. Default ``None``. |
+        | ``provider`` | Override the provider identifier. Default ``None``. |
+        | ``temperature`` | Sampling temperature. Default ``None``. |
+        | ``request_timeout`` | Timeout in seconds for the API call. Default ``None``. |
 
-        Returns:
-            The extracted text as a string.
+        Returns the extracted text as a string.
 
-        Raises:
-            AssertionError: When the document/area cannot be processed.
+        Raises ``AssertionError`` when the document cannot be loaded or the area is invalid.
 
         Example:
         | &{area}=    Create Dictionary    x=0    y=0    width=400    height=200    page=1
@@ -214,7 +242,7 @@ class AIKeywords:
 
     # ---------------- Chat ---------------- #
 
-    @keyword
+    @keyword(name="Chat With Document", tags=("ai",))
     def chat_with_document(
         self,
         prompt: str,
@@ -229,17 +257,20 @@ class AIKeywords:
     ) -> str:
         """Chat with one or more documents using an LLM.
 
-        Args:
-            prompt: User question or instruction.
-            documents: Single path/URL or list of documents to include.
-            include_pdf_text: Add extracted PDF text alongside rendered pages.
-            model/provider/temperature/max_output_tokens/request_timeout/max_pages: Override LLM settings.
+        | =Arguments= | =Description= |
+        | ``prompt`` | User question or instruction passed to the LLM. |
+        | ``documents`` | Path/URL or list of paths/URLs to include in the conversation. |
+        | ``include_pdf_text`` | When ``${True}``, include direct PDF text in the prompt. Default ``${True}``. |
+        | ``model`` | Override the configured model name. Default ``None``. |
+        | ``provider`` | Override the provider identifier. Default ``None``. |
+        | ``temperature`` | Sampling temperature. Default ``None``. |
+        | ``max_output_tokens`` | Maximum number of tokens the model may produce. Default ``None``. |
+        | ``request_timeout`` | Timeout in seconds for the API call. Default ``None``. |
+        | ``max_pages`` | Limit the number of pages per document. Default ``None``. |
 
-        Returns:
-            The assistant's textual response.
+        Returns the assistant's textual response.
 
-        Raises:
-            AssertionError: When documents cannot be read.
+        Raises ``AssertionError`` when any document cannot be read or rendered.
 
         Example:
         | ${answer}=    Chat With Document    prompt=Summarise the document total.    documents=testdata/invoice.pdf
@@ -287,7 +318,7 @@ class AIKeywords:
 
     # ---------------- Detection & Counting ---------------- #
 
-    @keyword
+    @keyword(name="Image Should Contain", tags=("ai",))
     def image_should_contain(
         self,
         document: str,
@@ -300,13 +331,16 @@ class AIKeywords:
     ):
         """Assert that a document contains the expected visual content.
 
-        Args:
-            document: Path or URL.
-            expected: Description of objects/text that must appear.
-            prompt/model/provider/temperature/request_timeout: Optional overrides.
+        | =Arguments= | =Description= |
+        | ``document`` | Path or URL to the source file. |
+        | ``expected`` | Description of the object or concept that must be present. |
+        | ``prompt`` | Optional detailed instructions for the LLM. Default ``None`` uses the built-in detector prompt. |
+        | ``model`` | Override the configured model name. Default ``None``. |
+        | ``provider`` | Override the provider identifier. Default ``None``. |
+        | ``temperature`` | Sampling temperature. Default ``None``. |
+        | ``request_timeout`` | Timeout in seconds for the API call. Default ``None``. |
 
-        Raises:
-            AssertionError: When the document cannot be read or the expected content is missing.
+        Raises ``AssertionError`` when the document cannot be read or when the expected content is not detected.
 
         Example:
         | Image Should Contain    testdata/invoice.pdf    Invoice header with company logo
@@ -351,7 +385,7 @@ class AIKeywords:
             print(f"LLM reason: {decision.reason}")
         raise AssertionError(f"Expected object '{expected}' not found in '{document}'.")
 
-    @keyword
+    @keyword(name="Get Item Count From Image", tags=("ai",))
     def get_item_count_from_image(
         self,
         document: str,
@@ -364,16 +398,18 @@ class AIKeywords:
     ) -> int:
         """Count items in an image or document using an LLM.
 
-        Args:
-            document: Path or URL.
-            item_description: Description of the item to count.
-            prompt/model/provider/temperature/request_timeout: Optional overrides.
+        | =Arguments= | =Description= |
+        | ``document`` | Path or URL to the source image/PDF. |
+        | ``item_description`` | Natural-language description of the item to count. |
+        | ``prompt`` | Optional custom instructions for the LLM. Default ``None`` uses a structured counting prompt. |
+        | ``model`` | Override the configured model name. Default ``None``. |
+        | ``provider`` | Override the provider identifier. Default ``None``. |
+        | ``temperature`` | Sampling temperature. Default ``None``. |
+        | ``request_timeout`` | Timeout in seconds for the API call. Default ``None``. |
 
-        Returns:
-            Integer count (0 when no items detected).
+        Returns the counted integer (``0`` when no candidate is found).
 
-        Raises:
-            AssertionError: When the document cannot be read.
+        Raises ``AssertionError`` when the document cannot be read.
 
         Example:
         | ${count}=    Get Item Count From Image    testdata/invoice.pdf    item_description=number of tables
