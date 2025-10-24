@@ -45,7 +45,7 @@ jobs:
           virtualenvs-path: ~/.virtualenvs
           installer-parallel: true
       - name: Install dependencies
-        run: poetry install
+        run: poetry install --extras ai
         if: steps.cache.outputs.cache-hit != 'true'
       - name: Run tests
         run: |
