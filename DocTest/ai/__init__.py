@@ -14,15 +14,15 @@ from DocTest.llm import load_llm_settings
 from DocTest.llm.client import create_binary_content, run_structured_prompt
 from DocTest.llm.types import LLMDecision
 
-from .prompts import (
+from DocTest.ai.prompts import (
     AREA_EXTRACTION_PROMPT,
     CHAT_SYSTEM_PROMPT,
     COUNT_PROMPT,
     OBJECT_DETECTION_PROMPT,
     TEXT_EXTRACTION_PROMPT,
 )
-from .renderers import load_document_pages, prepare_image_attachments
-from .responses import LLMChatResponse, LLMCountResponse, LLMExtractionResult
+from DocTest.ai.renderers import load_document_pages, prepare_image_attachments
+from DocTest.ai.responses import LLMChatResponse, LLMCountResponse, LLMExtractionResult
 
 
 def _coerce_override(value) -> Optional[str]:

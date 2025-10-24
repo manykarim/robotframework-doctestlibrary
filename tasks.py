@@ -80,6 +80,7 @@ def libdoc(context):
         ("VisualTest", "DocTest/VisualTest.py"),
         ("PdfTest", "DocTest/PdfTest.py"),
         ("PrintJobTest", "DocTest/PrintJobTests.py"),
+        ("AI", "DocTest/ai/__init__.py"),
     ]
 
     for name, source_path in libraries:
@@ -118,6 +119,6 @@ def libdoc(context):
 
 @task
 def readme(context):
+    doc_string = DocTest.__doc__ or ""
     with open(f"{ROOT}/README.md", "w", encoding="utf-8") as readme:
-        doc_string = DocTest.__doc__
-        readme.write(str(doc_string))
+        readme.write(str(doc_string).strip() + "\n")
