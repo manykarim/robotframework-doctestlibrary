@@ -98,7 +98,14 @@ for users who skip these dependencies.
 
    Review Pdf Structure With LLM
        Compare Pdf Documents With LLM    reference.pdf    candidate.pdf    compare=structure
-   ```
+
+    Extract Text With LLM
+        ${text}=    Get Text With LLM    document.pdf
+        Should Contain    ${text}    Invoice number
+
+    Chat About Document
+        ${answer}=    Chat With Document    prompt=Provide a short summary.    documents=document.pdf
+    ```
 
 Set `llm_override=${True}` when an LLM approval should override SSIM/DeepDiff failures.
 Without the override flag the AI feedback is logged for investigation while the original
@@ -106,6 +113,11 @@ assertion result is preserved.
 
 Pass `llm_prompt=` (or the specialty variants `llm_visual_prompt=` / `llm_pdf_prompt=`) to
 customise the prompt sent to the model for a particular comparison.
+
+Additional AI-specific keywords are available via `Library    DocTest.ai`, including:
+- `Get Text With LLM`, `Get Text From Area With LLM`
+- `Chat With Document` for Q&A style interactions
+- `Image Should Contain` and `Get Item Count From Image` for lightweight vision checks
 
 ## Some special instructions for Windows
 
