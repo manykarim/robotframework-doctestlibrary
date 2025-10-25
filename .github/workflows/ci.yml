@@ -42,7 +42,7 @@ jobs:
           poetry run robot \
             --loglevel=TRACE:INFO \
             --listener RobotStackTracer \
-            --xunit results-smoke/xunit.xml \
+            --xunit xunit.xml \
             -d results-smoke \
             atest/Compare.robot \
             atest/PdfContent.robot
@@ -60,7 +60,7 @@ jobs:
         if: success() || failure()
         with:
           name: Smoke Tests
-          path: results-smoke/*.xml
+          path: results-smoke/xunit.xml
           reporter: java-junit
 
   test:
