@@ -1,6 +1,9 @@
 import datetime
 
 import numpy as np
+import pytest
+
+pytest.importorskip("pydantic", reason="LLM support tests require optional dependencies.")
 
 from DocTest.VisualTest import VisualTest
 from DocTest.PdfTest import PdfTest
@@ -42,12 +45,9 @@ def test_handle_llm_for_visual_differences_uses_custom_prompt(monkeypatch):
         return LLMDecision(decision=LLMDecisionLabel.APPROVE, confidence=0.9, reason="ok")
 
     monkeypatch.setattr(visual_module, "load_llm_settings", fake_load)
-    monkeypatch.setattr(visual_module, "assess_visual_diff", fake_assess)
-    monkeypatch.setattr(
-        visual_module,
-        "create_binary_content",
-        lambda data, media_type: {"data": data, "media_type": media_type},
-    )
+
+    def fake_create(data, media_type):
+        return {"data": data, "media_type": media_type}
 
     dummy_page = type("P", (), {"page_number": 1})()
     differences = [
@@ -71,6 +71,8 @@ def test_handle_llm_for_visual_differences_uses_custom_prompt(monkeypatch):
         overrides={"llm_provider": "openai"},
         notes=["extra-note"],
         custom_prompt="Custom visual prompt.",
+        create_binary_content_fn=fake_create,
+        assess_visual_diff_fn=fake_assess,
     )
 
     assert result is not None
@@ -103,12 +105,9 @@ def test_handle_llm_for_pdf_differences_uses_custom_prompt(monkeypatch, tmp_path
         return LLMDecision(decision=LLMDecisionLabel.APPROVE, reason="looks good")
 
     monkeypatch.setattr(pdf_module, "load_llm_settings", fake_load)
-    monkeypatch.setattr(pdf_module, "assess_pdf_diff", fake_assess)
-    monkeypatch.setattr(
-        pdf_module,
-        "create_binary_content",
-        lambda data, media_type: {"data": data, "media_type": media_type},
-    )
+
+    def fake_create(data, media_type):
+        return {"data": data, "media_type": media_type}
 
     differences = [
         {
@@ -125,6 +124,8 @@ def test_handle_llm_for_pdf_differences_uses_custom_prompt(monkeypatch, tmp_path
         overrides={},
         notes=["pdf-note"],
         custom_prompt="Custom PDF prompt.",
+        create_binary_content_fn=fake_create,
+        assess_pdf_diff_fn=fake_assess,
     )
 
     assert result is not None

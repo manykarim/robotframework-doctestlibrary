@@ -6,15 +6,51 @@ from robot.api.deco import keyword, library
 import fitz
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from DocTest.config import DEFAULT_DPI
 from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import is_url, download_file_from_url
 from DocTest.PdfStructureComparator import StructureTolerance, compare_document_structures
 from DocTest.PdfStructureModels import StructureExtractionConfig
 from DocTest.llm import LLMDependencyError, load_llm_settings
-from DocTest.llm.client import assess_pdf_diff, create_binary_content
-from DocTest.llm.types import LLMDecision, LLMDecisionLabel
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from DocTest.llm.types import LLMDecision, LLMDecisionLabel
+else:  # pragma: no cover - runtime fallback
+    LLMDecision = Any  # type: ignore[misc, assignment]
+    LLMDecisionLabel = Any  # type: ignore[misc, assignment]
+
+
+_PDF_LLM_RUNTIME: Optional[Tuple[Any, Any, Any]] = None
+
+
+def _coerce_label_value(label: Any) -> str:
+    value = getattr(label, "value", label)
+    return str(value)
+
+
+def _decision_equals_flag(label: Any, enum_cls: Any) -> bool:
+    candidate = _coerce_label_value(label).lower()
+    if enum_cls is None:
+        return candidate == "flag"
+    flag_member = getattr(enum_cls, "FLAG", None)
+    if flag_member is None:
+        return candidate == "flag"
+    flag_value = _coerce_label_value(flag_member).lower()
+    return candidate == flag_value
+
+
+def _load_pdf_llm_runtime() -> Tuple[Any, Any, Any]:
+    global _PDF_LLM_RUNTIME
+    if _PDF_LLM_RUNTIME is not None:
+        return _PDF_LLM_RUNTIME
+    try:
+        from DocTest.llm.client import assess_pdf_diff, create_binary_content
+        from DocTest.llm.types import LLMDecisionLabel as _LLMDecisionLabel
+    except Exception as exc:  # pragma: no cover - optional dependency missing
+        raise LLMDependencyError() from exc
+    _PDF_LLM_RUNTIME = (assess_pdf_diff, create_binary_content, _LLMDecisionLabel)
+    return _PDF_LLM_RUNTIME
 
 
 def _as_bool(value, default=False):
@@ -344,29 +380,41 @@ class PdfTest(object):
                     }
                 )
 
+        llm_decision = None
+        llm_label_enum = None
         if differences_detected and llm_requested:
             llm_general_notes.append(f"mask_applied={'yes' if mask else 'no'}")
-            decision = self._handle_llm_for_pdf_differences(
-                reference_document=reference_document,
-                candidate_document=candidate_document,
-                differences=llm_differences,
-                overrides=llm_overrides,
-                notes=llm_general_notes,
-                custom_prompt=custom_llm_prompt,
-            )
-            if decision:
-                print(
-                    f"LLM decision: {decision.decision.value} "
-                    f"(confidence={decision.confidence!r}) - {decision.reason}"
+            try:
+                assess_pdf_diff_fn, create_binary_content_fn, llm_label_enum = (
+                    _load_pdf_llm_runtime()
                 )
-                if decision.notes:
-                    print(f"LLM notes: {decision.notes}")
-                if llm_override_result and decision.is_positive:
+            except LLMDependencyError as exc:
+                print(str(exc))
+            else:
+                llm_decision = self._handle_llm_for_pdf_differences(
+                    reference_document=reference_document,
+                    candidate_document=candidate_document,
+                    differences=llm_differences,
+                    overrides=llm_overrides,
+                    notes=llm_general_notes,
+                    custom_prompt=custom_llm_prompt,
+                    create_binary_content_fn=create_binary_content_fn,
+                    assess_pdf_diff_fn=assess_pdf_diff_fn,
+                )
+            if llm_decision:
+                decision_value = _coerce_label_value(llm_decision.decision)
+                print(
+                    f"LLM decision: {decision_value} "
+                    f"(confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
+                )
+                if llm_decision.notes:
+                    print(f"LLM notes: {llm_decision.notes}")
+                if llm_override_result and llm_decision.is_positive:
                     print("LLM approved PDF differences. Overriding baseline failure.")
                     differences_detected = False
-                elif decision.decision == LLMDecisionLabel.FLAG:
+                elif _decision_equals_flag(llm_decision.decision, llm_label_enum):
                     print("LLM returned FLAG - keeping original PDF comparison result.")
-                elif not decision.is_positive and llm_override_result:
+                elif not llm_decision.is_positive and llm_override_result:
                     print("LLM rejected PDF differences. Baseline failure will stand.")
 
         if differences_detected:
@@ -640,6 +688,8 @@ class PdfTest(object):
         overrides: Dict[str, Optional[str]],
         notes: List[str],
         custom_prompt: Optional[str],
+        create_binary_content_fn: Optional[Any] = None,
+        assess_pdf_diff_fn: Optional[Any] = None,
     ) -> Optional[LLMDecision]:
         overrides = {key: (str(value) if value is not None else None) for key, value in overrides.items()}
         overrides.setdefault("llm_enabled", "true")
@@ -655,6 +705,17 @@ class PdfTest(object):
             print("LLM PDF evaluation requested but disabled via settings.")
             return None
 
+        if create_binary_content_fn is None or assess_pdf_diff_fn is None:
+            try:
+                default_assess, default_create, _ = _load_pdf_llm_runtime()
+            except LLMDependencyError as exc:
+                print(str(exc))
+                return None
+            if assess_pdf_diff_fn is None:
+                assess_pdf_diff_fn = default_assess
+            if create_binary_content_fn is None:
+                create_binary_content_fn = default_create
+
         summary_lines = [
             f"Reference document: {reference_document}",
             f"Candidate document: {candidate_document}",
@@ -662,7 +723,9 @@ class PdfTest(object):
         attachments = []
         try:
             reference_bytes = Path(reference_document).read_bytes()
-            attachments.append(create_binary_content(reference_bytes, "application/pdf"))
+            attachments.append(
+                create_binary_content_fn(reference_bytes, "application/pdf")
+            )
         except FileNotFoundError:
             logger.warn("Reference document not found for LLM attachment: %s", reference_document)
         except LLMDependencyError as exc:
@@ -673,7 +736,9 @@ class PdfTest(object):
 
         try:
             candidate_bytes = Path(candidate_document).read_bytes()
-            attachments.append(create_binary_content(candidate_bytes, "application/pdf"))
+            attachments.append(
+                create_binary_content_fn(candidate_bytes, "application/pdf")
+            )
         except FileNotFoundError:
             logger.warn("Candidate document not found for LLM attachment: %s", candidate_document)
         except LLMDependencyError as exc:
@@ -696,7 +761,7 @@ class PdfTest(object):
         extra_messages = list(notes or [])
 
         try:
-            decision = assess_pdf_diff(
+            decision = assess_pdf_diff_fn(
                 settings=settings,
                 textual_summary="\n".join(summary_lines),
                 attachments=tuple(attachments),
