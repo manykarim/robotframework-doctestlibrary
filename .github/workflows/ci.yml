@@ -60,7 +60,7 @@ jobs:
         if: success() || failure()
         with:
           name: Smoke Tests
-          path: results-smoke/xunit.xml
+          path: results-smoke/*.xml
           reporter: java-junit
 
   test:
