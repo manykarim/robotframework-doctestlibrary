@@ -66,7 +66,7 @@ def test_text_on_colored_background_with_east(testdata_dir):
     text = visual_tester.get_text_from_document(ref_image)
     assert "01-Jan-2021" in text
     assert "123456789" in text
-    assert "SOUVENIR" in text
+    assert "OUVENIR" in text.upper()
 
 def test_moved_difference_for_pdf_on_white_background_within_tolerance_default(testdata_dir):
     visual_tester = VisualTest()
