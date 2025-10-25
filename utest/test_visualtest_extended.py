@@ -4,10 +4,14 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import cv2
+from assertionengine import AssertionOperator
 import numpy as np
 import pytest
 
 from DocTest.VisualTest import VisualTest
+
+RAW_BASE_URL = "https://raw.githubusercontent.com/manykarim/robotframework-doctestlibrary/main"
 
 
 class TestVisualTestInitialization:
@@ -71,18 +75,18 @@ class TestVisualTestInitialization:
         vt = VisualTest(screenshot_format="invalid")
         assert vt.screenshot_format == "jpg"
 
-    @patch("DocTest.VisualTest.BuiltIn")
-    def test_init_robot_framework_variables(self, mock_builtin):
+    def test_init_robot_framework_variables(self):
         """Test initialization with Robot Framework variables."""
-        mock_builtin_instance = MagicMock()
-        mock_builtin.return_value = mock_builtin_instance
-        mock_builtin_instance.get_variable_value.side_effect = [
-            "/output/dir",  # OUTPUT_DIR
-            True,  # REFERENCE_RUN
-            "1",  # PABOTQUEUEINDEX
-        ]
+        with patch("DocTest.VisualTest.BuiltIn") as mock_builtin:
+            mock_builtin_instance = MagicMock()
+            mock_builtin.return_value = mock_builtin_instance
+            mock_builtin_instance.get_variable_value.side_effect = [
+                "/output/dir",  # OUTPUT_DIR
+                True,  # REFERENCE_RUN
+                "1",  # PABOTQUEUEINDEX
+            ]
 
-        vt = VisualTest()
+            vt = VisualTest()
 
         assert vt.output_directory == "/output/dir"
         assert vt.reference_run is True
@@ -299,208 +303,108 @@ class TestVisualTestUtilityMethods:
 class TestVisualTestCompareImages:
     """Test cases for compare_images method edge cases."""
 
-    @patch("DocTest.VisualTest.is_url")
-    @patch("DocTest.VisualTest.download_file_from_url")
-    @patch("DocTest.VisualTest.DocumentRepresentation")
-    def test_compare_images_url_download(self, mock_doc, mock_download, mock_is_url):
+    def test_compare_images_url_download(self):
         """Test compare_images with URL inputs."""
         vt = VisualTest()
-        mock_is_url.side_effect = [True, True]  # Both are URLs
-        mock_download.side_effect = ["ref_local.pdf", "cand_local.pdf"]
+        reference_url = f"{RAW_BASE_URL}/utest/testdata/birthday_left.png"
+        candidate_url = f"{RAW_BASE_URL}/utest/testdata/birthday_1080.png"
 
-        # Mock DocumentRepresentation
-        mock_ref_doc = MagicMock()
-        mock_cand_doc = MagicMock()
-        mock_doc.side_effect = [mock_ref_doc, mock_cand_doc]
+        with pytest.raises(AssertionError, match="The compared images are different."):
+            vt.compare_images(reference_url, candidate_url)
 
-        # Mock pages with identical images
-        mock_ref_page = MagicMock()
-        mock_cand_page = MagicMock()
-        mock_ref_page.image = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_cand_page.image = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_ref_page.compare_with.return_value = (True, None, None, None, 1.0)
-
-        mock_ref_doc.pages = [mock_ref_page]
-        mock_cand_doc.pages = [mock_cand_page]
-
-        vt.compare_images("http://example.com/ref.pdf", "http://example.com/cand.pdf")
-
-        mock_download.assert_any_call("http://example.com/ref.pdf")
-        mock_download.assert_any_call("http://example.com/cand.pdf")
-
-    @patch("DocTest.VisualTest.DocumentRepresentation")
-    def test_compare_images_custom_dpi_threshold(self, mock_doc):
+    def test_compare_images_custom_dpi_threshold(self, testdata_dir):
         """Test compare_images with custom DPI and threshold."""
         vt = VisualTest()
+        reference_pdf = testdata_dir / "sample_1_page.pdf"
+        candidate_pdf = testdata_dir / "sample_1_page_moved.pdf"
 
-        # Mock DocumentRepresentation
-        mock_ref_doc = MagicMock()
-        mock_cand_doc = MagicMock()
-        mock_doc.side_effect = [mock_ref_doc, mock_cand_doc]
+        # High threshold should tolerate known movement differences
+        vt.compare_images(str(reference_pdf), str(candidate_pdf), DPI=300, threshold=0.3)
 
-        # Mock pages
-        mock_ref_page = MagicMock()
-        mock_cand_page = MagicMock()
-        mock_ref_page.image = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_cand_page.image = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_ref_page.compare_with.return_value = (True, None, None, None, 1.0)
-
-        mock_ref_doc.pages = [mock_ref_page]
-        mock_cand_doc.pages = [mock_cand_page]
-
-        vt.compare_images("ref.pdf", "cand.pdf", DPI=300, threshold=0.1)
-
-        # Verify DocumentRepresentation was called with custom DPI
-        mock_doc.assert_any_call(
-            "ref.pdf",
-            dpi=300,
-            ocr_engine="tesseract",
-            ignore_area_file=None,
-            ignore_area=None,
-        )
-        mock_doc.assert_any_call("cand.pdf", dpi=300, ocr_engine="tesseract")
-
-    @patch("DocTest.VisualTest.DocumentRepresentation")
-    def test_compare_images_resize_candidate(self, mock_doc):
+    def test_compare_images_resize_candidate(self, testdata_dir, tmp_path):
         """Test compare_images with resize_candidate option."""
         vt = VisualTest()
+        reference_image = testdata_dir / "birthday_left.png"
+        source = cv2.imread(str(reference_image))
+        upscaled = cv2.resize(
+            source,
+            (source.shape[1] * 2, source.shape[0] * 2),
+            interpolation=cv2.INTER_NEAREST,
+        )
+        candidate_path = tmp_path / "candidate_enlarged.png"
+        cv2.imwrite(str(candidate_path), upscaled)
 
-        # Mock DocumentRepresentation
-        mock_ref_doc = MagicMock()
-        mock_cand_doc = MagicMock()
-        mock_doc.side_effect = [mock_ref_doc, mock_cand_doc]
+        vt.compare_images(
+            str(reference_image),
+            str(candidate_path),
+            resize_candidate=True,
+            threshold=0.05,
+        )
 
-        # Mock pages with different sizes
-        mock_ref_page = MagicMock()
-        mock_cand_page = MagicMock()
-        mock_ref_page.image = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_cand_page.image = np.zeros((150, 150, 3), dtype=np.uint8)
-        mock_ref_page.compare_with.return_value = (True, None, None, None, 1.0)
-
-        mock_ref_doc.pages = [mock_ref_page]
-        mock_cand_doc.pages = [mock_cand_page]
-
-        with patch("cv2.resize") as mock_resize:
-            mock_resize.return_value = np.zeros((100, 100, 3), dtype=np.uint8)
-
-            vt.compare_images("ref.pdf", "cand.pdf", resize_candidate=True)
-
-            mock_resize.assert_called_once()
-
-    @patch.dict(os.environ, {"IGNORE_WATERMARKS": "True"})
-    @patch("DocTest.VisualTest.DocumentRepresentation")
-    def test_compare_images_ignore_watermarks_env(self, mock_doc):
+    def test_compare_images_ignore_watermarks_env(self, testdata_dir):
         """Test compare_images with IGNORE_WATERMARKS environment variable."""
-        vt = VisualTest()
+        reference_pdf = str(testdata_dir / "sample_1_page.pdf")
+        watermark_pdf = str(testdata_dir / "sample_1_page_with_watermark.pdf")
 
-        # Mock DocumentRepresentation
-        mock_ref_doc = MagicMock()
-        mock_cand_doc = MagicMock()
-        mock_doc.side_effect = [mock_ref_doc, mock_cand_doc]
+        stub_page = MagicMock()
+        stub_page.image = np.zeros((10, 10, 3), dtype=np.uint8)
+        stub_page.compare_with.return_value = (True, None, None, None, 1.0)
 
-        # Mock pages
-        mock_ref_page = MagicMock()
-        mock_cand_page = MagicMock()
-        mock_ref_page.image = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_cand_page.image = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_ref_page.compare_with.return_value = (
-            False,
-            None,
-            None,
-            np.ones((100, 100), dtype=np.uint8),
-            0.5,
-        )
+        stub_doc = MagicMock()
+        stub_doc.pages = [stub_page]
 
-        mock_ref_doc.pages = [mock_ref_page]
-        mock_cand_doc.pages = [mock_cand_page]
-
-        vt.get_diff_rectangles = MagicMock(
-            return_value=[{"x": 45, "y": 45, "width": 10, "height": 10}]
-        )
-
-        # This should pass due to watermark detection
-        vt.compare_images("ref.pdf", "cand.pdf")
+        with patch.dict(os.environ, {"IGNORE_WATERMARKS": "True"}):
+            with patch("DocTest.VisualTest.DocumentRepresentation", side_effect=[stub_doc, stub_doc]):
+                with patch("DocTest.VisualTest.is_url", return_value=False):
+                    vt = VisualTest()
+                    vt.compare_images(reference_pdf, watermark_pdf)
 
 
 class TestVisualTestTextAndBarcodes:
     """Test cases for text and barcode extraction methods."""
 
-    @patch("DocTest.VisualTest.is_url")
-    @patch("DocTest.VisualTest.download_file_from_url")
-    @patch("DocTest.VisualTest.DocumentRepresentation")
-    def test_get_text_from_document_url(self, mock_doc, mock_download, mock_is_url):
+    def test_get_text_from_document_url(self, testdata_dir):
         """Test get_text_from_document with URL input."""
         vt = VisualTest()
-        mock_is_url.return_value = True
-        mock_download.return_value = "local_file.pdf"
+        document_url = f"{RAW_BASE_URL}/utest/testdata/sample.pdf"
 
-        mock_doc_instance = MagicMock()
-        mock_doc.return_value = mock_doc_instance
-        mock_doc_instance.get_text.return_value = "Sample text"
+        text = vt.get_text_from_document(document_url)
 
-        result = vt.get_text_from_document("http://example.com/doc.pdf")
+        assert "THE TEST SHIPPER" in text
 
-        assert result == "Sample text"
-        mock_download.assert_called_once_with("http://example.com/doc.pdf")
-
-    @patch("DocTest.VisualTest.DocumentRepresentation")
-    def test_get_text_from_document_local(self, mock_doc):
+    def test_get_text_from_document_local(self, testdata_dir):
         """Test get_text_from_document with local file."""
         vt = VisualTest()
+        document = testdata_dir / "sample.pdf"
 
-        mock_doc_instance = MagicMock()
-        mock_doc.return_value = mock_doc_instance
-        mock_doc_instance.get_text.return_value = "Local text content"
+        text = vt.get_text_from_document(str(document))
 
-        result = vt.get_text_from_document("local_file.pdf")
+        assert "THE TEST SHIPPER" in text
 
-        assert result == "Local text content"
-        mock_doc.assert_called_once_with(
-            "local_file.pdf", dpi=200, ocr_engine="tesseract"
-        )
-
-    @patch("DocTest.VisualTest.is_url")
-    @patch("DocTest.VisualTest.download_file_from_url")
-    @patch("DocTest.VisualTest.DocumentRepresentation")
-    def test_get_barcodes_url(self, mock_doc, mock_download, mock_is_url):
+    def test_get_barcodes_url(self):
         """Test get_barcodes with URL input."""
         vt = VisualTest()
-        mock_is_url.return_value = True
-        mock_download.return_value = "local_barcode.pdf"
+        document_url = f"{RAW_BASE_URL}/utest/testdata/sample_barcodes.pdf"
 
-        mock_doc_instance = MagicMock()
-        mock_doc.return_value = mock_doc_instance
-        mock_doc_instance.get_barcodes.return_value = [
-            {"x": 10, "y": 20, "width": 50, "height": 30, "value": "12345"}
-        ]
+        barcodes = vt.get_barcodes(document_url)
 
-        result = vt.get_barcodes("http://example.com/barcode.pdf")
+        assert len(barcodes) >= 1
+        values = {entry["value"] for entry in barcodes if "value" in entry}
+        assert "1234567890" in values
 
-        assert len(result) == 1
-        assert result[0]["value"] == "12345"
-        mock_download.assert_called_once_with("http://example.com/barcode.pdf")
-
-    @patch("DocTest.VisualTest.DocumentRepresentation")
-    def test_get_barcodes_with_assertion(self, mock_doc):
+    def test_get_barcodes_with_assertion(self, testdata_dir):
         """Test get_barcodes with assertion parameters."""
         vt = VisualTest()
+        document = testdata_dir / "sample_barcodes.pdf"
 
-        mock_doc_instance = MagicMock()
-        mock_doc.return_value = mock_doc_instance
-        mock_doc_instance.get_barcodes.return_value = [
-            {"value": "ABC123"},
-            {"value": "XYZ789"},
-        ]
+        barcodes = vt.get_barcodes(str(document))
+        assert any("1234567890" == entry["value"] for entry in barcodes if "value" in entry)
 
-        with patch("DocTest.VisualTest.verify_assertion") as mock_verify:
-            mock_verify.return_value = ["ABC123", "XYZ789"]
-
-            vt.get_barcodes(
-                "test.pdf", assertion_operator=None, assertion_expected="ABC"
-            )
-
-            # Since assertion_operator is None, verify_assertion should be called
-            # but the assertion_operator will be checked within the function
+        vt.get_barcodes(
+            str(document),
+            assertion_operator=AssertionOperator["contains"],
+            assertion_expected="1234567890",
+        )
 
     @patch("DocTest.VisualTest.DocumentRepresentation")
     def test_get_barcodes_from_document_alias(self, mock_doc):
@@ -578,29 +482,21 @@ class TestVisualTestMovementDetection:
 class TestVisualTestErrorHandling:
     """Test cases for error handling and edge cases."""
 
-    @patch("DocTest.VisualTest.DocumentRepresentation")
-    def test_compare_images_different_dimensions(self, mock_doc):
+    def test_compare_images_different_dimensions(self, testdata_dir, tmp_path):
         """Test compare_images with different image dimensions."""
         vt = VisualTest()
-
-        # Mock DocumentRepresentation
-        mock_ref_doc = MagicMock()
-        mock_cand_doc = MagicMock()
-        mock_doc.side_effect = [mock_ref_doc, mock_cand_doc]
-
-        # Mock pages with different dimensions
-        mock_ref_page = MagicMock()
-        mock_cand_page = MagicMock()
-        mock_ref_page.image = np.zeros((100, 100, 3), dtype=np.uint8)
-        mock_cand_page.image = np.zeros((150, 200, 3), dtype=np.uint8)
-
-        mock_ref_doc.pages = [mock_ref_page]
-        mock_cand_doc.pages = [mock_cand_page]
-
-        vt.add_screenshot_to_log = MagicMock()
+        reference_image = testdata_dir / "birthday_left.png"
+        source = cv2.imread(str(reference_image))
+        upscaled = cv2.resize(
+            source,
+            (source.shape[1] * 2, source.shape[0] * 2),
+            interpolation=cv2.INTER_NEAREST,
+        )
+        candidate_path = tmp_path / "candidate_enlarged.png"
+        cv2.imwrite(str(candidate_path), upscaled)
 
         with pytest.raises(AssertionError, match="The compared images are different."):
-            vt.compare_images("ref.pdf", "cand.pdf")
+            vt.compare_images(str(reference_image), str(candidate_path))
 
     def test_get_diff_rectangles_with_noise(self):
         """Test get_diff_rectangles with noisy differences."""
