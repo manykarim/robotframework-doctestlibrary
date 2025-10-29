@@ -1,4 +1,4 @@
-FROM python:3.9
+FROM python:3.12-slim
 
 MAINTAINER Many Kasiriha <manykarim@users.noreply.github.com>
 LABEL DocTest Library for Robot Framework in Docker
