@@ -7,17 +7,17 @@ ARG release_name=gs9561
 ARG archive_name=ghostpcl-9.56.1-linux-x86_64
 
 RUN pip install --no-cache-dir numpy
-RUN pip install --no-cache-dir robotframework-doctestlibrary
+RUN pip install --no-cache-dir robotframework-doctestlibrary[ai]
 WORKDIR    /
 RUN apt-get update && apt-get install -y \
-    imagemagick \
-    tesseract-ocr \
-    ghostscript \
-    wget \
-    libdmtx0b \
-    gettext-base \
-    && rm -rf /var/lib/apt/lists/*
-          
+  imagemagick \
+  tesseract-ocr \
+  ghostscript \
+  wget \
+  libdmtx0b \
+  gettext-base \
+  && rm -rf /var/lib/apt/lists/*
+
 RUN wget https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/${release_name}/${archive_name}.tgz \
   && tar -xvzf ${archive_name}.tgz \
   && chmod +x ${archive_name}/gpcl6* \
