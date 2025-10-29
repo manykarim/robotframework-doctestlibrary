@@ -77,9 +77,14 @@ class TestVisualTestInitialization:
 
     def test_init_robot_framework_variables(self):
         """Test initialization with Robot Framework variables."""
-        with patch("DocTest.VisualTest.BuiltIn") as mock_builtin:
+        # Patch BuiltIn where it's used (in the VisualTest module namespace)
+        # not where it's defined
+        with patch("DocTest.VisualTest.BuiltIn") as mock_builtin_class:
+            # Create a mock instance that will be returned when BuiltIn() is called
             mock_builtin_instance = MagicMock()
-            mock_builtin.return_value = mock_builtin_instance
+            mock_builtin_class.return_value = mock_builtin_instance
+            
+            # Configure the mock to return specific values for get_variable_value calls
             mock_builtin_instance.get_variable_value.side_effect = [
                 "/output/dir",  # OUTPUT_DIR
                 True,  # REFERENCE_RUN
@@ -88,8 +93,8 @@ class TestVisualTestInitialization:
 
             vt = VisualTest()
 
-        # output_directory is converted to Path in __init__, so compare as Path
-        assert str(vt.output_directory) == "/output/dir"
+        # Verify the mocked values were used
+        assert vt.output_directory == "/output/dir"
         assert vt.reference_run is True
         assert vt.PABOTQUEUEINDEX == "1"
 
