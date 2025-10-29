@@ -805,10 +805,10 @@ class DocumentRepresentation:
                 image = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
                 page_obj = Page(image, page_number=page_num + 1, dpi=self.dpi)
                 page_obj.is_pdf = True
-                page_obj.pdf_text_data = page.get_text("text")
-                page_obj.pdf_text_dict = page.get_text("dict")
-                page_obj.pdf_text_words = page.get_text("words")
-                page_obj.pdf_text_blocks = page.get_text("blocks")
+                page_obj.pdf_text_data = page.get_text("text", sort=True)
+                page_obj.pdf_text_dict = page.get_text("dict", sort=True)
+                page_obj.pdf_text_words = page.get_text("words", sort=True)
+                page_obj.pdf_text_blocks = page.get_text("blocks", sort=True)
                 self.pages.append(page_obj)
         except ImportError:
             raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
