@@ -61,7 +61,6 @@ def _load_visual_llm_runtime() -> Tuple[Any, Any, Any]:
 @library
 class VisualTest:
     ROBOT_LIBRARY_VERSION = 1.0
-    BUILTIN_LIBRARY = BuiltIn
     DPI_DEFAULT = 200
     OCR_ENGINE_DEFAULT = "tesseract"
     MOVEMENT_DETECTION_DEFAULT = "template"
@@ -155,19 +154,32 @@ class VisualTest:
         self.orb_max_matches = orb_max_matches
         self.orb_min_matches = orb_min_matches
         self.ransac_threshold = ransac_threshold
-        built_in = self.BUILTIN_LIBRARY()
         self.force_ocr = force_ocr
-        try:
-            self.output_directory = built_in.get_variable_value("${OUTPUT DIR}")
-            self.reference_run = built_in.get_variable_value("${REFERENCE_RUN}", False)
-            self.PABOTQUEUEINDEX = built_in.get_variable_value("${PABOTQUEUEINDEX}")
-        except:
-            print("Robot Framework is not running")
-            self.output_directory = Path.cwd()
-            self.reference_run = False
-            self.PABOTQUEUEINDEX = None
+
+        output_dir, reference_run, pabot_index = self._read_robot_variables()
+        self.output_directory = output_dir
+        self.reference_run = reference_run
+        self.PABOTQUEUEINDEX = pabot_index
 
         self.screenshot_path = self.output_directory / self.screenshot_dir
+
+    def _read_robot_variables(self) -> Tuple[Path, bool, Optional[str]]:
+        """Return Robot Framework runtime variables if Robot is active."""
+        try:
+            built_in = BuiltIn()
+            output_dir = built_in.get_variable_value("${OUTPUT DIR}")
+            reference_run = built_in.get_variable_value("${REFERENCE_RUN}", False)
+            pabot_index = built_in.get_variable_value("${PABOTQUEUEINDEX}")
+        except Exception:
+            print("Robot Framework is not running")
+            return Path.cwd(), False, None
+
+        if output_dir:
+            output_path = Path(output_dir)
+        else:
+            output_path = Path.cwd()
+
+        return output_path, bool(reference_run), pabot_index
 
     @keyword
     def compare_images(
