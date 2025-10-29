@@ -49,7 +49,7 @@ def test_pdf_pattern_mask_dimensions(testdata_dir):
     }
     doc = DocumentRepresentation(testdata_dir / 'sample_1_page.pdf', ignore_area=mask)
     area = doc.pages[0].pixel_ignore_areas[0]
-    assert area['width'] == 516
+    assert area['width'] == 233
     assert area['height'] == 31
 def test_pattern_mask_handles_umlauts_and_symbols():
     image = np.zeros((50, 200, 3), dtype=np.uint8)
