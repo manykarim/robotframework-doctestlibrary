@@ -83,7 +83,7 @@ class TestVisualTestInitialization:
             # Create a mock instance that will be returned when BuiltIn() is called
             mock_builtin_instance = MagicMock()
             mock_builtin_class.return_value = mock_builtin_instance
-            
+
             # Use a function to return values to avoid side_effect issues in Python 3.9
             # where side_effect might raise StopIteration differently
             def mock_get_variable(var_name, default=None):
@@ -93,8 +93,8 @@ class TestVisualTestInitialization:
                     "${PABOTQUEUEINDEX}": "1"
                 }
                 return mapping.get(var_name, default)
-            
-            mock_builtin_instance.get_variable_value = mock_get_variable
+
+            mock_builtin_instance.get_variable_value.side_effect = mock_get_variable
 
             vt = VisualTest()
 
