@@ -61,6 +61,7 @@ def _load_visual_llm_runtime() -> Tuple[Any, Any, Any]:
 @library
 class VisualTest:
     ROBOT_LIBRARY_VERSION = 1.0
+    BUILTIN_LIBRARY = BuiltIn
     DPI_DEFAULT = 200
     OCR_ENGINE_DEFAULT = "tesseract"
     MOVEMENT_DETECTION_DEFAULT = "template"
@@ -154,7 +155,7 @@ class VisualTest:
         self.orb_max_matches = orb_max_matches
         self.orb_min_matches = orb_min_matches
         self.ransac_threshold = ransac_threshold
-        built_in = BuiltIn()
+        built_in = self.BUILTIN_LIBRARY()
         self.force_ocr = force_ocr
         try:
             self.output_directory = built_in.get_variable_value("${OUTPUT DIR}")

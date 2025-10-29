@@ -79,7 +79,7 @@ class TestVisualTestInitialization:
         """Test initialization with Robot Framework variables."""
         # Patch BuiltIn where it's used (in the VisualTest module namespace)
         # not where it's defined
-        with patch("DocTest.VisualTest.BuiltIn") as mock_builtin_class:
+        with patch.object(VisualTest, "BUILTIN_LIBRARY") as mock_builtin_class:
             # Create a mock instance that will be returned when BuiltIn() is called
             mock_builtin_instance = MagicMock()
             mock_builtin_class.return_value = mock_builtin_instance
