@@ -84,12 +84,17 @@ class TestVisualTestInitialization:
             mock_builtin_instance = MagicMock()
             mock_builtin_class.return_value = mock_builtin_instance
             
-            # Configure the mock to return specific values for get_variable_value calls
-            mock_builtin_instance.get_variable_value.side_effect = [
-                "/output/dir",  # OUTPUT_DIR
-                True,  # REFERENCE_RUN
-                "1",  # PABOTQUEUEINDEX
-            ]
+            # Use a function to return values to avoid side_effect issues in Python 3.9
+            # where side_effect might raise StopIteration differently
+            def mock_get_variable(var_name, default=None):
+                mapping = {
+                    "${OUTPUT DIR}": "/output/dir",
+                    "${REFERENCE_RUN}": True,
+                    "${PABOTQUEUEINDEX}": "1"
+                }
+                return mapping.get(var_name, default)
+            
+            mock_builtin_instance.get_variable_value = mock_get_variable
 
             vt = VisualTest()
 
