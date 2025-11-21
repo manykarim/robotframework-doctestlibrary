@@ -5,9 +5,10 @@ import numpy as np
 import json
 import logging
 import re
+from collections import OrderedDict
 from pathlib import Path
 from skimage import metrics
-from typing import List, Dict, Optional, Tuple, Union, Literal
+from typing import List, Dict, Optional, Tuple, Union, Literal, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pytesseract import Output
 from DocTest.IgnoreAreaManager import IgnoreAreaManager
@@ -41,6 +42,20 @@ class Page:
         self._structure_cache: Dict[StructureExtractionConfig, PageStructure] = {}
         self.is_pdf = False
         self.ocr_tokens: List[str] = []
+
+    def release_resources(self):
+        """Release heavy in-memory artifacts to assist streaming workflows."""
+        self.image = None
+        self.ocr_text_data = None
+        self.pdf_text_data = None
+        self.pdf_text_dict = None
+        self.pdf_text_blocks = None
+        self.pdf_text_words = None
+        self.text = ""
+        self.barcodes = []
+        self.pixel_ignore_areas = []
+        self._structure_cache.clear()
+        self.ocr_tokens = []
 
     def apply_ocr(self, ocr_engine: str = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, confidence: int = DEFAULT_CONFIDENCE):
         """Perform OCR on the page image."""
@@ -749,7 +764,20 @@ class Page:
         return self.image[y:y+h, x:x+w]
     
 class DocumentRepresentation:
-    def __init__(self, file_path: str, dpi: int = DEFAULT_DPI, ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, ignore_area_file: Union[str, dict, list] = None, ignore_area: Union[str, dict, list] = None, force_ocr: bool = False, contains_barcodes: bool = False, **kwargs):
+    def __init__(
+        self,
+        file_path: str,
+        dpi: int = DEFAULT_DPI,
+        ocr_engine: Literal['tesseract', 'east'] = OCR_ENGINE_DEFAULT,
+        tesseract_config: str = TESSERACT_CONFIG,
+        ignore_area_file: Union[str, dict, list] = None,
+        ignore_area: Union[str, dict, list] = None,
+        force_ocr: bool = False,
+        contains_barcodes: bool = False,
+        stream_pages: bool = False,
+        page_cache_size: int = 2,
+        **kwargs,
+    ):
         self.file_path = Path(file_path)
         self.dpi = dpi
         self.contains_barcodes = contains_barcodes
@@ -762,24 +790,36 @@ class DocumentRepresentation:
         self.tmp_directory = tempfile.gettempdir()
         self.ignore_printfactory_envelope=kwargs.get('ignore_printfactory_envelope', False)
         self.printing_papersize=kwargs.get('printing_papersize', 'a4')
+        self.stream_pages = bool(stream_pages and self.file_path.suffix.lower() == '.pdf')
+        self.page_cache_size = max(1, page_cache_size)
+        self._page_cache: 'OrderedDict[int, Page]' = OrderedDict()
+        self._pdf_document = None
+        self.page_count: int = 0
+        self._force_ocr_for_ignore_areas = force_ocr
+
         self.load_document()
         self.create_abstract_ignore_areas(ignore_area_file, ignore_area)
         self.create_pixel_based_ignore_areas(force_ocr)
-        
-        
-        if self.contains_barcodes:
+
+        if self.contains_barcodes and not self.stream_pages:
             self.identify_barcodes()
 
     def load_document(self):
         """Load the document, either as an image or a multi-page PDF, into Page objects."""
-        if self.file_path.suffix == '.pdf':
-            self._load_pdf()
-        elif self.file_path.suffix == '.pcl':
+        suffix = self.file_path.suffix.lower()
+        if suffix == '.pdf':
+            if self.stream_pages:
+                self._prepare_pdf_stream()
+            else:
+                self._load_pdf()
+        elif suffix == '.pcl':
             self._load_pcl()
-        elif self.file_path.suffix == '.ps':
+        elif suffix == '.ps':
             self._load_ps()
         else:
             self._load_image()
+        if not self.stream_pages:
+            self.page_count = len(self.pages)
 
     def _load_image(self):
         """Load a single image file as a Page object."""
@@ -810,8 +850,114 @@ class DocumentRepresentation:
                 page_obj.pdf_text_words = page.get_text("words", sort=True)
                 page_obj.pdf_text_blocks = page.get_text("blocks", sort=True)
                 self.pages.append(page_obj)
+            self.page_count = len(self.pages)
         except ImportError:
             raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
+
+    def _prepare_pdf_stream(self):
+        try:
+            import fitz
+            fitz.TOOLS.set_aa_level(0)
+            self._pdf_document = fitz.open(str(self.file_path))
+            self.page_count = len(self._pdf_document)
+        except ImportError:
+            raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
+
+    def _render_pdf_page(self, page_index: int) -> Page:
+        if self._pdf_document is None:
+            self._prepare_pdf_stream()
+
+        page = self._pdf_document.load_page(page_index)
+        pix = page.get_pixmap(dpi=self.dpi)
+        img_data = pix.tobytes("png")
+        image = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
+        page_obj = Page(image, page_number=page_index + 1, dpi=self.dpi)
+        page_obj.is_pdf = True
+        page_obj.pdf_text_data = page.get_text("text", sort=True)
+        page_obj.pdf_text_dict = page.get_text("dict", sort=True)
+        page_obj.pdf_text_words = page.get_text("words", sort=True)
+        page_obj.pdf_text_blocks = page.get_text("blocks", sort=True)
+
+        self._apply_ignore_areas_to_page(page_obj, self._force_ocr_for_ignore_areas)
+        if self.contains_barcodes:
+            page_obj.identify_barcodes()
+        return page_obj
+
+    def get_page(self, page_index: int) -> Page:
+        if not self.stream_pages:
+            return self.pages[page_index]
+        if page_index < 0 or page_index >= self.page_count:
+            raise IndexError("Page index out of range")
+        cached = self._page_cache.get(page_index)
+        if cached is not None:
+            self._page_cache.move_to_end(page_index)
+            return cached
+        page = self._render_pdf_page(page_index)
+        self._page_cache[page_index] = page
+        self._evict_page_cache()
+        return page
+
+    def release_page(self, page_index: int):
+        if not self.stream_pages:
+            return
+        page = self._page_cache.pop(page_index, None)
+        if page is not None:
+            page.release_resources()
+
+    def _evict_page_cache(self):
+        while len(self._page_cache) > self.page_cache_size:
+            index, page = self._page_cache.popitem(last=False)
+            page.release_resources()
+
+    def iter_pages(self, release: bool = None) -> Iterator[Page]:
+        if release is None:
+            release = self.stream_pages
+        for idx in range(self.page_count):
+            page = self.get_page(idx)
+            yield page
+            if release:
+                self.release_page(idx)
+
+    def iter_page_pairs(
+        self,
+        other: 'DocumentRepresentation',
+        release: bool = None,
+    ) -> Iterator[Tuple[Page, Page]]:
+        if self.page_count != other.page_count:
+            raise ValueError("Documents have different number of pages.")
+        if release is None:
+            release = self.stream_pages or other.stream_pages
+        for idx in range(self.page_count):
+            ref_page = self.get_page(idx)
+            cand_page = other.get_page(idx)
+            yield ref_page, cand_page
+            if release:
+                self.release_page(idx)
+                other.release_page(idx)
+
+    def close(self):
+        if self.stream_pages:
+            while self._page_cache:
+                _, page = self._page_cache.popitem()
+                page.release_resources()
+        if self._pdf_document is not None:
+            self._pdf_document.close()
+            self._pdf_document = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def __len__(self):
+        return self.page_count
+
+    def __del__(self):  # pragma: no cover - defensive cleanup
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def _load_pcl(self):
         import subprocess
@@ -933,6 +1079,12 @@ class DocumentRepresentation:
     def get_barcodes(self):
         """Return a list of barcodes detected in the document."""
         barcodes = []
+        if self.stream_pages:
+            for idx in range(self.page_count):
+                page = self.get_page(idx)
+                barcodes.extend(page.barcodes)
+                self.release_page(idx)
+            return barcodes
         for page in self.pages:
             barcodes.extend(page.barcodes)
         return barcodes
@@ -969,12 +1121,14 @@ class DocumentRepresentation:
 
     def compare_with(self, other_doc: 'DocumentRepresentation') -> bool:
         """Compare this document with another document."""
-        if len(self.pages) != len(other_doc.pages):
+        if self.page_count != other_doc.page_count:
             raise ValueError("Documents have different number of pages.")
         
         # Compare page by page
-        for page_self, page_other in zip(self.pages, other_doc.pages):
-            if not page_self.compare_with(page_other):
+        for page_self, page_other in self.iter_page_pairs(other_doc, release=True):
+            result = page_self.compare_with(page_other)
+            similar = result[0] if isinstance(result, tuple) and result else bool(result)
+            if not similar:
                 return False
         return True
 
@@ -989,19 +1143,21 @@ class DocumentRepresentation:
 
     def create_pixel_based_ignore_areas(self, force_ocr: bool = False):
         """Apply ignore areas to each page of the document."""
+        if self.stream_pages:
+            self._force_ocr_for_ignore_areas = force_ocr
+            return
 
         for page in self.pages:
-            # If ignore area is of type pattern, line_pattern, or word_pattern
-            # and if filetype is PDF, read text directly from PDF
-            # to identify the pattern-based ignore areas
-            # If force_ocr is True or page.text_content is not available, apply OCR
+            self._apply_ignore_areas_to_page(page, force_ocr)
 
-            for ignore_area in self.abstract_ignore_areas:
-                if ignore_area.get('type') in ['pattern', 'line_pattern', 'word_pattern']:
-                    if (force_ocr or not page.pdf_text_data) and not page.ocr_performed:
-                        page.apply_ocr(ocr_engine=self.ocr_engine)
-                page._process_ignore_area(ignore_area)    
-            
+    def _apply_ignore_areas_to_page(self, page: Page, force_ocr: bool = False):
+        if not self.abstract_ignore_areas:
+            return
+        for ignore_area in self.abstract_ignore_areas:
+            if ignore_area.get('type') in ['pattern', 'line_pattern', 'word_pattern']:
+                if (force_ocr or not page.pdf_text_data) and not page.ocr_performed:
+                    page.apply_ocr(ocr_engine=self.ocr_engine)
+            page._process_ignore_area(ignore_area)
 
     def get_text_from_area(self, area: Dict, force_ocr: bool = False):
         """Extract text content from a specific area of the document."""
@@ -1037,6 +1193,12 @@ class DocumentRepresentation:
 
     def identify_barcodes(self):
         """Detect barcodes in all pages."""
+        if self.stream_pages:
+            for idx in range(self.page_count):
+                page = self.get_page(idx)
+                page.identify_barcodes()
+                self.release_page(idx)
+            return
         for page in self.pages:
             page.identify_barcodes()
 

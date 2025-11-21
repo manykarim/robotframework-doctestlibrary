@@ -103,6 +103,8 @@ class VisualTest:
         orb_max_matches: int = ORB_MAX_MATCHES_DEFAULT,
         orb_min_matches: int = ORB_MIN_MATCHES_DEFAULT,
         ransac_threshold: float = RANSAC_THRESHOLD_DEFAULT,
+        stream_documents: bool = True,
+        document_page_cache_size: int = 2,
         **kwargs,
     ):
         """
@@ -125,6 +127,8 @@ class VisualTest:
         | ``orb_max_matches`` | Maximum number of matches to use for ORB feature matching. Default is ``10``. |
         | ``orb_min_matches`` | Minimum number of matches required for ORB homography computation. Default is ``4``. |
         | ``ransac_threshold`` | RANSAC threshold for robust homography estimation. Higher values are more tolerant of outliers. Default is ``5.0``. |
+        | ``stream_documents`` | When ``True``, VisualTest renders PDF pages lazily instead of loading entire documents into memory. Default is ``True``. |
+        | ``document_page_cache_size`` | Maximum number of rendered pages to keep in memory per document when streaming. Default is ``2``. |
         | ``**kwargs`` | Everything else. |
 
 
@@ -155,6 +159,8 @@ class VisualTest:
         self.orb_min_matches = orb_min_matches
         self.ransac_threshold = ransac_threshold
         self.force_ocr = force_ocr
+        self.stream_documents = bool(stream_documents)
+        self.document_page_cache_size = max(1, int(document_page_cache_size))
 
         output_dir, reference_run, pabot_index = self._read_robot_variables()
         self.output_directory = output_dir
@@ -296,6 +302,18 @@ class VisualTest:
                 if value is not None:
                     llm_overrides[key] = value
 
+        stream_documents_override = kwargs.pop("stream_documents", None)
+        page_cache_size_override = kwargs.pop("page_cache_size", None)
+        if page_cache_size_override is None:
+            page_cache_size_value = self.document_page_cache_size
+        else:
+            page_cache_size_value = max(1, int(page_cache_size_override))
+        stream_documents_flag = (
+            self.stream_documents
+            if stream_documents_override is None
+            else bool(stream_documents_override)
+        )
+
         # Download files if URLs are provided
         if is_url(reference_image):
             reference_image = download_file_from_url(reference_image)
@@ -333,6 +351,8 @@ class VisualTest:
             ocr_engine=ocr_engine,
             ignore_area_file=placeholder_file,
             ignore_area=mask,
+            stream_pages=stream_documents_flag,
+            page_cache_size=page_cache_size_value,
             **force_kwargs,
             **kwargs,
         )
@@ -340,6 +360,8 @@ class VisualTest:
             candidate_image,
             dpi=dpi,
             ocr_engine=ocr_engine,
+            stream_pages=stream_documents_flag,
+            page_cache_size=page_cache_size_value,
             **force_kwargs,
             **kwargs,
         )
@@ -350,473 +372,477 @@ class VisualTest:
         abstract_ignore_areas = None
 
         detected_differences: List[Dict[str, Any]] = []
-        # Compare visual content through the Page class
-        for ref_page, cand_page in zip(reference_doc.pages, candidate_doc.pages):
-            page_notes: List[str] = []
-            diff_rectangles_cache: Optional[List[Dict[str, int]]] = None
-            combined_image_with_differences = None
-            # Resize the candidate page if needed
-            if resize_candidate and ref_page.image.shape != cand_page.image.shape:
-                cand_page.image = cv2.resize(
-                    cand_page.image, (ref_page.image.shape[1], ref_page.image.shape[0])
-                )
-
-            # Check if dimensions are different
-            if ref_page.image.shape != cand_page.image.shape:
-                detected_differences.append(
-                    {
-                        "ref_page": ref_page,
-                        "cand_page": cand_page,
-                        "message": "Image dimensions are different.",
-                        "rectangles": [],
-                        "score": None,
-                        "threshold": threshold,
-                        "absolute_diff": None,
-                        "combined_diff": None,
-                        "notes": page_notes[:],
-                    }
-                )
-                combined_image = self.concatenate_images_safely(
-                    ref_page.image, cand_page.image, axis=1, fill_color=(240, 240, 240)
-                )
-                self.add_screenshot_to_log(
-                    combined_image, suffix="_combined", original_size=False
-                )
-                continue
-
-            similar, diff, thresh, absolute_diff, score = ref_page.compare_with(
-                cand_page,
-                threshold=threshold,
-                blur=blur,
-                block_based_ssim=block_based_ssim,
-                block_size=block_size,
-            )
-
-            if self.take_screenshots:
-                # Save original images to the screenshot directory and add them to the Robot Framework log
-                # But add them next to each other in the log
-                # Use safe concatenation to handle different image dimensions
-                combined_image = self.concatenate_images_safely(
-                    ref_page.image, cand_page.image, axis=1, fill_color=(240, 240, 240)
-                )
-                self.add_screenshot_to_log(
-                    combined_image, suffix="_combined", original_size=False
-                )
-
-            if not similar and ignore_watermarks:
-                # Get bounding rect of differences
-                diff_rectangles = self.get_diff_rectangles(absolute_diff)
-                diff_rectangles_cache = diff_rectangles
-                # Check if the differences are only in the watermark area
-                if len(diff_rectangles) == 1:
-                    diff_rect = diff_rectangles[0]
-                    x, y, w, h = (
-                        diff_rect["x"],
-                        diff_rect["y"],
-                        diff_rect["width"],
-                        diff_rect["height"],
+        try:
+            # Compare visual content through the Page class
+            for ref_page, cand_page in reference_doc.iter_page_pairs(candidate_doc):
+                page_notes: List[str] = []
+                diff_rectangles_cache: Optional[List[Dict[str, int]]] = None
+                combined_image_with_differences = None
+                # Resize the candidate page if needed
+                if resize_candidate and ref_page.image.shape != cand_page.image.shape:
+                    cand_page.image = cv2.resize(
+                        cand_page.image, (ref_page.image.shape[1], ref_page.image.shape[0])
                     )
-                    diff_center_x = abs((x + w / 2) - ref_page.image.shape[1] / 2)
-                    diff_center_y = abs((y + h / 2) - ref_page.image.shape[0] / 2)
-                    if (
-                        diff_center_x
-                        < ref_page.image.shape[1] * self.WATERMARK_CENTER_OFFSET
-                        and (w * 25.4 / dpi < self.WATERMARK_WIDTH)
-                        and (h * 25.4 / dpi < self.WATERMARK_HEIGHT)
-                    ):
-                        similar = True
-                        print("Visual differences are only in the watermark area.")
 
-            if not similar and watermark_file:
-                if watermarks == []:
-                    watermarks = self.load_watermarks(watermark_file)
+                # Check if dimensions are different
+                if ref_page.image.shape != cand_page.image.shape:
+                    detected_differences.append(
+                        {
+                            "ref_page": ref_page,
+                            "cand_page": cand_page,
+                            "message": "Image dimensions are different.",
+                            "rectangles": [],
+                            "score": None,
+                            "threshold": threshold,
+                            "absolute_diff": None,
+                            "combined_diff": None,
+                            "notes": page_notes[:],
+                        }
+                    )
+                    combined_image = self.concatenate_images_safely(
+                        ref_page.image, cand_page.image, axis=1, fill_color=(240, 240, 240)
+                    )
+                    self.add_screenshot_to_log(
+                        combined_image, suffix="_combined", original_size=False
+                    )
+                    continue
 
-                # First, try each watermark mask individually
-                for mask in watermarks:
-                    if (
-                        mask.shape[0] != ref_page.image.shape[0]
-                        or mask.shape[1] != ref_page.image.shape[1]
-                    ):
-                        # Resize mask to match thresh
-                        mask = cv2.resize(
-                            mask, (ref_page.image.shape[1], ref_page.image.shape[0])
+                similar, diff, thresh, absolute_diff, score = ref_page.compare_with(
+                    cand_page,
+                    threshold=threshold,
+                    blur=blur,
+                    block_based_ssim=block_based_ssim,
+                    block_size=block_size,
+                )
+
+                if self.take_screenshots:
+                    # Save original images to the screenshot directory and add them to the Robot Framework log
+                    # But add them next to each other in the log
+                    # Use safe concatenation to handle different image dimensions
+                    combined_image = self.concatenate_images_safely(
+                        ref_page.image, cand_page.image, axis=1, fill_color=(240, 240, 240)
+                    )
+                    self.add_screenshot_to_log(
+                        combined_image, suffix="_combined", original_size=False
+                    )
+
+                if not similar and ignore_watermarks:
+                    # Get bounding rect of differences
+                    diff_rectangles = self.get_diff_rectangles(absolute_diff)
+                    diff_rectangles_cache = diff_rectangles
+                    # Check if the differences are only in the watermark area
+                    if len(diff_rectangles) == 1:
+                        diff_rect = diff_rectangles[0]
+                        x, y, w, h = (
+                            diff_rect["x"],
+                            diff_rect["y"],
+                            diff_rect["width"],
+                            diff_rect["height"],
                         )
+                        diff_center_x = abs((x + w / 2) - ref_page.image.shape[1] / 2)
+                        diff_center_y = abs((y + h / 2) - ref_page.image.shape[0] / 2)
+                        if (
+                            diff_center_x
+                            < ref_page.image.shape[1] * self.WATERMARK_CENTER_OFFSET
+                            and (w * 25.4 / dpi < self.WATERMARK_WIDTH)
+                            and (h * 25.4 / dpi < self.WATERMARK_HEIGHT)
+                        ):
+                            similar = True
+                            print("Visual differences are only in the watermark area.")
 
-                    mask_inv = cv2.bitwise_not(mask)
-                    # dilate the mask to account for slight misalignments
-                    mask_inv = cv2.dilate(mask_inv, None, iterations=2)
-                    result = cv2.subtract(absolute_diff, mask_inv)
-                    if (
-                        cv2.countNonZero(cv2.subtract(absolute_diff, mask_inv)) == 0
-                        or cv2.countNonZero(cv2.subtract(thresh, mask_inv)) == 0
-                    ):
-                        similar = True
-                        print(
-                            "A watermark file was provided. After removing watermark area, both images are equal"
-                        )
-                        break
+                if not similar and watermark_file:
+                    if watermarks == []:
+                        watermarks = self.load_watermarks(watermark_file)
 
-                # If individual watermarks don't work and there are multiple watermarks,
-                # try combining all watermark files by merging their areas
-                if not similar and len(watermarks) > 1:
-                    try:
-                        print(
-                            f"Individual watermarks failed. Attempting to merge {len(watermarks)} watermark masks..."
-                        )
+                    # First, try each watermark mask individually
+                    for mask in watermarks:
+                        if (
+                            mask.shape[0] != ref_page.image.shape[0]
+                            or mask.shape[1] != ref_page.image.shape[1]
+                        ):
+                            # Resize mask to match thresh
+                            mask = cv2.resize(
+                                mask, (ref_page.image.shape[1], ref_page.image.shape[0])
+                            )
 
-                        # Create combined mask by merging all watermark areas
-                        # Initialize with all white (all areas to be ignored initially)
-                        # We'll AND with each mask to get union of black comparison areas
-                        combined_mask = np.full(
-                            (ref_page.image.shape[0], ref_page.image.shape[1]),
-                            255,
-                            dtype=np.uint8,
-                        )
-
-                        total_individual_pixels = 0
-                        for i, mask in enumerate(watermarks):
-                            # Ensure all masks have the same dimensions
-                            if (
-                                mask.shape[0] != ref_page.image.shape[0]
-                                or mask.shape[1] != ref_page.image.shape[1]
-                            ):
-                                mask = cv2.resize(
-                                    mask,
-                                    (ref_page.image.shape[1], ref_page.image.shape[0]),
-                                )
-
-                            # Count pixels for debugging
-                            mask_pixels = np.sum(mask > 0)
-                            total_individual_pixels += mask_pixels
-                            print(f"  Watermark {i + 1}: {mask_pixels} white pixels")
-
-                            # Add debugging screenshot for individual watermarks
-                            if self.take_screenshots:
-                                self.add_screenshot_to_log(
-                                    mask,
-                                    suffix=f"_individual_watermark_{i + 1}",
-                                    original_size=False,
-                                )
-
-                            # Merge watermark areas: any black pixel in any mask becomes black in combined mask
-                            # This creates a union of all black comparison areas
-                            # Note: Using AND operation because we want union of black (0) pixels
-                            # OR would give intersection of black areas, AND gives union of black areas
-                            combined_mask = cv2.bitwise_and(combined_mask, mask)
-
-                        if combined_mask is not None:
-                            combined_black_pixels = np.sum(combined_mask == 0)
+                        mask_inv = cv2.bitwise_not(mask)
+                        # dilate the mask to account for slight misalignments
+                        mask_inv = cv2.dilate(mask_inv, None, iterations=2)
+                        result = cv2.subtract(absolute_diff, mask_inv)
+                        if (
+                            cv2.countNonZero(cv2.subtract(absolute_diff, mask_inv)) == 0
+                            or cv2.countNonZero(cv2.subtract(thresh, mask_inv)) == 0
+                        ):
+                            similar = True
                             print(
-                                f"  Combined mask: {combined_black_pixels} black pixels (union of all comparison areas)"
+                                "A watermark file was provided. After removing watermark area, both images are equal"
+                            )
+                            break
+
+                    # If individual watermarks don't work and there are multiple watermarks,
+                    # try combining all watermark files by merging their areas
+                    if not similar and len(watermarks) > 1:
+                        try:
+                            print(
+                                f"Individual watermarks failed. Attempting to merge {len(watermarks)} watermark masks..."
                             )
 
-                            # Apply morphological operations to clean up the combined mask
-                            kernel = cv2.getStructuringElement(
-                                cv2.MORPH_ELLIPSE, (3, 3)
-                            )
-                            combined_mask = cv2.morphologyEx(
-                                combined_mask, cv2.MORPH_CLOSE, kernel
-                            )
-
-                            combined_mask_inv = cv2.bitwise_not(combined_mask)
-                            # dilate the combined mask to account for slight misalignments
-                            combined_mask_inv = cv2.dilate(
-                                combined_mask_inv, None, iterations=2
+                            # Create combined mask by merging all watermark areas
+                            # Initialize with all white (all areas to be ignored initially)
+                            # We'll AND with each mask to get union of black comparison areas
+                            combined_mask = np.full(
+                                (ref_page.image.shape[0], ref_page.image.shape[1]),
+                                255,
+                                dtype=np.uint8,
                             )
 
-                            # Take screenshots if enabled
-                            if self.take_screenshots:
-                                # Screenshot of the original combined watermark mask (before inversion)
-                                self.add_screenshot_to_log(
-                                    combined_mask,
-                                    suffix="_combined_watermark_mask_original",
-                                    original_size=False,
-                                )
+                            total_individual_pixels = 0
+                            for i, mask in enumerate(watermarks):
+                                # Ensure all masks have the same dimensions
+                                if (
+                                    mask.shape[0] != ref_page.image.shape[0]
+                                    or mask.shape[1] != ref_page.image.shape[1]
+                                ):
+                                    mask = cv2.resize(
+                                        mask,
+                                        (ref_page.image.shape[1], ref_page.image.shape[0]),
+                                    )
 
-                                # Screenshot of the inverted dilated mask
-                                self.add_screenshot_to_log(
-                                    combined_mask_inv,
-                                    suffix="_combined_watermark_mask_inverted",
-                                    original_size=False,
-                                )
+                                # Count pixels for debugging
+                                mask_pixels = np.sum(mask > 0)
+                                total_individual_pixels += mask_pixels
+                                print(f"  Watermark {i + 1}: {mask_pixels} white pixels")
 
-                                # Screenshot showing differences before watermark removal
-                                self.add_screenshot_to_log(
-                                    absolute_diff,
-                                    suffix="_differences_before_watermark_removal",
-                                    original_size=False,
-                                )
+                                # Add debugging screenshot for individual watermarks
+                                if self.take_screenshots:
+                                    self.add_screenshot_to_log(
+                                        mask,
+                                        suffix=f"_individual_watermark_{i + 1}",
+                                        original_size=False,
+                                    )
 
-                                # Screenshot showing differences after watermark removal
-                                diff_after_watermark = cv2.subtract(
-                                    absolute_diff, combined_mask_inv
-                                )
-                                self.add_screenshot_to_log(
-                                    diff_after_watermark,
-                                    suffix="_differences_after_watermark_removal",
-                                    original_size=False,
-                                )
+                                # Merge watermark areas: any black pixel in any mask becomes black in combined mask
+                                # This creates a union of all black comparison areas
+                                # Note: Using AND operation because we want union of black (0) pixels
+                                # OR would give intersection of black areas, AND gives union of black areas
+                                combined_mask = cv2.bitwise_and(combined_mask, mask)
 
-                            if (
-                                cv2.countNonZero(
-                                    cv2.subtract(absolute_diff, combined_mask_inv)
-                                )
-                                == 0
-                                or cv2.countNonZero(
-                                    cv2.subtract(thresh, combined_mask_inv)
-                                )
-                                == 0
-                            ):
-                                similar = True
+                            if combined_mask is not None:
+                                combined_black_pixels = np.sum(combined_mask == 0)
                                 print(
-                                    "Multiple watermark files were provided. After removing combined watermark areas, both images are equal"
+                                    f"  Combined mask: {combined_black_pixels} black pixels (union of all comparison areas)"
                                 )
 
-                            # Print diff image with combined watermark
-                            if self.take_screenshots:
-                                # Ensure both images have the same number of channels
-                                if len(absolute_diff.shape) == 2:
-                                    absolute_diff_rgb = cv2.cvtColor(
-                                        absolute_diff, cv2.COLOR_GRAY2BGR
+                                # Apply morphological operations to clean up the combined mask
+                                kernel = cv2.getStructuringElement(
+                                    cv2.MORPH_ELLIPSE, (3, 3)
+                                )
+                                combined_mask = cv2.morphologyEx(
+                                    combined_mask, cv2.MORPH_CLOSE, kernel
+                                )
+
+                                combined_mask_inv = cv2.bitwise_not(combined_mask)
+                                # dilate the combined mask to account for slight misalignments
+                                combined_mask_inv = cv2.dilate(
+                                    combined_mask_inv, None, iterations=2
+                                )
+
+                                # Take screenshots if enabled
+                                if self.take_screenshots:
+                                    # Screenshot of the original combined watermark mask (before inversion)
+                                    self.add_screenshot_to_log(
+                                        combined_mask,
+                                        suffix="_combined_watermark_mask_original",
+                                        original_size=False,
                                     )
-                                else:
-                                    absolute_diff_rgb = absolute_diff
 
-                                if len(combined_mask_inv.shape) == 2:
-                                    combined_mask_inv_rgb = cv2.cvtColor(
-                                        combined_mask_inv, cv2.COLOR_GRAY2BGR
+                                    # Screenshot of the inverted dilated mask
+                                    self.add_screenshot_to_log(
+                                        combined_mask_inv,
+                                        suffix="_combined_watermark_mask_inverted",
+                                        original_size=False,
                                     )
-                                else:
-                                    combined_mask_inv_rgb = combined_mask_inv
 
-                                combined_diff = self.blend_two_images(
-                                    absolute_diff_rgb, combined_mask_inv_rgb
-                                )
-                                self.add_screenshot_to_log(
-                                    combined_diff,
-                                    suffix="_combined_watermark_diff_blend",
-                                )
-                    except Exception as e:
-                        LOG.warning(f"Failed to combine watermark masks: {str(e)}")
+                                    # Screenshot showing differences before watermark removal
+                                    self.add_screenshot_to_log(
+                                        absolute_diff,
+                                        suffix="_differences_before_watermark_removal",
+                                        original_size=False,
+                                    )
 
-            if check_text_content and not similar:
-                similar = True
-                diff_rectangles = (
-                    diff_rectangles_cache
-                    if diff_rectangles_cache is not None
-                    else self.get_diff_rectangles(absolute_diff)
-                )
-                diff_rectangles_cache = diff_rectangles
-                # Compare text content only in the areas that have differences
-                for rect in diff_rectangles:
-                    same_text, ref_area_text, cand_area_text = (
-                        ref_page._compare_text_content_in_area_with(
-                            cand_page, rect, force_ocr
+                                    # Screenshot showing differences after watermark removal
+                                    diff_after_watermark = cv2.subtract(
+                                        absolute_diff, combined_mask_inv
+                                    )
+                                    self.add_screenshot_to_log(
+                                        diff_after_watermark,
+                                        suffix="_differences_after_watermark_removal",
+                                        original_size=False,
+                                    )
+
+                                if (
+                                    cv2.countNonZero(
+                                        cv2.subtract(absolute_diff, combined_mask_inv)
+                                    )
+                                    == 0
+                                    or cv2.countNonZero(
+                                        cv2.subtract(thresh, combined_mask_inv)
+                                    )
+                                    == 0
+                                ):
+                                    similar = True
+                                    print(
+                                        "Multiple watermark files were provided. After removing combined watermark areas, both images are equal"
+                                    )
+
+                                # Print diff image with combined watermark
+                                if self.take_screenshots:
+                                    # Ensure both images have the same number of channels
+                                    if len(absolute_diff.shape) == 2:
+                                        absolute_diff_rgb = cv2.cvtColor(
+                                            absolute_diff, cv2.COLOR_GRAY2BGR
+                                        )
+                                    else:
+                                        absolute_diff_rgb = absolute_diff
+
+                                    if len(combined_mask_inv.shape) == 2:
+                                        combined_mask_inv_rgb = cv2.cvtColor(
+                                            combined_mask_inv, cv2.COLOR_GRAY2BGR
+                                        )
+                                    else:
+                                        combined_mask_inv_rgb = combined_mask_inv
+
+                                    combined_diff = self.blend_two_images(
+                                        absolute_diff_rgb, combined_mask_inv_rgb
+                                    )
+                                    self.add_screenshot_to_log(
+                                        combined_diff,
+                                        suffix="_combined_watermark_diff_blend",
+                                    )
+                        except Exception as e:
+                            LOG.warning(f"Failed to combine watermark masks: {str(e)}")
+
+                if check_text_content and not similar:
+                    similar = True
+                    diff_rectangles = (
+                        diff_rectangles_cache
+                        if diff_rectangles_cache is not None
+                        else self.get_diff_rectangles(absolute_diff)
+                    )
+                    diff_rectangles_cache = diff_rectangles
+                    # Compare text content only in the areas that have differences
+                    for rect in diff_rectangles:
+                        same_text, ref_area_text, cand_area_text = (
+                            ref_page._compare_text_content_in_area_with(
+                                cand_page, rect, force_ocr
+                            )
                         )
-                    )
-                    # Save the reference and candidate areas as images and add them to the log
-                    reference_area = ref_page.get_area(rect)
-                    candidate_area = cand_page.get_area(rect)
-                    self.add_screenshot_to_log(
-                        reference_area, suffix="_reference_area", original_size=False
-                    )
-                    self.add_screenshot_to_log(
-                        candidate_area, suffix="_candidate_area", original_size=False
-                    )
-                    if not same_text:
-                        similar = False
-                        page_notes.append(
-                            f"Rect {rect} has different text. "
-                            f"Reference: {ref_area_text!r} | Candidate: {cand_area_text!r}"
+                        # Save the reference and candidate areas as images and add them to the log
+                        reference_area = ref_page.get_area(rect)
+                        candidate_area = cand_page.get_area(rect)
+                        self.add_screenshot_to_log(
+                            reference_area, suffix="_reference_area", original_size=False
                         )
-                        # Add log message with the text content differences
-                        # Add screenshots to the log of the reference and candidate areas
+                        self.add_screenshot_to_log(
+                            candidate_area, suffix="_candidate_area", original_size=False
+                        )
+                        if not same_text:
+                            similar = False
+                            page_notes.append(
+                                f"Rect {rect} has different text. "
+                                f"Reference: {ref_area_text!r} | Candidate: {cand_area_text!r}"
+                            )
+                            # Add log message with the text content differences
+                            # Add screenshots to the log of the reference and candidate areas
 
-                        print(
-                            f"Text content in the area {rect} differs:\n\nReference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}"
+                            print(
+                                f"Text content in the area {rect} differs:\n\nReference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}"
+                            )
+                        else:
+                            page_notes.append(
+                                f"Rect {rect} visual change but identical text."
+                            )
+                            print(
+                                f"Visual differences in the area {rect} but text content is the same."
+                            )
+                            print(
+                                f"Reference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}"
+                            )
+
+                if move_tolerance and int(move_tolerance) > 0 and not similar:
+                    diff_rectangles = (
+                        diff_rectangles_cache
+                        if diff_rectangles_cache is not None
+                        else self.get_diff_rectangles(absolute_diff)
+                    )
+                    diff_rectangles_cache = diff_rectangles
+                    has_pdf_text = bool(ref_page.pdf_text_words) and bool(cand_page.pdf_text_words)
+                    if get_pdf_content:
+                        import fitz
+                        fitz.TOOLS.set_aa_level(0)
+                        similar = True
+                        ref_words = ref_page.pdf_text_words
+                        cand_words = cand_page.pdf_text_words
+
+                        # If no words are fount, proceed with nornmal tolerance check and set check_pdf_content to False
+                        if len(ref_words) == 0 or len(cand_words) == 0:
+                            check_pdf_content = False
+                            print(
+                                "No pdf layout elements found. Proceeding with normal tolerance check."
+                            )
+
+                    auto_use_pdf_content = get_pdf_content
+                    auto_detection_method = detection_method
+
+                    if has_pdf_text and detection_method != "text":
+                        auto_detection_method = "text"
+                        auto_use_pdf_content = True
+
+                    text_based_detection = (
+                        auto_detection_method == "text" or auto_use_pdf_content
+                    )
+
+                    if text_based_detection:
+                        similar = self._check_movement_with_text(
+                            ref_page=ref_page,
+                            cand_page=cand_page,
+                            diff_rectangles=diff_rectangles,
+                            move_tolerance=move_tolerance,
+                            detection_method=auto_detection_method,
+                            use_pdf_content=auto_use_pdf_content,
+                            force_ocr=force_ocr,
                         )
                     else:
-                        page_notes.append(
-                            f"Rect {rect} visual change but identical text."
-                        )
-                        print(
-                            f"Visual differences in the area {rect} but text content is the same."
-                        )
-                        print(
-                            f"Reference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}"
+                        similar = self._check_movement_with_images(
+                            ref_page=ref_page,
+                            cand_page=cand_page,
+                            diff_rectangles=diff_rectangles,
+                            move_tolerance=move_tolerance,
+                            detection_method=auto_detection_method,
                         )
 
-            if move_tolerance and int(move_tolerance) > 0 and not similar:
-                diff_rectangles = (
-                    diff_rectangles_cache
-                    if diff_rectangles_cache is not None
-                    else self.get_diff_rectangles(absolute_diff)
-                )
-                diff_rectangles_cache = diff_rectangles
-                has_pdf_text = bool(ref_page.pdf_text_words) and bool(cand_page.pdf_text_words)
-                if get_pdf_content:
-                    import fitz
-                    fitz.TOOLS.set_aa_level(0)
-                    similar = True
-                    ref_words = ref_page.pdf_text_words
-                    cand_words = cand_page.pdf_text_words
-
-                    # If no words are fount, proceed with nornmal tolerance check and set check_pdf_content to False
-                    if len(ref_words) == 0 or len(cand_words) == 0:
-                        check_pdf_content = False
-                        print(
-                            "No pdf layout elements found. Proceeding with normal tolerance check."
-                        )
-
-                auto_use_pdf_content = get_pdf_content
-                auto_detection_method = detection_method
-
-                if has_pdf_text and detection_method != "text":
-                    auto_detection_method = "text"
-                    auto_use_pdf_content = True
-
-                text_based_detection = (
-                    auto_detection_method == "text" or auto_use_pdf_content
-                )
-
-                if text_based_detection:
-                    similar = self._check_movement_with_text(
-                        ref_page=ref_page,
-                        cand_page=cand_page,
-                        diff_rectangles=diff_rectangles,
-                        move_tolerance=move_tolerance,
-                        detection_method=auto_detection_method,
-                        use_pdf_content=auto_use_pdf_content,
-                        force_ocr=force_ocr,
+                if not similar:
+                    # Save original images to the screenshot directory and add them to the Robot Framework log
+                    # But add them next to each other in the log
+                    # Use safe concatenation to handle different image dimensions
+                    cv2.putText(
+                        ref_page.image,
+                        self.REFERENCE_LABEL,
+                        self.BOTTOM_LEFT_CORNER_OF_TEXT,
+                        self.FONT,
+                        self.FONT_SCALE,
+                        self.FONT_COLOR,
+                        self.LINE_TYPE,
                     )
+                    cv2.putText(
+                        cand_page.image,
+                        self.CANDIDATE_LABEL,
+                        self.BOTTOM_LEFT_CORNER_OF_TEXT,
+                        self.FONT,
+                        self.FONT_SCALE,
+                        self.FONT_COLOR,
+                        self.LINE_TYPE,
+                    )
+
+                    combined_image = self.concatenate_images_safely(
+                        ref_page.image, cand_page.image, axis=1, fill_color=(240, 240, 240)
+                    )
+                    self.add_screenshot_to_log(
+                        combined_image, suffix="_combined", original_size=False
+                    )
+
+                    # Generate side-by-side image highlighting differences using the SSIM diff image
+                    reference_img, candidate_img, _ = (
+                        self.get_images_with_highlighted_differences(
+                            thresh, ref_page.image, cand_page.image
+                        )
+                    )
+
+                    combined_image_with_differences = self.concatenate_images_safely(
+                        reference_img, candidate_img, axis=1, fill_color=(240, 240, 240)
+                    )
+                    # Add the side-by-side comparison with differences to the Robot Framework log
+                    self.add_screenshot_to_log(
+                        combined_image_with_differences,
+                        suffix="_combined_with_diff",
+                        original_size=False,
+                    )
+
+                    # Add absolute difference image to the log
+                    self.add_screenshot_to_log(
+                        absolute_diff, suffix="_absolute_diff", original_size=False
+                    )
+
+                    if diff_rectangles_cache is None:
+                        diff_rectangles_cache = self.get_diff_rectangles(absolute_diff)
+
+                    detected_differences.append(
+                        {
+                            "ref_page": ref_page,
+                            "cand_page": cand_page,
+                            "message": f"Visual differences detected. SSIM score: {score:.20f}",
+                            "rectangles": diff_rectangles_cache,
+                            "score": score,
+                            "threshold": threshold,
+                            "absolute_diff": absolute_diff.copy() if absolute_diff is not None else None,
+                            "combined_diff": combined_image_with_differences.copy()
+                            if combined_image_with_differences is not None
+                            else None,
+                            "notes": page_notes[:],
+                        }
+                    )
+
+            llm_decision = None
+            llm_label_enum = None
+            if detected_differences and llm_requested:
+                llm_runtime_notes.append(f"Threshold: {threshold}")
+                if check_text_content:
+                    llm_runtime_notes.append("Text content verification was enabled.")
+                if move_tolerance:
+                    llm_runtime_notes.append(f"Movement tolerance: {move_tolerance}")
+
+                try:
+                    assess_visual_diff_fn, create_binary_content_fn, llm_label_enum = (
+                        _load_visual_llm_runtime()
+                    )
+                except LLMDependencyError as exc:
+                    print(str(exc))
                 else:
-                    similar = self._check_movement_with_images(
-                        ref_page=ref_page,
-                        cand_page=cand_page,
-                        diff_rectangles=diff_rectangles,
-                        move_tolerance=move_tolerance,
-                        detection_method=auto_detection_method,
+                    llm_decision = self._handle_llm_for_visual_differences(
+                        reference_image=reference_image,
+                        candidate_image=candidate_image,
+                        differences=detected_differences,
+                        overrides=llm_overrides,
+                        notes=llm_runtime_notes,
+                        custom_prompt=custom_llm_prompt,
+                        create_binary_content_fn=create_binary_content_fn,
+                        assess_visual_diff_fn=assess_visual_diff_fn,
                     )
 
-            if not similar:
-                # Save original images to the screenshot directory and add them to the Robot Framework log
-                # But add them next to each other in the log
-                # Use safe concatenation to handle different image dimensions
-                cv2.putText(
-                    ref_page.image,
-                    self.REFERENCE_LABEL,
-                    self.BOTTOM_LEFT_CORNER_OF_TEXT,
-                    self.FONT,
-                    self.FONT_SCALE,
-                    self.FONT_COLOR,
-                    self.LINE_TYPE,
-                )
-                cv2.putText(
-                    cand_page.image,
-                    self.CANDIDATE_LABEL,
-                    self.BOTTOM_LEFT_CORNER_OF_TEXT,
-                    self.FONT,
-                    self.FONT_SCALE,
-                    self.FONT_COLOR,
-                    self.LINE_TYPE,
-                )
-
-                combined_image = self.concatenate_images_safely(
-                    ref_page.image, cand_page.image, axis=1, fill_color=(240, 240, 240)
-                )
-                self.add_screenshot_to_log(
-                    combined_image, suffix="_combined", original_size=False
-                )
-
-                # Generate side-by-side image highlighting differences using the SSIM diff image
-                reference_img, candidate_img, _ = (
-                    self.get_images_with_highlighted_differences(
-                        thresh, ref_page.image, cand_page.image
+                if llm_decision:
+                    decision_value = _coerce_label_value(llm_decision.decision)
+                    print(
+                        f"LLM decision: {decision_value} "
+                        f"(confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
                     )
-                )
+                    if llm_decision.notes:
+                        print(f"LLM notes: {llm_decision.notes}")
+                    if llm_override_result and llm_decision.is_positive:
+                        print("LLM approved differences. Overriding baseline failure.")
+                        detected_differences = []
+                    elif _decision_equals_flag(llm_decision.decision, llm_label_enum):
+                        print("LLM returned FLAG - keeping original comparison result.")
+                    elif not llm_decision.is_positive and llm_override_result:
+                        print("LLM rejected differences. Baseline failure will be raised.")
 
-                combined_image_with_differences = self.concatenate_images_safely(
-                    reference_img, candidate_img, axis=1, fill_color=(240, 240, 240)
-                )
-                # Add the side-by-side comparison with differences to the Robot Framework log
-                self.add_screenshot_to_log(
-                    combined_image_with_differences,
-                    suffix="_combined_with_diff",
-                    original_size=False,
-                )
+            for diff in detected_differences:
+                print(diff["message"])
+                self._raise_comparison_failure()
 
-                # Add absolute difference image to the log
-                self.add_screenshot_to_log(
-                    absolute_diff, suffix="_absolute_diff", original_size=False
-                )
-
-                if diff_rectangles_cache is None:
-                    diff_rectangles_cache = self.get_diff_rectangles(absolute_diff)
-
-                detected_differences.append(
-                    {
-                        "ref_page": ref_page,
-                        "cand_page": cand_page,
-                        "message": f"Visual differences detected. SSIM score: {score:.20f}",
-                        "rectangles": diff_rectangles_cache,
-                        "score": score,
-                        "threshold": threshold,
-                        "absolute_diff": absolute_diff.copy() if absolute_diff is not None else None,
-                        "combined_diff": combined_image_with_differences.copy()
-                        if combined_image_with_differences is not None
-                        else None,
-                        "notes": page_notes[:],
-                    }
-                )
-
-        llm_decision = None
-        llm_label_enum = None
-        if detected_differences and llm_requested:
-            llm_runtime_notes.append(f"Threshold: {threshold}")
-            if check_text_content:
-                llm_runtime_notes.append("Text content verification was enabled.")
-            if move_tolerance:
-                llm_runtime_notes.append(f"Movement tolerance: {move_tolerance}")
-
-            try:
-                assess_visual_diff_fn, create_binary_content_fn, llm_label_enum = (
-                    _load_visual_llm_runtime()
-                )
-            except LLMDependencyError as exc:
-                print(str(exc))
-            else:
-                llm_decision = self._handle_llm_for_visual_differences(
-                    reference_image=reference_image,
-                    candidate_image=candidate_image,
-                    differences=detected_differences,
-                    overrides=llm_overrides,
-                    notes=llm_runtime_notes,
-                    custom_prompt=custom_llm_prompt,
-                    create_binary_content_fn=create_binary_content_fn,
-                    assess_visual_diff_fn=assess_visual_diff_fn,
-                )
-
-            if llm_decision:
-                decision_value = _coerce_label_value(llm_decision.decision)
-                print(
-                    f"LLM decision: {decision_value} "
-                    f"(confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
-                )
-                if llm_decision.notes:
-                    print(f"LLM notes: {llm_decision.notes}")
-                if llm_override_result and llm_decision.is_positive:
-                    print("LLM approved differences. Overriding baseline failure.")
-                    detected_differences = []
-                elif _decision_equals_flag(llm_decision.decision, llm_label_enum):
-                    print("LLM returned FLAG - keeping original comparison result.")
-                elif not llm_decision.is_positive and llm_override_result:
-                    print("LLM rejected differences. Baseline failure will be raised.")
-
-        for diff in detected_differences:
-            print(diff["message"])
-            self._raise_comparison_failure()
-
-        print("Images/Document comparison passed.")
+            print("Images/Document comparison passed.")
+        finally:
+            reference_doc.close()
+            candidate_doc.close()
 
     @keyword
     def compare_images_with_llm(self, *args, llm_override: bool = False, **kwargs):
