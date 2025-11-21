@@ -105,6 +105,7 @@ class VisualTest:
         ransac_threshold: float = RANSAC_THRESHOLD_DEFAULT,
         stream_documents: bool = True,
         document_page_cache_size: int = 2,
+        verbose_movement_logging: bool = False,
         **kwargs,
     ):
         """
@@ -129,6 +130,7 @@ class VisualTest:
         | ``ransac_threshold`` | RANSAC threshold for robust homography estimation. Higher values are more tolerant of outliers. Default is ``5.0``. |
         | ``stream_documents`` | When ``True``, VisualTest renders PDF pages lazily instead of loading entire documents into memory. Default is ``True``. |
         | ``document_page_cache_size`` | Maximum number of rendered pages to keep in memory per document when streaming. Default is ``2``. |
+        | ``verbose_movement_logging`` | When ``True``, emit detailed warnings from movement detection helpers (template, ORB, SIFT). Disabled by default to reduce noise. |
         | ``**kwargs`` | Everything else. |
 
 
@@ -161,6 +163,7 @@ class VisualTest:
         self.force_ocr = force_ocr
         self.stream_documents = bool(stream_documents)
         self.document_page_cache_size = max(1, int(document_page_cache_size))
+        self.verbose_movement_logging = bool(verbose_movement_logging)
 
         output_dir, reference_run, pabot_index = self._read_robot_variables()
         self.output_directory = output_dir
@@ -168,6 +171,12 @@ class VisualTest:
         self.PABOTQUEUEINDEX = pabot_index
 
         self.screenshot_path = self.output_directory / self.screenshot_dir
+
+    def _log_verbose_warning(self, message: str) -> None:
+        """Emit movement-detection warnings only when verbose logging is enabled."""
+        if not self.verbose_movement_logging:
+            return
+        LOG.warning(message)
 
     def _read_robot_variables(self) -> Tuple[Path, bool, Optional[str]]:
         """Return Robot Framework runtime variables if Robot is active."""
@@ -2038,39 +2047,39 @@ class VisualTest:
         """
         # Enhanced input validation
         if img is None or template is None:
-            LOG.warning("Input images are None")
+            self._log_verbose_warning("Input images are None")
             return None
 
         if not isinstance(img, np.ndarray) or not isinstance(template, np.ndarray):
-            LOG.warning("Input images must be numpy arrays")
+            self._log_verbose_warning("Input images must be numpy arrays")
             return None
 
         if img.size == 0 or template.size == 0:
-            LOG.warning("Input images are empty")
+            self._log_verbose_warning("Input images are empty")
             return None
 
         # Check for minimum image dimensions
         if img.shape[0] < 5 or img.shape[1] < 5:
-            LOG.warning("Source image too small for movement detection")
+            self._log_verbose_warning("Source image too small for movement detection")
             return None
 
         if template.shape[0] < 3 or template.shape[1] < 3:
-            LOG.warning("Template image too small for movement detection")
+            self._log_verbose_warning("Template image too small for movement detection")
             return None
 
         # Ensure images have the same number of channels
         if len(img.shape) != len(template.shape):
-            LOG.warning("Images have different number of channels")
+            self._log_verbose_warning("Images have different number of channels")
             return None
 
         # Check if template is larger than source image
         if template.shape[0] > img.shape[0] or template.shape[1] > img.shape[1]:
-            LOG.warning("Template image is larger than source image")
+            self._log_verbose_warning("Template image is larger than source image")
             return None
 
         # Validate threshold parameter
         if not isinstance(threshold, (int, float)) or threshold < 0 or threshold > 1:
-            LOG.warning("Invalid threshold value, using default")
+            self._log_verbose_warning("Invalid threshold value, using default")
             threshold = self.partial_image_threshold
 
         # Fallback chain for robust detection
@@ -2082,7 +2091,9 @@ class VisualTest:
         elif detection == "orb":
             fallback_methods = ["orb", "template", "sift"]
         else:
-            LOG.warning(f"Unknown detection method: {detection}, using template")
+            self._log_verbose_warning(
+                f"Unknown detection method: {detection}, using template"
+            )
             fallback_methods = ["template", "sift", "orb"]
 
         # Try detection methods with fallback
@@ -2108,10 +2119,12 @@ class VisualTest:
                     return result
 
             except Exception as e:
-                LOG.warning(f"Movement detection failed with {method} method: {str(e)}")
+                self._log_verbose_warning(
+                    f"Movement detection failed with {method} method: {str(e)}"
+                )
                 continue
 
-        LOG.warning("All movement detection methods failed")
+        self._log_verbose_warning("All movement detection methods failed")
         return None
 
     def find_partial_image_distance_with_sift(self, img, template, threshold=0.1):
@@ -2129,20 +2142,22 @@ class VisualTest:
         try:
             # Enhanced input validation
             if img is None or template is None:
-                LOG.warning("SIFT: Input images are None")
+                self._log_verbose_warning("SIFT: Input images are None")
                 return None
 
             if not isinstance(img, np.ndarray) or not isinstance(template, np.ndarray):
-                LOG.warning("SIFT: Input images must be numpy arrays")
+                self._log_verbose_warning(
+                    "SIFT: Input images must be numpy arrays"
+                )
                 return None
 
             if img.size == 0 or template.size == 0:
-                LOG.warning("SIFT: Input images are empty")
+                self._log_verbose_warning("SIFT: Input images are empty")
                 return None
 
             # Check image dimensions
             if len(img.shape) < 2 or len(template.shape) < 2:
-                LOG.warning("SIFT: Invalid image dimensions")
+                self._log_verbose_warning("SIFT: Invalid image dimensions")
                 return None
 
             # Adaptive grayscale conversion
@@ -2173,7 +2188,9 @@ class VisualTest:
             img_bbox = get_content_bbox(img_gray)
 
             if template_bbox is None or img_bbox is None:
-                LOG.warning("SIFT: Could not find content areas in images")
+                self._log_verbose_warning(
+                    "SIFT: Could not find content areas in images"
+                )
                 return None
 
             # Initialize SIFT detector with adaptive parameters
@@ -2225,7 +2242,7 @@ class VisualTest:
                         break
 
                 except Exception as e:
-                    LOG.warning(
+                    self._log_verbose_warning(
                         f"SIFT: Failed with parameters ({contrast_thresh}, {edge_thresh}): {str(e)}"
                     )
                     continue
@@ -2237,7 +2254,7 @@ class VisualTest:
                 or len(keypoints_img) < self.sift_min_matches
                 or len(keypoints_template) < self.sift_min_matches
             ):
-                LOG.warning("SIFT: Insufficient keypoints detected")
+                self._log_verbose_warning("SIFT: Insufficient keypoints detected")
                 return None
 
             # Robust feature matching with adaptive parameters
@@ -2276,7 +2293,9 @@ class VisualTest:
                     )
 
                 except Exception as e:
-                    LOG.warning(f"SIFT: Matching failed: {str(e)}")
+                    self._log_verbose_warning(
+                        f"SIFT: Matching failed: {str(e)}"
+                    )
                     return []
 
             good_matches = perform_matching()
@@ -2288,7 +2307,7 @@ class VisualTest:
             )
 
             if len(good_matches) < effective_min_matches:
-                LOG.warning(
+                self._log_verbose_warning(
                     f"SIFT: Insufficient good matches: {len(good_matches)} < {effective_min_matches}"
                 )
                 return None
@@ -2302,7 +2321,9 @@ class VisualTest:
                     [keypoints_img[m.trainIdx].pt for m in good_matches]
                 ).reshape(-1, 1, 2)
             except (IndexError, AttributeError) as e:
-                LOG.warning(f"SIFT: Error extracting match points: {str(e)}")
+                self._log_verbose_warning(
+                    f"SIFT: Error extracting match points: {str(e)}"
+                )
                 return None
 
             # Robust homography computation with outlier rejection
@@ -2341,13 +2362,13 @@ class VisualTest:
                                     break
                         M = None  # Reset if validation failed
                     except Exception as e:
-                        LOG.warning(
+                        self._log_verbose_warning(
                             f"SIFT: Homography computation failed with config {ransac_thresholds.index(ransac_thresh)}: {str(e)}"
                         )
                         continue
 
                 if M is None:
-                    LOG.warning("SIFT: Could not compute valid homography")
+                    self._log_verbose_warning("SIFT: Could not compute valid homography")
                     return None
 
                 # Extract translation with bounds checking
@@ -2362,7 +2383,7 @@ class VisualTest:
                     abs(dx) > max_reasonable_movement
                     or abs(dy) > max_reasonable_movement
                 ):
-                    LOG.warning(
+                    self._log_verbose_warning(
                         f"SIFT: Unreasonable movement detected: dx={dx}, dy={dy}"
                     )
                     return None
@@ -2380,7 +2401,9 @@ class VisualTest:
                 }
 
             except Exception as e:
-                LOG.warning(f"SIFT: Homography computation failed: {str(e)}")
+                self._log_verbose_warning(
+                    f"SIFT: Homography computation failed: {str(e)}"
+                )
                 return None
 
         except Exception as e:
@@ -2445,15 +2468,17 @@ class VisualTest:
         try:
             # Enhanced input validation
             if img is None or template is None:
-                LOG.warning("Template matching: Input images are None")
+                self._log_verbose_warning("Template matching: Input images are None")
                 return None
 
             if not isinstance(img, np.ndarray) or not isinstance(template, np.ndarray):
-                LOG.warning("Template matching: Input images must be numpy arrays")
+                self._log_verbose_warning(
+                    "Template matching: Input images must be numpy arrays"
+                )
                 return None
 
             if img.size == 0 or template.size == 0:
-                LOG.warning("Template matching: Input images are empty")
+                self._log_verbose_warning("Template matching: Input images are empty")
                 return None
 
             # Validate threshold
@@ -2462,7 +2487,9 @@ class VisualTest:
                 or threshold < 0
                 or threshold > 1
             ):
-                LOG.warning("Template matching: Invalid threshold, using default")
+                self._log_verbose_warning(
+                    "Template matching: Invalid threshold, using default"
+                )
                 threshold = self.partial_image_threshold
 
             # Adaptive grayscale conversion
@@ -2480,11 +2507,13 @@ class VisualTest:
 
             # Enhanced size validation
             if h > img_gray.shape[0] or w > img_gray.shape[1]:
-                LOG.warning("Template matching: Template larger than source image")
+                self._log_verbose_warning(
+                    "Template matching: Template larger than source image"
+                )
                 return None
 
             if h < 3 or w < 3:
-                LOG.warning("Template matching: Template too small")
+                self._log_verbose_warning("Template matching: Template too small")
                 return None
 
             # Enhanced difference calculation with noise reduction
@@ -2518,11 +2547,13 @@ class VisualTest:
                     mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
                 )
             except Exception as e:
-                LOG.warning(f"Template matching: Contour detection failed: {str(e)}")
+                self._log_verbose_warning(
+                    f"Template matching: Contour detection failed: {str(e)}"
+                )
                 return None
 
             if len(cnts) == 0:
-                LOG.warning("Template matching: No contours found")
+                self._log_verbose_warning("Template matching: No contours found")
                 return None
 
             # Enhanced contour processing
@@ -2550,7 +2581,9 @@ class VisualTest:
 
             merged_contour = process_contours(cnts, mask.shape)
             if merged_contour is None:
-                LOG.warning("Template matching: No valid contours after processing")
+                self._log_verbose_warning(
+                    "Template matching: No valid contours after processing"
+                )
                 return None
 
             # Enhanced masked image creation with improved masking
@@ -2601,7 +2634,9 @@ class VisualTest:
             )
 
             if temp_x is None or temp_w < 5 or temp_h < 5:
-                LOG.warning("Template matching: Template ROI too small or invalid")
+                self._log_verbose_warning(
+                    "Template matching: Template ROI too small or invalid"
+                )
                 # Return a small distance as fallback for very small movements
                 return {"distance": 3, "method": "template_fallback"}
 
@@ -2612,7 +2647,9 @@ class VisualTest:
                 or temp_x < 0
                 or temp_y < 0
             ):
-                LOG.warning("Template matching: ROI bounds exceed image dimensions")
+                self._log_verbose_warning(
+                    "Template matching: ROI bounds exceed image dimensions"
+                )
                 return None
 
             # Extract template ROI
@@ -2642,7 +2679,7 @@ class VisualTest:
                                 (1 - max_val, max_loc, method)
                             )  # Convert to distance-like metric
                     except Exception as e:
-                        LOG.warning(
+                        self._log_verbose_warning(
                             f"Template matching method {method} failed: {str(e)}"
                         )
                         continue
@@ -2654,7 +2691,9 @@ class VisualTest:
             template_results = perform_template_matching(masked_template, template_roi)
 
             if not img_results or not template_results:
-                LOG.warning("Template matching: All matching methods failed")
+                self._log_verbose_warning(
+                    "Template matching: All matching methods failed"
+                )
                 return None
 
             # Find best results (lowest distance-like metric)
@@ -2669,7 +2708,7 @@ class VisualTest:
                 threshold, 0.5
             )  # Very high threshold to handle large movements
             if min_val > effective_threshold:
-                LOG.warning(
+                self._log_verbose_warning(
                     f"Template matching: Match quality too low: {min_val} > {effective_threshold}"
                 )
                 return None
@@ -2682,7 +2721,7 @@ class VisualTest:
                 # Sanity check for reasonable movement
                 max_movement = max(img_gray.shape) * 1.5
                 if abs(dx) > max_movement or abs(dy) > max_movement:
-                    LOG.warning(
+                    self._log_verbose_warning(
                         f"Template matching: Unreasonable movement: dx={dx}, dy={dy}"
                     )
                     return None
@@ -2699,7 +2738,9 @@ class VisualTest:
                 }
 
             except (ValueError, TypeError) as e:
-                LOG.warning(f"Template matching: Error calculating movement: {str(e)}")
+                self._log_verbose_warning(
+                    f"Template matching: Error calculating movement: {str(e)}"
+                )
                 return None
 
         except Exception as e:
@@ -2724,11 +2765,11 @@ class VisualTest:
         try:
             # Input validation
             if img1 is None or img2 is None:
-                LOG.warning("ORB keypoints: Input images are None")
+                self._log_verbose_warning("ORB keypoints: Input images are None")
                 return None, None, None, None
 
             if img1.size == 0 or img2.size == 0:
-                LOG.warning("ORB keypoints: Input images are empty")
+                self._log_verbose_warning("ORB keypoints: Input images are empty")
                 return None, None, None, None
 
             # Enhanced ORB detector with error handling
@@ -2744,7 +2785,9 @@ class VisualTest:
                         nlevels=8,
                     )
                 except Exception as e:
-                    LOG.warning(f"ORB keypoints: Failed to create detector: {str(e)}")
+                    self._log_verbose_warning(
+                        f"ORB keypoints: Failed to create detector: {str(e)}"
+                    )
                     return None
 
             orb = create_orb_detector(edgeThreshold, patchSize)
@@ -2756,7 +2799,9 @@ class VisualTest:
                 img1_kp, img1_des = orb.detectAndCompute(img1, None)
                 img2_kp, img2_des = orb.detectAndCompute(img2, None)
             except Exception as e:
-                LOG.warning(f"ORB keypoints: Detection failed: {str(e)}")
+                self._log_verbose_warning(
+                    f"ORB keypoints: Detection failed: {str(e)}"
+                )
                 return None, None, None, None
 
             # Validate results
@@ -2779,7 +2824,9 @@ class VisualTest:
                         img1, img2, new_edge_threshold, new_patch_size
                     )
                 else:
-                    LOG.warning("ORB keypoints: Could not detect sufficient keypoints")
+                    self._log_verbose_warning(
+                        "ORB keypoints: Could not detect sufficient keypoints"
+                    )
                     return None, None, None, None
 
             return img1_kp, img1_des, img2_kp, img2_des
@@ -2802,11 +2849,11 @@ class VisualTest:
         try:
             # Input validation
             if img1 is None or img2 is None:
-                LOG.warning("SIFT keypoints: Input images are None")
+                self._log_verbose_warning("SIFT keypoints: Input images are None")
                 return None, None, None, None
 
             if img1.size == 0 or img2.size == 0:
-                LOG.warning("SIFT keypoints: Input images are empty")
+                self._log_verbose_warning("SIFT keypoints: Input images are empty")
                 return None, None, None, None
 
             # Enhanced SIFT detector with multiple parameter sets
@@ -2834,10 +2881,12 @@ class VisualTest:
                         return img1_kp, img1_des, img2_kp, img2_des
 
                 except Exception as e:
-                    LOG.warning(f"SIFT keypoints: Config {config} failed: {str(e)}")
+                    self._log_verbose_warning(
+                        f"SIFT keypoints: Config {config} failed: {str(e)}"
+                    )
                     continue
 
-            LOG.warning("SIFT keypoints: All configurations failed")
+            self._log_verbose_warning("SIFT keypoints: All configurations failed")
             return None, None, None, None
 
         except Exception as e:
@@ -2858,15 +2907,15 @@ class VisualTest:
         try:
             # Enhanced input validation
             if img is None or template is None:
-                LOG.warning("ORB: Input images are None")
+                self._log_verbose_warning("ORB: Input images are None")
                 return None
 
             if not isinstance(img, np.ndarray) or not isinstance(template, np.ndarray):
-                LOG.warning("ORB: Input images must be numpy arrays")
+                self._log_verbose_warning("ORB: Input images must be numpy arrays")
                 return None
 
             if img.size == 0 or template.size == 0:
-                LOG.warning("ORB: Input images are empty")
+                self._log_verbose_warning("ORB: Input images are empty")
                 return None
 
             # Check minimum dimensions
@@ -2876,7 +2925,7 @@ class VisualTest:
                 or template.shape[0] < 10
                 or template.shape[1] < 10
             ):
-                LOG.warning("ORB: Images too small for ORB detection")
+                self._log_verbose_warning("ORB: Images too small for ORB detection")
                 return None
 
             # Adaptive grayscale conversion
@@ -2922,11 +2971,13 @@ class VisualTest:
                     mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
                 )
             except Exception as e:
-                LOG.warning(f"ORB: Contour detection failed: {str(e)}")
+                self._log_verbose_warning(
+                    f"ORB: Contour detection failed: {str(e)}"
+                )
                 return None
 
             if len(cnts) == 0:
-                LOG.warning("ORB: No contours found in difference mask")
+                self._log_verbose_warning("ORB: No contours found in difference mask")
                 return None
 
             # Enhanced contour processing
@@ -2939,7 +2990,9 @@ class VisualTest:
                 ]
 
                 if not valid_contours:
-                    LOG.warning("ORB: No valid contours after area filtering")
+                    self._log_verbose_warning(
+                        "ORB: No valid contours after area filtering"
+                    )
                     return None
 
                 # Create mask from valid contours
@@ -2996,7 +3049,9 @@ class VisualTest:
 
             # Validate edge content
             if np.sum(edges_img) < 100 or np.sum(edges_template) < 100:
-                LOG.warning("ORB: Insufficient edge content after masking")
+                self._log_verbose_warning(
+                    "ORB: Insufficient edge content after masking"
+                )
                 return None
 
             # Enhanced ORB keypoint detection with adaptive parameters
@@ -3038,7 +3093,7 @@ class VisualTest:
                             return template_kp, template_des, img_kp, img_des
 
                     except Exception as e:
-                        LOG.warning(
+                        self._log_verbose_warning(
                             f"ORB: Configuration {orb_configs.index((nfeatures, edge_thresh, patch_size))} failed: {str(e)}"
                         )
                         continue
@@ -3058,7 +3113,7 @@ class VisualTest:
                 or len(template_keypoints) < self.orb_min_matches
                 or len(target_keypoints) < self.orb_min_matches
             ):
-                LOG.warning("ORB: Insufficient keypoints detected")
+                self._log_verbose_warning("ORB: Insufficient keypoints detected")
                 return None
 
             # Enhanced feature matching with robust filtering
@@ -3100,7 +3155,7 @@ class VisualTest:
                     return good_matches
 
                 except Exception as e:
-                    LOG.warning(f"ORB: Matching failed: {str(e)}")
+                    self._log_verbose_warning(f"ORB: Matching failed: {str(e)}")
                     return []
 
             best_matches = perform_robust_matching(
@@ -3113,7 +3168,7 @@ class VisualTest:
             )
 
             if len(best_matches) < effective_min_matches:
-                LOG.warning(
+                self._log_verbose_warning(
                     f"ORB: Insufficient good matches: {len(best_matches)} < {effective_min_matches}"
                 )
                 return None
@@ -3163,13 +3218,13 @@ class VisualTest:
                                 best_inlier_ratio = inlier_ratio
 
                     except Exception as e:
-                        LOG.warning(
+                        self._log_verbose_warning(
                             f"ORB: Homography computation failed with config {ransac_configs.index((ransac_thresh, max_iters, confidence))}: {str(e)}"
                         )
                         continue
 
                 if best_homography is None:
-                    LOG.warning("ORB: Could not compute valid homography")
+                    self._log_verbose_warning("ORB: Could not compute valid homography")
                     return None
 
                 # Extract movement from homography
@@ -3182,7 +3237,7 @@ class VisualTest:
                     abs(dx) > max_reasonable_movement
                     or abs(dy) > max_reasonable_movement
                 ):
-                    LOG.warning(
+                    self._log_verbose_warning(
                         f"ORB: Unreasonable movement detected: dx={dx}, dy={dy}"
                     )
                     return None
@@ -3205,7 +3260,7 @@ class VisualTest:
                         )
                         self.add_screenshot_to_log(match_img, "ORB_matches")
                     except Exception as e:
-                        LOG.warning(
+                        self._log_verbose_warning(
                             f"ORB: Could not create match visualization: {str(e)}"
                         )
 
@@ -3219,7 +3274,9 @@ class VisualTest:
                 }
 
             except Exception as e:
-                LOG.warning(f"ORB: Error in homography computation: {str(e)}")
+                self._log_verbose_warning(
+                    f"ORB: Error in homography computation: {str(e)}"
+                )
                 return None
 
         except Exception as e:
@@ -3490,7 +3547,7 @@ class VisualTest:
             # Distance should not exceed reasonable bounds (2x image diagonal)
             max_distance = np.sqrt(img_shape[0] ** 2 + img_shape[1] ** 2) * 2
             if distance > max_distance:
-                LOG.warning(
+                self._log_verbose_warning(
                     f"Movement distance {distance} exceeds reasonable bound {max_distance}"
                 )
                 return False
@@ -3504,7 +3561,7 @@ class VisualTest:
                 # Displacement should be consistent with distance
                 calculated_distance = np.sqrt(dx**2 + dy**2)
                 if abs(calculated_distance - distance) > 1e-6:
-                    LOG.warning(
+                    self._log_verbose_warning(
                         f"Distance inconsistency: reported={distance}, calculated={calculated_distance}"
                     )
                     return False
@@ -3532,7 +3589,9 @@ class VisualTest:
             return True
 
         except Exception as e:
-            LOG.warning(f"Error validating movement result: {str(e)}")
+            self._log_verbose_warning(
+                f"Error validating movement result: {str(e)}"
+            )
             return False
 
     def _create_fallback_result(self, method, reason="unknown"):
