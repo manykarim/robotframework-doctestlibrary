@@ -347,7 +347,9 @@ class PdfTest(object):
                     )
 
                 if text_requested:
-                    diff = DeepDiff(ref_page['text'], cand_page['text'])
+                    ref_text_lines = sorted(ref_page['text'])
+                    cand_text_lines = sorted(cand_page['text'])
+                    diff = DeepDiff(ref_text_lines, cand_text_lines)
                     if diff:
                         _record_diff(
                             "text",
