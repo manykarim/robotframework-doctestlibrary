@@ -6,7 +6,11 @@ def test_compare_pdf_content_with_different_text_with_masks(testdata_dir):
     pdf_tester = PdfTest()
     reference_pdf = testdata_dir / 'sample_1_page.pdf'
     candidate_pdf = testdata_dir / 'sample_1_page_different_text.pdf'
-    pdf_tester.compare_pdf_documents(reference_pdf, candidate_pdf, mask=[".*JobID.*", ".*RTM.*"], compare="text")  
+    pattern_masks = [
+        {"page": "all", "type": "pattern", "pattern": ".*JobID.*"},
+        {"page": "all", "type": "pattern", "pattern": ".*RTM.*"},
+    ]
+    pdf_tester.compare_pdf_documents(reference_pdf, candidate_pdf, mask=pattern_masks, compare="text")  
 
 def test_compare_pdf_content_with_differences(testdata_dir):
     pdf_tester = PdfTest()

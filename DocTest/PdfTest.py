@@ -4,14 +4,21 @@ from deepdiff import DeepDiff
 from robot.api import logger
 from robot.api.deco import keyword, library
 import fitz
+import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Pattern, Tuple
 from DocTest.config import DEFAULT_DPI
 from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import is_url, download_file_from_url
 from DocTest.PdfStructureComparator import StructureTolerance, compare_document_structures
-from DocTest.PdfStructureModels import StructureExtractionConfig
+from DocTest.PdfStructureModels import (
+    DocumentStructure,
+    PageStructure,
+    StructureExtractionConfig,
+    TextBlock,
+    TextLine,
+)
 from DocTest.llm import LLMDependencyError, load_llm_settings
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -111,6 +118,18 @@ class PdfTest(object):
             - ``signatures``
             - ``structure`` (layout + line/geometry comparison that ignores font subset differences)
 
+        Masking dynamic regions:
+
+            - ``mask`` accepts the same formats as :keyword:`Compare Images` – JSON/dict/list payloads,
+              ``top:percent`` strings, or a path to a JSON mask file. Use ``unit=pt`` to provide
+              coordinates directly in PDF points.
+            - ``text_mask_patterns`` (list or string) allows regex-based filtering of text lines.
+
+        Ligature handling:
+
+            - ``ignore_ligatures`` (bool, default ``False``) replaces common ligatures (e.g. ``ﬁ``)
+              with their ASCII counterparts before comparing text or structure.
+
         When ``structure`` is requested the following optional kwargs control behaviour:
 
             - ``structure_position_tolerance`` (float, default ``15.0``) – max positional delta in points
@@ -122,8 +141,8 @@ class PdfTest(object):
             - ``structure_strip_line_edges`` (bool, default ``True``)
             - ``structure_drop_empty_lines`` (bool, default ``True``)
             - ``structure_whitespace_replacement`` (str, default single space)
-            - ``structure_round_precision`` (int or ``None``, default ``3``) – rounding precision for coordinates
-            - ``structure_dpi`` (int, default: library DPI) – DPI used when rasterising PDFs prior to structure extraction
+            - ``structure_round_precision`` (int or ``None``, default ``3``)
+            - ``structure_dpi`` (int, default: library DPI)
 
         Optional LLM integration parameters:
 
@@ -136,10 +155,9 @@ class PdfTest(object):
 
         Examples:
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf
-        | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=text
-        | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=structure
+        | `Compare Pdf Documents`    reference.pdf    candidate.pdf    mask=${CURDIR}${/}mask.json
+        | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=structure    ignore_ligatures=${True}
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=structure|metadata    structure_position_tolerance=5.0
-        | `Compare Pdf Documents`    reference.pdf    candidate.pdf    llm=${True}    llm_prompt=Summarise differences using JSON
 
         """
         llm_requested = bool(
@@ -174,9 +192,12 @@ class PdfTest(object):
                 if value is not None:
                     llm_overrides[key] = value
 
-        mask = kwargs.pop('mask', None)
+        mask_value = kwargs.pop('mask', None)
+        text_mask_patterns_arg = kwargs.pop('text_mask_patterns', None)
+        ignore_ligatures = _as_bool(kwargs.pop('ignore_ligatures', False))
         check_pdf_text = _as_bool(kwargs.pop('check_pdf_text', False))
         llm_general_notes.append(f"check_pdf_text={check_pdf_text}")
+        llm_general_notes.append(f"ignore_ligatures={ignore_ligatures}")
 
         compare_value = kwargs.pop('compare', "all")
         compare_value = compare_value.replace('|', ',')
@@ -185,6 +206,7 @@ class PdfTest(object):
             compare_tokens = ['all']
         compare_set = set(compare_tokens)
         llm_general_notes.append(f"Compare facets: {sorted(compare_set)}")
+        compare_all = 'all' in compare_set
 
         structure_position_tolerance = _as_float(kwargs.pop('structure_position_tolerance', 15.0), 15.0)
         structure_size_tolerance = _as_float(kwargs.pop('structure_size_tolerance', structure_position_tolerance), structure_position_tolerance)
@@ -196,9 +218,10 @@ class PdfTest(object):
         structure_drop_empty_lines = _as_bool(kwargs.pop('structure_drop_empty_lines', True), True)
         structure_whitespace_replacement = kwargs.pop('structure_whitespace_replacement', " ")
         structure_round_precision = _as_int_or_none(kwargs.pop('structure_round_precision', 3))
+        base_dpi = _as_int_or_none(kwargs.pop('dpi', None))
         structure_dpi = _as_int_or_none(kwargs.pop('structure_dpi', None))
         if structure_dpi is None:
-            structure_dpi = _as_int_or_none(kwargs.get('dpi'))
+            structure_dpi = base_dpi
         if structure_dpi is None:
             structure_dpi = DEFAULT_DPI
         structure_requested = 'structure' in compare_set
@@ -207,220 +230,235 @@ class PdfTest(object):
                 f"structure_tolerance(position={structure_position_tolerance}, size={structure_size_tolerance}, relative={structure_relative_tolerance})"
             )
 
-        extraction_config = StructureExtractionConfig(
+        structure_extraction_config = StructureExtractionConfig(
             collapse_whitespace=structure_collapse_whitespace,
             strip_font_subset=structure_strip_font_subset,
             whitespace_replacement=str(structure_whitespace_replacement),
             strip_line_edges=structure_strip_line_edges,
             drop_empty_lines=structure_drop_empty_lines,
             round_precision=structure_round_precision,
+            normalize_ligatures=ignore_ligatures,
+        )
+        text_extraction_config = StructureExtractionConfig(
+            collapse_whitespace=True,
+            strip_font_subset=True,
+            whitespace_replacement=" ",
+            strip_line_edges=True,
+            drop_empty_lines=True,
+            round_precision=structure_round_precision,
+            normalize_ligatures=ignore_ligatures,
         )
 
+        mask_file, mask_payload, text_pattern_values, mask_warnings = self._resolve_mask_arguments(
+            mask_value,
+            text_mask_patterns_arg,
+        )
+        for warning in mask_warnings:
+            logger.warn(warning)
+
+        compiled_text_patterns, pattern_warnings = self._compile_text_mask_patterns(text_pattern_values)
+        for warning in pattern_warnings:
+            logger.warn(warning)
+
+        mask_applied = bool(mask_file or mask_payload)
+        llm_general_notes.append(f"mask_applied={'yes' if mask_applied else 'no'}")
+        llm_general_notes.append(f"text_mask_patterns={'yes' if text_pattern_values else 'no'}")
 
         reference_document = self._ensure_local_document(reference_document)
         candidate_document = self._ensure_local_document(candidate_document)
-        ref_doc = fitz.open(reference_document)
-        cand_doc = fitz.open(candidate_document)
-        reference = {}
-        reference['pages'] = []
-        reference['metadata']=ref_doc.metadata
-        reference['page_count']=ref_doc.page_count
-        reference['sigflags']=ref_doc.get_sigflags()
-        for i, page in enumerate(ref_doc.pages()):
-            signature_list = []
-            text = [x for x in page.get_text("text").splitlines() if not is_masked(x, mask)]
-            for widget in page.widgets():
-                if widget.is_signed:
-                    signature_list.append(list((widget.field_name, widget.field_label, widget.field_value)))
-            reference['pages'].append(dict([('number',i+1), ('fonts', page.get_fonts()), ('images', page.get_images()), ('rotation', page.rotation), ('mediabox', page.mediabox), ('signatures', signature_list),('text', text)]))
 
+        reference_repr = DocumentRepresentation(
+            reference_document,
+            dpi=structure_dpi,
+            ignore_area_file=mask_file,
+            ignore_area=mask_payload,
+        )
+        candidate_repr = DocumentRepresentation(
+            candidate_document,
+            dpi=structure_dpi,
+            ignore_area_file=mask_file,
+            ignore_area=mask_payload,
+        )
 
-        candidate = {}
-        candidate['pages'] = []
-        candidate['metadata']=cand_doc.metadata
-        candidate['page_count']=cand_doc.page_count
-        candidate['sigflags']=cand_doc.get_sigflags()
-        for i, page in enumerate(cand_doc.pages()):
-            signature_list = []
-            text = [x for x in page.get_text("text").splitlines() if not is_masked(x, mask)]
-            for widget in page.widgets():
-                if widget.is_signed:
-                    signature_list.append(list((widget.field_name, widget.field_label, widget.field_value)))
-            candidate['pages'].append(dict([('number',i+1), ('fonts', page.get_fonts()), ('images', page.get_images()), ('rotation', page.rotation), ('mediabox', page.mediabox), ('signatures', signature_list),('text', text)]))
-
-        differences_detected=False
-
-        if 'metadata' in compare_set or 'all' in compare_set:
-            diff = DeepDiff(reference['metadata'], candidate['metadata'])
-            if diff != {}:
-                differences_detected=True
-                print("Different metadata")
-                pprint(diff, width=200)
-                llm_differences.append(
-                    {
-                        "facet": "metadata",
-                        "description": "Metadata differs between reference and candidate.",
-                        "details": pformat(diff, width=200),
-                    }
-                )
-        if 'signatures' in compare_set or 'all' in compare_set:
-            diff = DeepDiff(reference['sigflags'], candidate['sigflags'])
-            if diff != {}:
-                differences_detected=True
-                print("Different signature")
-                pprint(diff, width=200)
-                llm_differences.append(
-                    {
-                        "facet": "signatures",
-                        "description": "PDF signature flags differ.",
-                        "details": pformat(diff, width=200),
-                    }
-                )
-        for ref_page, cand_page in zip(reference['pages'], candidate['pages']):
-            diff = DeepDiff(ref_page['rotation'], cand_page['rotation'])
-            if diff != {}:
-                differences_detected=True
-                print("Different rotation")
-                pprint(diff, width=200)
-                llm_differences.append(
-                    {
-                        "facet": "rotation",
-                        "description": f"Page {ref_page['number']} rotation differs.",
-                        "details": pformat(diff, width=200),
-                    }
-                )
-            # diff = DeepDiff(ref_page['mediabox'], cand_page['mediabox'])
-            # if diff != {}:
-            #     differences_detected=True
-            #     print("Different mediabox")
-            #     pprint(diff, width=200)
-            if 'text' in compare_set or 'all' in compare_set:
-                diff = DeepDiff(ref_page['text'], cand_page['text'])
-                if diff != {}:
-                    differences_detected=True
-                    print("Different text")
-                    pprint(diff, width=200)
-                    llm_differences.append(
-                        {
-                            "facet": "text",
-                            "description": f"Page {ref_page['number']} text content differs.",
-                            "details": pformat(diff, width=200),
-                        }
-                    )
-            if 'fonts' in compare_set or 'all' in compare_set:
-                diff = DeepDiff(ref_page['fonts'], cand_page['fonts'])
-                if diff != {}:
-                    differences_detected=True
-                    print("Different fonts")
-                    pprint(diff, width=200)
-                    llm_differences.append(
-                        {
-                            "facet": "fonts",
-                            "description": f"Page {ref_page['number']} font usage differs.",
-                            "details": pformat(diff, width=200),
-                        }
-                    )
-            if 'images' in compare_set or 'all' in compare_set:
-                diff = DeepDiff(ref_page['images'], cand_page['images'])
-                if diff != {}:
-                    differences_detected=True
-                    print("Different images")
-                    pprint(diff, width=200)
-                    llm_differences.append(
-                        {
-                            "facet": "images",
-                            "description": f"Page {ref_page['number']} embedded images differ.",
-                            "details": pformat(diff, width=200),
-                        }
-                    )
-            if 'signatures' in compare_set or 'all' in compare_set:
-                diff = DeepDiff(ref_page['signatures'], cand_page['signatures'])
-                if diff != {}:
-                    differences_detected=True
-                    print("Different signatures")
-                    pprint(diff, width=200)
-                    llm_differences.append(
-                        {
-                            "facet": "signatures",
-                            "description": f"Page {ref_page['number']} form signatures differ.",
-                            "details": pformat(diff, width=200),
-                        }
-                    )
-
-        if structure_requested:
-            tolerance = StructureTolerance(
-                position=structure_position_tolerance,
-                size=structure_size_tolerance,
-                relative=structure_relative_tolerance,
+        try:
+            differences_detected = False
+            reference_snapshot = self._build_document_snapshot(
+                reference_repr,
+                extraction_config=text_extraction_config,
+                text_mask_patterns=compiled_text_patterns,
             )
-            structure_result = self._perform_structure_comparison(
-                reference_document=reference_document,
-                candidate_document=candidate_document,
-                tolerance=tolerance,
-                extraction_config=extraction_config,
-                case_sensitive=structure_case_sensitive,
-                dpi=structure_dpi,
+            candidate_snapshot = self._build_document_snapshot(
+                candidate_repr,
+                extraction_config=text_extraction_config,
+                text_mask_patterns=compiled_text_patterns,
             )
-            if not structure_result.passed:
+
+            if reference_snapshot['page_count'] != candidate_snapshot['page_count']:
+                raise AssertionError("Documents have different number of pages.")
+
+            metadata_requested = compare_all or 'metadata' in compare_set
+            signatures_requested = compare_all or 'signatures' in compare_set
+            text_requested = compare_all or 'text' in compare_set
+            fonts_requested = compare_all or 'fonts' in compare_set
+            images_requested = compare_all or 'images' in compare_set
+
+            def _record_diff(facet: str, description: str, diff_payload: Any):
+                nonlocal differences_detected
                 differences_detected = True
-                summary = getattr(structure_result, "summary", None)
-                page_diffs = getattr(structure_result, "page_differences", None)
-                details_parts: List[str] = []
-                if summary:
-                    details_parts.extend(str(item) for item in summary)
-                if page_diffs:
-                    for page, diffs in page_diffs.items():
-                        for diff in diffs:
-                            details_parts.append(f"Page {page}: {diff.message}")
+                print(description)
+                pprint(diff_payload, width=200)
                 llm_differences.append(
                     {
-                        "facet": "structure",
-                        "description": "PDF structural comparison failed.",
-                        "details": "\n".join(details_parts) if details_parts else "Structure comparison differences detected.",
+                        "facet": facet,
+                        "description": description,
+                        "details": pformat(diff_payload, width=200),
                     }
                 )
 
-        llm_decision = None
-        llm_label_enum = None
-        if differences_detected and llm_requested:
-            llm_general_notes.append(f"mask_applied={'yes' if mask else 'no'}")
-            try:
-                assess_pdf_diff_fn, create_binary_content_fn, llm_label_enum = (
-                    _load_pdf_llm_runtime()
+            if metadata_requested:
+                diff = DeepDiff(reference_snapshot['metadata'], candidate_snapshot['metadata'])
+                if diff:
+                    _record_diff(
+                        "metadata",
+                        "Metadata differs between reference and candidate.",
+                        diff,
+                    )
+
+            if signatures_requested:
+                diff = DeepDiff(reference_snapshot['sigflags'], candidate_snapshot['sigflags'])
+                if diff:
+                    _record_diff(
+                        "signatures",
+                        "PDF signature flags differ.",
+                        diff,
+                    )
+
+            for ref_page, cand_page in zip(reference_snapshot['pages'], candidate_snapshot['pages']):
+                page_number = ref_page['number']
+
+                if compare_all and ref_page.get('rotation') != cand_page.get('rotation'):
+                    _record_diff(
+                        "rotation",
+                        f"Page {page_number} rotation differs.",
+                        {
+                            "reference": ref_page.get('rotation'),
+                            "candidate": cand_page.get('rotation'),
+                        },
+                    )
+
+                if text_requested:
+                    diff = DeepDiff(ref_page['text'], cand_page['text'])
+                    if diff:
+                        _record_diff(
+                            "text",
+                            f"Page {page_number} text content differs.",
+                            diff,
+                        )
+
+                if fonts_requested:
+                    diff = DeepDiff(ref_page['fonts'], cand_page['fonts'])
+                    if diff:
+                        _record_diff(
+                            "fonts",
+                            f"Page {page_number} font usage differs.",
+                            diff,
+                        )
+
+                if images_requested:
+                    diff = DeepDiff(ref_page['images'], cand_page['images'])
+                    if diff:
+                        _record_diff(
+                            "images",
+                            f"Page {page_number} embedded images differ.",
+                            diff,
+                        )
+
+                if signatures_requested:
+                    diff = DeepDiff(ref_page['signatures'], cand_page['signatures'])
+                    if diff:
+                        _record_diff(
+                            "signatures",
+                            f"Page {page_number} form signatures differ.",
+                            diff,
+                        )
+
+            if structure_requested:
+                tolerance = StructureTolerance(
+                    position=structure_position_tolerance,
+                    size=structure_size_tolerance,
+                    relative=structure_relative_tolerance,
                 )
-            except LLMDependencyError as exc:
-                print(str(exc))
-            else:
-                llm_decision = self._handle_llm_for_pdf_differences(
+                structure_result = self._perform_structure_comparison(
                     reference_document=reference_document,
                     candidate_document=candidate_document,
-                    differences=llm_differences,
-                    overrides=llm_overrides,
-                    notes=llm_general_notes,
-                    custom_prompt=custom_llm_prompt,
-                    create_binary_content_fn=create_binary_content_fn,
-                    assess_pdf_diff_fn=assess_pdf_diff_fn,
+                    tolerance=tolerance,
+                    extraction_config=structure_extraction_config,
+                    case_sensitive=structure_case_sensitive,
+                    dpi=structure_dpi,
+                    reference_representation=reference_repr,
+                    candidate_representation=candidate_repr,
+                    text_mask_patterns=compiled_text_patterns,
                 )
-            if llm_decision:
-                decision_value = _coerce_label_value(llm_decision.decision)
-                print(
-                    f"LLM decision: {decision_value} "
-                    f"(confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
-                )
-                if llm_decision.notes:
-                    print(f"LLM notes: {llm_decision.notes}")
-                if llm_override_result and llm_decision.is_positive:
-                    print("LLM approved PDF differences. Overriding baseline failure.")
-                    differences_detected = False
-                elif _decision_equals_flag(llm_decision.decision, llm_label_enum):
-                    print("LLM returned FLAG - keeping original PDF comparison result.")
-                elif not llm_decision.is_positive and llm_override_result:
-                    print("LLM rejected PDF differences. Baseline failure will stand.")
+                if not structure_result.passed:
+                    differences_detected = True
+                    summary = getattr(structure_result, "summary", None)
+                    page_diffs = getattr(structure_result, "page_differences", None)
+                    details_parts: List[str] = []
+                    if summary:
+                        details_parts.extend(str(item) for item in summary)
+                    if page_diffs:
+                        for page, diffs in page_diffs.items():
+                            for diff in diffs:
+                                details_parts.append(f"Page {page}: {diff.message}")
+                    llm_differences.append(
+                        {
+                            "facet": "structure",
+                            "description": "PDF structural comparison failed.",
+                            "details": "\n".join(details_parts) if details_parts else "Structure comparison differences detected.",
+                        }
+                    )
 
-        if differences_detected:
-            ref_doc = None
-            cand_doc = None             
-            raise AssertionError('The compared PDF Document Data is different.')
+            llm_decision = None
+            llm_label_enum = None
+            if differences_detected and llm_requested:
+                try:
+                    assess_pdf_diff_fn, create_binary_content_fn, llm_label_enum = (
+                        _load_pdf_llm_runtime()
+                    )
+                except LLMDependencyError as exc:
+                    print(str(exc))
+                else:
+                    llm_decision = self._handle_llm_for_pdf_differences(
+                        reference_document=reference_document,
+                        candidate_document=candidate_document,
+                        differences=llm_differences,
+                        overrides=llm_overrides,
+                        notes=llm_general_notes,
+                        custom_prompt=custom_llm_prompt,
+                        create_binary_content_fn=create_binary_content_fn,
+                        assess_pdf_diff_fn=assess_pdf_diff_fn,
+                    )
+                if llm_decision:
+                    decision_value = _coerce_label_value(llm_decision.decision)
+                    print(
+                        f"LLM decision: {decision_value} "
+                        f"(confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
+                    )
+                    if llm_decision.notes:
+                        print(f"LLM notes: {llm_decision.notes}")
+                    if llm_override_result and llm_decision.is_positive:
+                        print("LLM approved PDF differences. Overriding baseline failure.")
+                        differences_detected = False
+                    elif _decision_equals_flag(llm_decision.decision, llm_label_enum):
+                        print("LLM returned FLAG - keeping original PDF comparison result.")
+                    elif not llm_decision.is_positive and llm_override_result:
+                        print("LLM rejected PDF differences. Baseline failure will stand.")
+
+            if differences_detected:
+                raise AssertionError('The compared PDF Document Data is different.')
+        finally:
+            reference_repr.close()
+            candidate_repr.close()
         # if reference!=candidate:
         #     pprint(DeepDiff(reference, candidate), width=200)
         #     print("Reference Document:")
@@ -632,6 +670,133 @@ class PdfTest(object):
             kwargs["llm_override"] = llm_override
         return self.compare_pdf_documents(*args, **kwargs)
 
+    def _resolve_mask_arguments(
+        self,
+        mask_value: Optional[Any],
+        text_mask_patterns: Optional[Any],
+    ) -> Tuple[Optional[str], Optional[Any], List[str], List[str]]:
+        mask_file: Optional[str] = None
+        mask_payload: Optional[Any] = None
+        warnings: List[str] = []
+
+        if mask_value is not None:
+            if isinstance(mask_value, (list, dict)):
+                mask_payload = mask_value
+            elif isinstance(mask_value, str):
+                candidate_path = Path(mask_value).expanduser()
+                if candidate_path.exists():
+                    mask_file = str(candidate_path)
+                else:
+                    mask_payload = mask_value
+            else:
+                warnings.append(
+                    f"Unsupported mask argument type '{type(mask_value).__name__}'. Expect string, dict or list."
+                )
+
+        pattern_values: List[str] = []
+        if text_mask_patterns is not None:
+            if isinstance(text_mask_patterns, str):
+                pattern_values = [text_mask_patterns]
+            elif isinstance(text_mask_patterns, (list, tuple, set)):
+                pattern_values = [str(value) for value in text_mask_patterns if value is not None]
+            else:
+                warnings.append(
+                    f"Unsupported text_mask_patterns type '{type(text_mask_patterns).__name__}'."
+                )
+
+        return mask_file, mask_payload, pattern_values, warnings
+
+    def _compile_text_mask_patterns(
+        self,
+        pattern_values: List[str],
+    ) -> Tuple[List[Pattern[str]], List[str]]:
+        compiled: List[Pattern[str]] = []
+        warnings: List[str] = []
+        for pattern in pattern_values:
+            try:
+                compiled.append(re.compile(pattern))
+            except re.error as exc:
+                warnings.append(f"Invalid text mask regex '{pattern}': {exc}")
+        return compiled, warnings
+
+    def _build_document_snapshot(
+        self,
+        representation: DocumentRepresentation,
+        *,
+        extraction_config: StructureExtractionConfig,
+        text_mask_patterns: List[Pattern[str]],
+    ) -> Dict[str, Any]:
+        pages: List[Dict[str, Any]] = []
+        for page in representation.iter_pages(release=False):
+            pages.append(
+                self._build_page_snapshot(
+                    page,
+                    extraction_config=extraction_config,
+                    text_mask_patterns=text_mask_patterns,
+                )
+            )
+        return {
+            "page_count": representation.page_count,
+            "metadata": representation.metadata or {},
+            "sigflags": representation.sigflags,
+            "pages": pages,
+        }
+
+    def _build_page_snapshot(
+        self,
+        page,
+        *,
+        extraction_config: StructureExtractionConfig,
+        text_mask_patterns: List[Pattern[str]],
+    ) -> Dict[str, Any]:
+        return {
+            "number": page.page_number,
+            "rotation": page.rotation,
+            "mediabox": page.mediabox,
+            "fonts": self._normalise_pdf_sequence(page.fonts),
+            "images": self._normalise_pdf_sequence(page.images),
+            "signatures": self._normalise_pdf_sequence(page.signatures),
+            "text": self._extract_page_text_lines(
+                page,
+                extraction_config=extraction_config,
+                text_mask_patterns=text_mask_patterns,
+            ),
+        }
+
+    def _normalise_pdf_sequence(self, payload: Optional[Iterable[Any]]) -> List[Any]:
+        normalised: List[Any] = []
+        if not payload:
+            return normalised
+        for item in payload:
+            if isinstance(item, (list, tuple)):
+                normalised.append(tuple(item))
+            else:
+                normalised.append(item)
+        return normalised
+
+    def _extract_page_text_lines(
+        self,
+        page,
+        *,
+        extraction_config: StructureExtractionConfig,
+        text_mask_patterns: List[Pattern[str]],
+    ) -> List[str]:
+        structure = page.get_pdf_structure(config=extraction_config)
+        lines: List[str] = []
+        for block in structure.blocks:
+            for line in block.lines:
+                text = line.text or ""
+                if not text:
+                    continue
+                if text_mask_patterns and self._text_matches_any(text, text_mask_patterns):
+                    continue
+                lines.append(text)
+        return lines
+
+    @staticmethod
+    def _text_matches_any(text: str, patterns: List[Pattern[str]]) -> bool:
+        return any(pattern.search(text) for pattern in patterns)
+
     def _perform_structure_comparison(
         self,
         reference_document: str,
@@ -641,19 +806,86 @@ class PdfTest(object):
         *,
         case_sensitive: bool,
         dpi: int,
+        reference_representation: Optional[DocumentRepresentation] = None,
+        candidate_representation: Optional[DocumentRepresentation] = None,
+        text_mask_patterns: Optional[List[Pattern[str]]] = None,
     ):
-        reference_representation = DocumentRepresentation(reference_document, dpi=dpi)
-        candidate_representation = DocumentRepresentation(candidate_document, dpi=dpi)
-        reference_structure = reference_representation.get_pdf_structure(config=extraction_config)
-        candidate_structure = candidate_representation.get_pdf_structure(config=extraction_config)
-        result = compare_document_structures(
-            reference=reference_structure,
-            candidate=candidate_structure,
-            tolerance=tolerance,
-            case_sensitive=case_sensitive,
-        )
-        self._log_structure_result(result)
-        return result
+        release_reference = False
+        release_candidate = False
+        if reference_representation is None:
+            reference_representation = DocumentRepresentation(reference_document, dpi=dpi)
+            release_reference = True
+        if candidate_representation is None:
+            candidate_representation = DocumentRepresentation(candidate_document, dpi=dpi)
+            release_candidate = True
+
+        try:
+            reference_structure = reference_representation.get_pdf_structure(config=extraction_config)
+            candidate_structure = candidate_representation.get_pdf_structure(config=extraction_config)
+
+            if text_mask_patterns:
+                reference_structure = self._prune_structure_lines(reference_structure, text_mask_patterns)
+                candidate_structure = self._prune_structure_lines(candidate_structure, text_mask_patterns)
+
+            result = compare_document_structures(
+                reference=reference_structure,
+                candidate=candidate_structure,
+                tolerance=tolerance,
+                case_sensitive=case_sensitive,
+            )
+            self._log_structure_result(result)
+            return result
+        finally:
+            if release_reference:
+                reference_representation.close()
+            if release_candidate:
+                candidate_representation.close()
+
+    def _prune_structure_lines(
+        self,
+        structure: DocumentStructure,
+        patterns: List[Pattern[str]],
+    ) -> DocumentStructure:
+        if not patterns:
+            return structure
+
+        filtered_pages: List[PageStructure] = []
+        for page in structure.pages:
+            new_blocks: List[TextBlock] = []
+            next_index = 0
+            for block in page.blocks:
+                new_lines: List[TextLine] = []
+                for line in block.lines:
+                    text = line.text or ""
+                    if self._text_matches_any(text, patterns):
+                        continue
+                    new_lines.append(
+                        TextLine(
+                            index=next_index,
+                            text=text,
+                            bbox=line.bbox,
+                            fonts=set(line.fonts),
+                            spans=list(line.spans),
+                        )
+                    )
+                    next_index += 1
+                if new_lines:
+                    new_blocks.append(
+                        TextBlock(
+                            index=block.index,
+                            bbox=block.bbox,
+                            lines=new_lines,
+                        )
+                    )
+            filtered_pages.append(
+                PageStructure(
+                    page_number=page.page_number,
+                    width=page.width,
+                    height=page.height,
+                    blocks=new_blocks,
+                )
+            )
+        return DocumentStructure(pages=filtered_pages, config=structure.config)
 
     def _log_structure_result(self, result):
         if result.summary:

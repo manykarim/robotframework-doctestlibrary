@@ -42,6 +42,12 @@ class Page:
         self._structure_cache: Dict[StructureExtractionConfig, PageStructure] = {}
         self.is_pdf = False
         self.ocr_tokens: List[str] = []
+        self.rotation: float = 0.0
+        self.mediabox: Optional[Tuple[float, float, float, float]] = None
+        self.fonts: List = []
+        self.images: List = []
+        self.signatures: List = []
+        self._pdf_ignore_rectangles: List[Tuple[float, float, float, float]] = []
 
     def release_resources(self):
         """Release heavy in-memory artifacts to assist streaming workflows."""
@@ -56,6 +62,7 @@ class Page:
         self.pixel_ignore_areas = []
         self._structure_cache.clear()
         self.ocr_tokens = []
+        self._pdf_ignore_rectangles = []
 
     def apply_ocr(self, ocr_engine: str = OCR_ENGINE_DEFAULT, tesseract_config: str = TESSERACT_CONFIG, confidence: int = DEFAULT_CONFIDENCE):
         """Perform OCR on the page image."""
@@ -100,6 +107,77 @@ class Page:
         if self.image_rescaled_for_ocr and original_image is not None:
             self.image = original_image
             self.image_rescaled_for_ocr = False
+
+    def apply_pixel_masks_to_pdf_text(self):
+        """Remove PDF text artifacts that intersect ignore rectangles."""
+        if not self.pixel_ignore_areas:
+            return
+        if not (self.pdf_text_dict or self.pdf_text_words or self.pdf_text_blocks):
+            return
+
+        pdf_rects: List[Tuple[float, float, float, float]] = []
+        scale = 72.0 / max(self.dpi, 1)
+        for area in self.pixel_ignore_areas:
+            x0 = area['x'] * scale
+            y0 = area['y'] * scale
+            x1 = (area['x'] + area['width']) * scale
+            y1 = (area['y'] + area['height']) * scale
+            pdf_rects.append((x0, y0, x1, y1))
+
+        if not pdf_rects:
+            return
+
+        self._pdf_ignore_rectangles = pdf_rects
+
+        def intersects(bbox: Tuple[float, float, float, float]) -> bool:
+            for rx0, ry0, rx1, ry1 in pdf_rects:
+                if not (bbox[2] <= rx0 or rx1 <= bbox[0] or bbox[3] <= ry0 or ry1 <= bbox[1]):
+                    return True
+            return False
+
+        if self.pdf_text_words:
+            filtered_words = []
+            for word in self.pdf_text_words:
+                bbox = (word[0], word[1], word[2], word[3])
+                if intersects(bbox):
+                    continue
+                filtered_words.append(word)
+            self.pdf_text_words = filtered_words
+
+        if self.pdf_text_dict and self.pdf_text_dict.get('blocks'):
+            filtered_blocks = []
+            for block in self.pdf_text_dict.get('blocks', []):
+                if block.get('type') != 0:
+                    filtered_blocks.append(block)
+                    continue
+                new_lines = []
+                for line in block.get('lines', []):
+                    new_spans = []
+                    for span in line.get('spans', []):
+                        bbox = tuple(span.get('bbox', (0.0, 0.0, 0.0, 0.0)))
+                        if intersects(bbox):
+                            continue
+                        new_spans.append(span)
+                    if new_spans:
+                        line['spans'] = new_spans
+                        new_lines.append(line)
+                if new_lines:
+                    block['lines'] = new_lines
+                    filtered_blocks.append(block)
+            self.pdf_text_dict['blocks'] = filtered_blocks
+
+        if self.pdf_text_blocks:
+            filtered_text_blocks = []
+            for block in self.pdf_text_blocks:
+                bbox = None
+                if isinstance(block, (list, tuple)) and len(block) > 1 and isinstance(block[1], (list, tuple)):
+                    bbox = tuple(block[1])
+                if bbox and intersects(bbox):
+                    continue
+                filtered_text_blocks.append(block)
+            self.pdf_text_blocks = filtered_text_blocks
+
+        self._structure_cache.clear()
 
     def get_area(self, area: Dict):
         """Gets the area of the image specified by the coordinates."""
@@ -637,6 +715,9 @@ class Page:
         elif unit == 'cm':
             constant = self.dpi / 2.54
             x, y, w, h = int(x * constant), int(y * constant), int(w * constant), int(h * constant)
+        elif unit == 'pt':
+            constant = self.dpi / 72.0
+            x, y, w, h = int(x * constant), int(y * constant), int(w * constant), int(h * constant)
         return x, y, w, h
         
     def _process_area_ignore_area(self, ignore_area: Dict):
@@ -796,6 +877,8 @@ class DocumentRepresentation:
         self._pdf_document = None
         self.page_count: int = 0
         self._force_ocr_for_ignore_areas = force_ocr
+        self.metadata: Dict = {}
+        self.sigflags: Optional[int] = None
 
         self.load_document()
         self.create_abstract_ignore_areas(ignore_area_file, ignore_area)
@@ -838,6 +921,8 @@ class DocumentRepresentation:
             import fitz
             fitz.TOOLS.set_aa_level(0)  # PyMuPDF
             doc = fitz.open(str(self.file_path))
+            self.metadata = doc.metadata
+            self.sigflags = doc.get_sigflags()
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
                 pix = page.get_pixmap(dpi=self.dpi)
@@ -849,6 +934,11 @@ class DocumentRepresentation:
                 page_obj.pdf_text_dict = page.get_text("dict", sort=True)
                 page_obj.pdf_text_words = page.get_text("words", sort=True)
                 page_obj.pdf_text_blocks = page.get_text("blocks", sort=True)
+                page_obj.rotation = page.rotation
+                page_obj.mediabox = tuple(page.mediabox)
+                page_obj.fonts = page.get_fonts()
+                page_obj.images = page.get_images()
+                page_obj.signatures = self._extract_signatures(page)
                 self.pages.append(page_obj)
             self.page_count = len(self.pages)
         except ImportError:
@@ -859,6 +949,8 @@ class DocumentRepresentation:
             import fitz
             fitz.TOOLS.set_aa_level(0)
             self._pdf_document = fitz.open(str(self.file_path))
+            self.metadata = self._pdf_document.metadata
+            self.sigflags = self._pdf_document.get_sigflags()
             self.page_count = len(self._pdf_document)
         except ImportError:
             raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
@@ -877,6 +969,11 @@ class DocumentRepresentation:
         page_obj.pdf_text_dict = page.get_text("dict", sort=True)
         page_obj.pdf_text_words = page.get_text("words", sort=True)
         page_obj.pdf_text_blocks = page.get_text("blocks", sort=True)
+        page_obj.rotation = page.rotation
+        page_obj.mediabox = tuple(page.mediabox)
+        page_obj.fonts = page.get_fonts()
+        page_obj.images = page.get_images()
+        page_obj.signatures = self._extract_signatures(page)
 
         self._apply_ignore_areas_to_page(page_obj, self._force_ocr_for_ignore_areas)
         if self.contains_barcodes:
@@ -1158,6 +1255,7 @@ class DocumentRepresentation:
                 if (force_ocr or not page.pdf_text_data) and not page.ocr_performed:
                     page.apply_ocr(ocr_engine=self.ocr_engine)
             page._process_ignore_area(ignore_area)
+        page.apply_pixel_masks_to_pdf_text()
 
     def get_text_from_area(self, area: Dict, force_ocr: bool = False):
         """Extract text content from a specific area of the document."""
@@ -1220,11 +1318,26 @@ class DocumentRepresentation:
                 if ignore_area.get('page') == page.page_number or ignore_area.get('page') == 'all':
                     page.ignore_areas.append(ignore_area)
     
+    @staticmethod
+    def _extract_signatures(page):
+        signatures = []
+        try:
+            widgets = page.widgets()
+        except Exception:
+            widgets = []
+        if not widgets:
+            return signatures
+        for widget in widgets:
+            if getattr(widget, "is_signed", False):
+                signatures.append(
+                    [
+                        getattr(widget, "field_name", ""),
+                        getattr(widget, "field_label", ""),
+                        getattr(widget, "field_value", ""),
+                    ]
+                )
+        return signatures
 
-    def identify_barcodes(self):
-        """Detect barcodes in all pages."""
-        for page in self.pages:
-            page.identify_barcodes()
 
 def make_text(words):
     """Return textstring output of get_text("words").
