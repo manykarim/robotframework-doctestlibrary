@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from DocTest.TextNormalization import normalize_ligatures
+
 
 __all__ = [
     "TextSpan",
@@ -75,6 +77,7 @@ class StructureExtractionConfig:
     strip_line_edges: bool = True
     drop_empty_lines: bool = True
     round_precision: Optional[int] = 3
+    normalize_ligatures: bool = False
 
     def __hash__(self) -> int:  # Allow usage as dictionary key for caching.
         return hash(
@@ -85,6 +88,7 @@ class StructureExtractionConfig:
                 self.strip_line_edges,
                 self.drop_empty_lines,
                 self.round_precision,
+                self.normalize_ligatures,
             )
         )
 
@@ -135,6 +139,8 @@ def _sanitize_span_text(text: str, config: StructureExtractionConfig) -> str:
         text = collapse_whitespace(text, config.whitespace_replacement)
     if config.strip_line_edges:
         text = text.strip()
+    if config.normalize_ligatures:
+        text = normalize_ligatures(text)
     return text
 
 

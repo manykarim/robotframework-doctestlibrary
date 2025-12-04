@@ -66,3 +66,17 @@ Compare Pdf Documents with structure mode
 
 Compare Pdf Documents with structure mode strict tolerance fails
     Run Keyword And Expect Error    The compared PDF Document Data is different.    Compare Pdf Documents    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_font.pdf    compare=structure    structure_position_tolerance=0.0    structure_size_tolerance=0.0    structure_relative_tolerance=0.0
+
+Compare PDF Documents with structure mode and ignore differences in date and ID
+    ${DATE_MASK}=    Create Dictionary    page=all    type=pattern    pattern=.*(?:January|February|March|April|May|June|July|August|September|October|November|December) \\d{1,2}, \\d{4}.*
+    ${INV_MASK}=    Create Dictionary    page=all    type=pattern    pattern=INV-\\d{4}-\\d{6}
+    ${JOB_MASK}=    Create Dictionary    page=all    type=pattern    pattern=.*JOB-\\d{4}-\\d{4}
+    ${MASKS}=    Create List    ${DATE_MASK}    ${INV_MASK}    ${JOB_MASK}
+    Compare Pdf Documents    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_date_id.pdf    compare=structure    mask=${MASKS}
+
+Compare PDF structure and ignore differences in date and ID
+    ${DATE_MASK}=    Create Dictionary    page=all    type=pattern    pattern=.*(?:January|February|March|April|May|June|July|August|September|October|November|December) \\d{1,2}, \\d{4}.*
+    ${INV_MASK}=    Create Dictionary    page=all    type=pattern    pattern=INV-\\d{4}-\\d{6}
+    ${JOB_MASK}=    Create Dictionary    page=all    type=pattern    pattern=.*JOB-\\d{4}-\\d{4}
+    ${MASKS}=    Create List    ${DATE_MASK}    ${INV_MASK}    ${JOB_MASK}
+    Compare Pdf Structure    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_date_id.pdf    mask=${MASKS}

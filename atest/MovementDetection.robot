@@ -1,5 +1,5 @@
 *** Settings ***
-Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png    movement_detection=${MOVEMENT_DETECTION}
+Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png    movement_detection=${MOVEMENT_DETECTION}    verbose_movement_logging=False
 Library    Collections
 
 *** Variables ***
