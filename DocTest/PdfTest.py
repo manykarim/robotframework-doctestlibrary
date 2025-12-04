@@ -491,10 +491,14 @@ class PdfTest(object):
             - ``whitespace_replacement`` (str, default single space): character inserted when collapsing whitespace.
             - ``round_precision`` (int or ``None``, default ``3``): precision for rounding bounding boxes.
             - ``dpi`` (int, optional): DPI used when building the structure (defaults to library DPI).
+            - ``mask``: JSON/dict/list/string mask definition (same formats as ``Compare Pdf Documents``) used to ignore dynamic regions.
+            - ``text_mask_patterns``: regex or list of regex strings to skip lines during comparison.
+            - ``ignore_ligatures`` (bool, default ``False``): normalise common ligatures (``ﬁ`` → ``fi``) prior to comparison.
 
         Examples:
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf    position_tolerance=3    relative_tolerance=0.02
+        | `Compare Pdf Structure`    reference.pdf    candidate.pdf    mask=${CURDIR}${/}mask.json    text_mask_patterns=\\d{4}-\\d{4}    ignore_ligatures=${True}
         | `Run Keyword And Expect Error`    The compared PDF structure is different.    Compare Pdf Structure    reference.pdf    candidate_with_changed_text.pdf
 
         """
@@ -515,6 +519,10 @@ class PdfTest(object):
         if dpi is None:
             dpi = DEFAULT_DPI
 
+        mask_value = kwargs.get('mask')
+        text_mask_patterns_arg = kwargs.get('text_mask_patterns')
+        ignore_ligatures = _as_bool(kwargs.get('ignore_ligatures', False), False)
+
         extraction_config = StructureExtractionConfig(
             collapse_whitespace=collapse_whitespace,
             strip_font_subset=strip_font_subset,
@@ -522,20 +530,50 @@ class PdfTest(object):
             strip_line_edges=strip_line_edges,
             drop_empty_lines=drop_empty_lines,
             round_precision=round_precision,
+            normalize_ligatures=ignore_ligatures,
         )
         tolerance = StructureTolerance(
             position=position_tolerance,
             size=size_tolerance,
             relative=relative_tolerance,
         )
-        result = self._perform_structure_comparison(
-            reference_document=reference_document,
-            candidate_document=candidate_document,
-            tolerance=tolerance,
-            extraction_config=extraction_config,
-            case_sensitive=case_sensitive,
-            dpi=dpi,
+        mask_file, mask_payload, text_pattern_values, mask_warnings = self._resolve_mask_arguments(
+            mask_value,
+            text_mask_patterns_arg,
         )
+        for warning in mask_warnings:
+            logger.warn(warning)
+        compiled_text_patterns, pattern_warnings = self._compile_text_mask_patterns(text_pattern_values)
+        for warning in pattern_warnings:
+            logger.warn(warning)
+
+        reference_repr = DocumentRepresentation(
+            reference_document,
+            dpi=dpi,
+            ignore_area_file=mask_file,
+            ignore_area=mask_payload,
+        )
+        candidate_repr = DocumentRepresentation(
+            candidate_document,
+            dpi=dpi,
+            ignore_area_file=mask_file,
+            ignore_area=mask_payload,
+        )
+        try:
+            result = self._perform_structure_comparison(
+                reference_document=reference_document,
+                candidate_document=candidate_document,
+                tolerance=tolerance,
+                extraction_config=extraction_config,
+                case_sensitive=case_sensitive,
+                dpi=dpi,
+                reference_representation=reference_repr,
+                candidate_representation=candidate_repr,
+                text_mask_patterns=compiled_text_patterns,
+            )
+        finally:
+            reference_repr.close()
+            candidate_repr.close()
         if not result.passed:
             raise AssertionError('The compared PDF structure is different.')
 
