@@ -384,6 +384,53 @@ Compare invoices while ignoring IDs
     ...    text_mask_patterns=\\bINV-\d{6}\\b    ignore_ligatures=${True}    position_tolerance=5
 ```
 
+### Normalizing special characters in PDF comparisons
+
+PDFs may contain special Unicode characters that look identical to standard ASCII but fail string comparisons. Common examples include non-breaking spaces (`\u00A0`) instead of regular spaces, or typographic dashes (`\u2013`, `\u2014`) instead of hyphens.
+
+Use the `character_replacements` parameter to normalize these characters:
+
+```RobotFramework
+*** Settings ***
+# Apply character replacements to all keywords in the test suite
+Library    DocTest.PdfTest    character_replacements={'\u00A0': ' '}
+Library    DocTest.VisualTest    character_replacements={'\u00A0': ' ', '\u2013': '-'}
+
+*** Test Cases ***
+PDF comparison with normalized whitespace
+    Compare Pdf Documents    reference.pdf    candidate.pdf    compare=text
+    ...    character_replacements={'\u00A0': ' '}
+
+Check PDF contains text with normalized characters
+    PDF Should Contain Strings    Expected Text    candidate.pdf
+    ...    character_replacements={'\u00A0': ' '}
+
+Structure comparison with character normalization
+    Compare Pdf Structure    reference.pdf    candidate.pdf
+    ...    character_replacements={'\u00A0': ' ', '\u2013': '-'}
+```
+
+For `VisualTest` text extraction keywords that use assertion operators, use the `Set Character Replacements` keyword:
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest
+
+*** Test Cases ***
+Get text with normalized characters
+    Set Character Replacements    {'\u00A0': ' '}
+    ${text}=    Get Text    document.pdf    ==    Expected text
+    Set Character Replacements    ${NONE}    # Clear when done
+```
+
+Common character replacements:
+| Character | Unicode | Description | Replacement |
+|-----------|---------|-------------|-------------|
+| ` ` | `\u00A0` | Non-breaking space | ` ` (regular space) |
+| `–` | `\u2013` | En dash | `-` (hyphen) |
+| `—` | `\u2014` | Em dash | `-` (hyphen) |
+| `‐` | `\u2010` | Unicode hyphen | `-` (hyphen) |
+
 ### Comparing PDFs with different page layouts (font/size changes)
 
 When comparing PDF documents where font or size changes cause text to reflow across pages, use the `ignore_page_boundaries` option to compare only text content and order, ignoring page structure:
