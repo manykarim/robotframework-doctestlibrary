@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-from DocTest.TextNormalization import normalize_ligatures
+from DocTest.TextNormalization import apply_character_replacements, normalize_ligatures
 
 
 __all__ = [
@@ -79,8 +79,15 @@ class StructureExtractionConfig:
     drop_empty_lines: bool = True
     round_precision: Optional[int] = 3
     normalize_ligatures: bool = False
+    character_replacements: Optional[Dict[str, str]] = None
 
     def __hash__(self) -> int:  # Allow usage as dictionary key for caching.
+        # Convert character_replacements dict to a hashable tuple of sorted items
+        replacements_hash = (
+            tuple(sorted(self.character_replacements.items()))
+            if self.character_replacements
+            else ()
+        )
         return hash(
             (
                 self.collapse_whitespace,
@@ -90,6 +97,7 @@ class StructureExtractionConfig:
                 self.drop_empty_lines,
                 self.round_precision,
                 self.normalize_ligatures,
+                replacements_hash,
             )
         )
 
@@ -159,6 +167,9 @@ def round_bbox(bbox: Sequence[float], precision: Optional[int]) -> Tuple[float, 
 
 
 def _sanitize_span_text(text: str, config: StructureExtractionConfig) -> str:
+    # Apply character replacements first (before other normalization)
+    if config.character_replacements:
+        text = apply_character_replacements(text, config.character_replacements)
     if config.collapse_whitespace:
         text = collapse_whitespace(text, config.whitespace_replacement)
     if config.strip_line_edges:
