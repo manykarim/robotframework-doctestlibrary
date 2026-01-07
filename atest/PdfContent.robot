@@ -80,3 +80,50 @@ Compare PDF structure and ignore differences in date and ID
     ${JOB_MASK}=    Create Dictionary    page=all    type=pattern    pattern=.*JOB-\\d{4}-\\d{4}
     ${MASKS}=    Create List    ${DATE_MASK}    ${INV_MASK}    ${JOB_MASK}
     Compare Pdf Structure    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_date_id.pdf    mask=${MASKS}
+
+Compare PDF Structure With Ignore Page Boundaries
+    [Documentation]    Test that ignore_page_boundaries option compares text content across pages
+    Compare Pdf Structure    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice.pdf
+    ...    ignore_page_boundaries=${True}
+
+Compare PDF Structure With Ignore Page Boundaries Passes With Font Difference
+    [Documentation]    When ignoring page boundaries, font differences should not cause failures
+    Compare Pdf Structure    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_font.pdf
+    ...    ignore_page_boundaries=${True}
+
+Compare PDF Structure With Check Geometry Disabled
+    [Documentation]    When check_geometry is False, position differences are ignored
+    Compare Pdf Structure    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_font.pdf
+    ...    check_geometry=${False}
+
+Compare PDF Structure With Check Block Count Disabled
+    [Documentation]    When check_block_count is False, block count differences are ignored
+    Compare Pdf Structure    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_font.pdf
+    ...    check_block_count=${False}
+
+Compare PDF Structure With Both Checks Disabled
+    [Documentation]    Both geometry and block count checks can be disabled
+    Compare Pdf Structure    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_font.pdf
+    ...    check_geometry=${False}    check_block_count=${False}
+
+Compare PDF Structure Still Detects Text Changes With Checks Disabled
+    [Documentation]    Even with geometry/block checks disabled, text differences are detected
+    Run Keyword And Expect Error    The compared PDF structure is different.
+    ...    Compare Pdf Structure    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_date_id.pdf
+    ...    check_geometry=${False}    check_block_count=${False}
+
+Compare PDF Structure Still Detects Text Changes With Ignore Page Boundaries
+    [Documentation]    Even with ignore_page_boundaries, text differences are detected
+    Run Keyword And Expect Error    The compared PDF structure is different.
+    ...    Compare Pdf Structure    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_date_id.pdf
+    ...    ignore_page_boundaries=${True}
+
+Compare Pdf Documents Structure Mode With Ignore Page Boundaries
+    [Documentation]    The ignore_page_boundaries parameter works with compare_pdf_documents
+    Compare Pdf Documents    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_font.pdf
+    ...    compare=structure    ignore_page_boundaries=${True}
+
+Compare Pdf Documents Structure Mode With Check Geometry Disabled
+    [Documentation]    The check_geometry parameter works with compare_pdf_documents
+    Compare Pdf Documents    ${TESTDATA_DIR}/invoice.pdf    ${TESTDATA_DIR}/invoice_diff_font.pdf
+    ...    compare=structure    check_geometry=${False}

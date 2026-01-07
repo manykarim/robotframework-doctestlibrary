@@ -11,7 +11,11 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Pattern, 
 from DocTest.config import DEFAULT_DPI
 from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import is_url, download_file_from_url
-from DocTest.PdfStructureComparator import StructureTolerance, compare_document_structures
+from DocTest.PdfStructureComparator import (
+    StructureTolerance,
+    compare_document_structures,
+    compare_document_text_only,
+)
 from DocTest.PdfStructureModels import (
     DocumentStructure,
     PageStructure,
@@ -143,6 +147,9 @@ class PdfTest(object):
             - ``structure_whitespace_replacement`` (str, default single space)
             - ``structure_round_precision`` (int or ``None``, default ``3``)
             - ``structure_dpi`` (int, default: library DPI)
+            - ``ignore_page_boundaries`` (bool, default ``False``) – ignore page breaks and compare text in reading order across entire document
+            - ``check_geometry`` (bool, default ``True``) – when ``False``, skip line position/size comparison
+            - ``check_block_count`` (bool, default ``True``) – when ``False``, skip block count validation
 
         Optional LLM integration parameters:
 
@@ -224,11 +231,24 @@ class PdfTest(object):
             structure_dpi = base_dpi
         if structure_dpi is None:
             structure_dpi = DEFAULT_DPI
+
+        # New parameters for controlling structure comparison behavior
+        ignore_page_boundaries = _as_bool(kwargs.pop('ignore_page_boundaries', False), False)
+        check_geometry = _as_bool(kwargs.pop('check_geometry', True), True)
+        check_block_count = _as_bool(kwargs.pop('check_block_count', True), True)
+
+        # When ignoring page boundaries, disable geometry and block count checks
+        if ignore_page_boundaries:
+            check_geometry = False
+            check_block_count = False
+
         structure_requested = 'structure' in compare_set
         if structure_requested:
             llm_general_notes.append(
                 f"structure_tolerance(position={structure_position_tolerance}, size={structure_size_tolerance}, relative={structure_relative_tolerance})"
             )
+            if ignore_page_boundaries:
+                llm_general_notes.append("ignore_page_boundaries=True")
 
         structure_extraction_config = StructureExtractionConfig(
             collapse_whitespace=structure_collapse_whitespace,
@@ -400,11 +420,15 @@ class PdfTest(object):
                     reference_representation=reference_repr,
                     candidate_representation=candidate_repr,
                     text_mask_patterns=compiled_text_patterns,
+                    ignore_page_boundaries=ignore_page_boundaries,
+                    check_geometry=check_geometry,
+                    check_block_count=check_block_count,
                 )
                 if not structure_result.passed:
                     differences_detected = True
                     summary = getattr(structure_result, "summary", None)
                     page_diffs = getattr(structure_result, "page_differences", None)
+                    doc_diffs = getattr(structure_result, "document_differences", None)
                     details_parts: List[str] = []
                     if summary:
                         details_parts.extend(str(item) for item in summary)
@@ -412,6 +436,9 @@ class PdfTest(object):
                         for page, diffs in page_diffs.items():
                             for diff in diffs:
                                 details_parts.append(f"Page {page}: {diff.message}")
+                    if doc_diffs:
+                        for diff in doc_diffs:
+                            details_parts.append(f"Document: {diff.message}")
                     llm_differences.append(
                         {
                             "facet": "structure",
@@ -494,11 +521,16 @@ class PdfTest(object):
             - ``mask``: JSON/dict/list/string mask definition (same formats as ``Compare Pdf Documents``) used to ignore dynamic regions.
             - ``text_mask_patterns``: regex or list of regex strings to skip lines during comparison.
             - ``ignore_ligatures`` (bool, default ``False``): normalise common ligatures (``ﬁ`` → ``fi``) prior to comparison.
+            - ``ignore_page_boundaries`` (bool, default ``False``): ignore page breaks and compare text content in reading order across the entire document. When enabled, geometry and block structure are not checked. Useful when font/size changes cause text to reflow across pages.
+            - ``check_geometry`` (bool, default ``True``): when ``False``, skip line position/size comparison. Useful for comparing content when layout may differ. Automatically set to ``False`` when ``ignore_page_boundaries`` is ``True``.
+            - ``check_block_count`` (bool, default ``True``): when ``False``, skip block count validation per page. Automatically set to ``False`` when ``ignore_page_boundaries`` is ``True``.
 
         Examples:
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf    position_tolerance=3    relative_tolerance=0.02
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf    mask=${CURDIR}${/}mask.json    text_mask_patterns=\\d{4}-\\d{4}    ignore_ligatures=${True}
+        | `Compare Pdf Structure`    reference.pdf    candidate.pdf    ignore_page_boundaries=${True}
+        | `Compare Pdf Structure`    reference.pdf    candidate.pdf    check_geometry=${False}    check_block_count=${False}
         | `Run Keyword And Expect Error`    The compared PDF structure is different.    Compare Pdf Structure    reference.pdf    candidate_with_changed_text.pdf
 
         """
@@ -522,6 +554,16 @@ class PdfTest(object):
         mask_value = kwargs.get('mask')
         text_mask_patterns_arg = kwargs.get('text_mask_patterns')
         ignore_ligatures = _as_bool(kwargs.get('ignore_ligatures', False), False)
+
+        # New parameters for controlling comparison behavior
+        ignore_page_boundaries = _as_bool(kwargs.get('ignore_page_boundaries', False), False)
+        check_geometry = _as_bool(kwargs.get('check_geometry', True), True)
+        check_block_count = _as_bool(kwargs.get('check_block_count', True), True)
+
+        # When ignoring page boundaries, disable geometry and block count checks
+        if ignore_page_boundaries:
+            check_geometry = False
+            check_block_count = False
 
         extraction_config = StructureExtractionConfig(
             collapse_whitespace=collapse_whitespace,
@@ -570,6 +612,9 @@ class PdfTest(object):
                 reference_representation=reference_repr,
                 candidate_representation=candidate_repr,
                 text_mask_patterns=compiled_text_patterns,
+                ignore_page_boundaries=ignore_page_boundaries,
+                check_geometry=check_geometry,
+                check_block_count=check_block_count,
             )
         finally:
             reference_repr.close()
@@ -849,6 +894,9 @@ class PdfTest(object):
         reference_representation: Optional[DocumentRepresentation] = None,
         candidate_representation: Optional[DocumentRepresentation] = None,
         text_mask_patterns: Optional[List[Pattern[str]]] = None,
+        ignore_page_boundaries: bool = False,
+        check_geometry: bool = True,
+        check_block_count: bool = True,
     ):
         release_reference = False
         release_candidate = False
@@ -867,13 +915,24 @@ class PdfTest(object):
                 reference_structure = self._prune_structure_lines(reference_structure, text_mask_patterns)
                 candidate_structure = self._prune_structure_lines(candidate_structure, text_mask_patterns)
 
-            result = compare_document_structures(
-                reference=reference_structure,
-                candidate=candidate_structure,
-                tolerance=tolerance,
-                case_sensitive=case_sensitive,
-            )
-            self._log_structure_result(result)
+            if ignore_page_boundaries:
+                # Use text-only comparison that ignores page boundaries
+                result = compare_document_text_only(
+                    reference=reference_structure,
+                    candidate=candidate_structure,
+                    case_sensitive=case_sensitive,
+                )
+            else:
+                # Use standard page-by-page comparison
+                result = compare_document_structures(
+                    reference=reference_structure,
+                    candidate=candidate_structure,
+                    tolerance=tolerance,
+                    case_sensitive=case_sensitive,
+                    check_geometry=check_geometry,
+                    check_block_count=check_block_count,
+                )
+            self._log_structure_result(result, ignore_page_boundaries=ignore_page_boundaries)
             return result
         finally:
             if release_reference:
@@ -927,10 +986,30 @@ class PdfTest(object):
             )
         return DocumentStructure(pages=filtered_pages, config=structure.config)
 
-    def _log_structure_result(self, result):
+    def _log_structure_result(self, result, ignore_page_boundaries: bool = False):
+        """Log comparison results with single summary WARN and detail INFO messages.
+
+        Robot Framework displays WARN messages at the top of log.html. To avoid
+        cluttering that section, we emit a single summary warning and log all
+        individual differences as INFO (visible only within keyword output).
+        """
+        if result.passed:
+            logger.info("[PDF Structure] Documents match within configured tolerances.")
+            return
+
+        # Count total differences
+        diff_count = result.difference_count()
+        mode = "text-only (ignoring page boundaries)" if ignore_page_boundaries else "structure"
+
+        # Single summary warning (appears at top of log.html)
+        logger.warn(f"[PDF Structure] Comparison failed: {diff_count} difference(s) found in {mode} comparison.")
+
+        # Log summary entries as INFO
         if result.summary:
             for entry in result.summary:
-                logger.warn(f"[PDF Structure] {entry}")
+                logger.info(f"[PDF Structure] {entry}")
+
+        # Log page differences as INFO
         if result.page_differences:
             for page in sorted(result.page_differences.keys()):
                 for diff in result.page_differences[page]:
@@ -942,12 +1021,23 @@ class PdfTest(object):
                         details.append(f"candidate line={diff.candidate_index}")
                     if details:
                         message = f"{message} ({', '.join(details)})"
-                    logger.warn(message)
+                    logger.info(message)
                     if diff.deltas:
                         pretty = ", ".join(f"{axis}={value:.3f}" for axis, value in diff.deltas.items())
                         logger.debug(f"[PDF Structure] Page {page} deltas: {pretty}")
-        if result.passed:
-            logger.info("[PDF Structure] Documents match within configured tolerances.")
+
+        # Log document-level differences as INFO (for text-only mode)
+        if result.document_differences:
+            for diff in result.document_differences:
+                message = f"[PDF Text] {diff.message}"
+                details = []
+                if diff.ref_index is not None:
+                    details.append(f"reference position={diff.ref_index}")
+                if diff.cand_index is not None:
+                    details.append(f"candidate position={diff.cand_index}")
+                if details:
+                    message = f"{message} ({', '.join(details)})"
+                logger.info(message)
 
     def _ensure_local_document(self, document):
         return download_file_from_url(document) if is_url(document) else document

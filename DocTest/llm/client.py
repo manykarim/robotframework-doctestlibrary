@@ -210,7 +210,17 @@ def assess_visual_diff(
     extra_messages: Optional[Iterable[str]] = None,
     system_prompt: Optional[str] = None,
 ) -> LLMDecision:
-    prompt = system_prompt.strip() if system_prompt else VISUAL_SYSTEM_PROMPT
+    """Assess visual differences using LLM.
+
+    The base VISUAL_SYSTEM_PROMPT is always used to ensure proper JSON schema
+    and decision format. If a custom system_prompt is provided, it is appended
+    as additional criteria rather than replacing the base prompt entirely.
+    This ensures consistent response format while allowing custom decision logic.
+    """
+    if system_prompt and system_prompt.strip():
+        prompt = f"{VISUAL_SYSTEM_PROMPT}\n\nAdditional criteria for this comparison:\n{system_prompt.strip()}"
+    else:
+        prompt = VISUAL_SYSTEM_PROMPT
     blocks: List = [f"{prompt}\n\n{textual_summary.strip()}"]
     if extra_messages:
         blocks.extend(extra_messages)
@@ -228,7 +238,17 @@ def assess_pdf_diff(
     extra_messages: Optional[Iterable[str]] = None,
     system_prompt: Optional[str] = None,
 ) -> LLMDecision:
-    prompt = system_prompt.strip() if system_prompt else PDF_SYSTEM_PROMPT
+    """Assess PDF differences using LLM.
+
+    The base PDF_SYSTEM_PROMPT is always used to ensure proper JSON schema
+    and decision format. If a custom system_prompt is provided, it is appended
+    as additional criteria rather than replacing the base prompt entirely.
+    This ensures consistent response format while allowing custom decision logic.
+    """
+    if system_prompt and system_prompt.strip():
+        prompt = f"{PDF_SYSTEM_PROMPT}\n\nAdditional criteria for this comparison:\n{system_prompt.strip()}"
+    else:
+        prompt = PDF_SYSTEM_PROMPT
     blocks: List = [f"{prompt}\n\n{textual_summary.strip()}"]
     if extra_messages:
         blocks.extend(extra_messages)

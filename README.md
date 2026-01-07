@@ -384,6 +384,57 @@ Compare invoices while ignoring IDs
     ...    text_mask_patterns=\\bINV-\d{6}\\b    ignore_ligatures=${True}    position_tolerance=5
 ```
 
+### Comparing PDFs with different page layouts (font/size changes)
+
+When comparing PDF documents where font or size changes cause text to reflow across pages, use the `ignore_page_boundaries` option to compare only text content and order, ignoring page structure:
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.PdfTest
+
+*** Test Cases ***
+Compare PDFs ignoring page breaks due to font change
+    [Documentation]    Reference has 2 pages, candidate has 3 pages due to larger font
+    ...                Both contain identical text in the same order
+    Compare Pdf Structure    reference.pdf    candidate_larger_font.pdf
+    ...    ignore_page_boundaries=${True}
+
+Compare PDF Documents with cross-page text matching
+    Compare Pdf Documents    reference.pdf    candidate.pdf
+    ...    compare=structure    ignore_page_boundaries=${True}
+```
+
+For finer control over what gets compared, use the `check_geometry` and `check_block_count` options:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ignore_page_boundaries` | `${False}` | Flatten text across all pages and compare only content and order. Automatically disables geometry and block count checks. |
+| `check_geometry` | `${True}` | When `${False}`, skip line position/size comparison. Useful when layout differs but text matches. |
+| `check_block_count` | `${True}` | When `${False}`, skip block count validation per page. Useful when text blocks are merged/split differently. |
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.PdfTest
+
+*** Test Cases ***
+Compare PDF content only (ignore positions)
+    [Documentation]    Same text content, but positions differ due to formatting
+    Compare Pdf Structure    reference.pdf    reformatted.pdf
+    ...    check_geometry=${False}
+
+Compare PDF without block structure validation
+    [Documentation]    Text blocks may be merged or split differently
+    Compare Pdf Structure    reference.pdf    candidate.pdf
+    ...    check_block_count=${False}
+
+Pure content comparison (most flexible)
+    [Documentation]    Only compare that text content and order match
+    Compare Pdf Structure    reference.pdf    candidate.pdf
+    ...    check_geometry=${False}    check_block_count=${False}
+```
+
+**Note:** When comparisons fail, a single summary warning is shown at the top of `log.html` (e.g., "Comparison failed: 5 difference(s) found"). Individual differences are logged as INFO messages within the keyword output for detailed inspection without cluttering the log summary.
+
 ### Ignore Watermarks for Visual Comparisons
 Store the watermark in a separate B/W image or PDF.
 <br>
