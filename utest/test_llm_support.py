@@ -134,3 +134,151 @@ def test_handle_llm_for_pdf_differences_uses_custom_prompt(monkeypatch, tmp_path
     assert captured["overrides"]["llm_pdf_enabled"] == "true"
     assert "Metadata mismatch" in captured["summary"]
     assert len(captured["attachments"]) == 2  # reference + candidate
+
+
+# -----------------------------------------------------------------------------
+# Tests for custom prompt appending behavior in assess_* functions
+# -----------------------------------------------------------------------------
+
+
+def test_assess_visual_diff_appends_custom_prompt_to_base():
+    """Custom prompts should be appended to base prompt, not replace it."""
+    from DocTest.llm.client import assess_visual_diff
+    from DocTest.llm.prompts import VISUAL_SYSTEM_PROMPT
+
+    captured_prompt = {}
+
+    def mock_run_agent(settings, purpose, messages, output_type):
+        # The first message contains the prompt
+        captured_prompt["full"] = messages[0] if messages else ""
+        return LLMDecision(decision=LLMDecisionLabel.REJECT, reason="test")
+
+    import DocTest.llm.client as client_module
+    original_run_agent = client_module._run_agent
+
+    try:
+        client_module._run_agent = mock_run_agent
+
+        settings = _dummy_settings(visual=True)
+        custom = "Minor font differences shall fail the comparison"
+
+        assess_visual_diff(
+            settings=settings,
+            textual_summary="Test summary",
+            attachments=[],
+            system_prompt=custom,
+        )
+
+        full_prompt = captured_prompt["full"]
+        # Verify base prompt is included
+        assert "Return a JSON object" in full_prompt, "Base prompt JSON schema should be present"
+        assert '"decision": "approve" | "reject" | "flag"' in full_prompt, "Decision options should be present"
+        # Verify custom prompt is appended
+        assert "Additional criteria for this comparison:" in full_prompt, "Custom prompt header should be present"
+        assert custom in full_prompt, "Custom criteria should be in prompt"
+        # Verify order: base prompt comes before custom
+        base_pos = full_prompt.find("Return a JSON object")
+        custom_pos = full_prompt.find(custom)
+        assert base_pos < custom_pos, "Base prompt should come before custom criteria"
+    finally:
+        client_module._run_agent = original_run_agent
+
+
+def test_assess_visual_diff_uses_only_base_prompt_when_no_custom():
+    """Without custom prompt, only base prompt should be used."""
+    from DocTest.llm.client import assess_visual_diff
+    from DocTest.llm.prompts import VISUAL_SYSTEM_PROMPT
+
+    captured_prompt = {}
+
+    def mock_run_agent(settings, purpose, messages, output_type):
+        captured_prompt["full"] = messages[0] if messages else ""
+        return LLMDecision(decision=LLMDecisionLabel.APPROVE, reason="test")
+
+    import DocTest.llm.client as client_module
+    original_run_agent = client_module._run_agent
+
+    try:
+        client_module._run_agent = mock_run_agent
+
+        settings = _dummy_settings(visual=True)
+
+        assess_visual_diff(
+            settings=settings,
+            textual_summary="Test summary",
+            attachments=[],
+            system_prompt=None,
+        )
+
+        full_prompt = captured_prompt["full"]
+        assert "Additional criteria" not in full_prompt, "No custom criteria header when no custom prompt"
+        assert VISUAL_SYSTEM_PROMPT in full_prompt, "Base prompt should be present"
+    finally:
+        client_module._run_agent = original_run_agent
+
+
+def test_assess_pdf_diff_appends_custom_prompt_to_base():
+    """Custom prompts should be appended to base prompt for PDF assessment."""
+    from DocTest.llm.client import assess_pdf_diff
+    from DocTest.llm.prompts import PDF_SYSTEM_PROMPT
+
+    captured_prompt = {}
+
+    def mock_run_agent(settings, purpose, messages, output_type):
+        captured_prompt["full"] = messages[0] if messages else ""
+        return LLMDecision(decision=LLMDecisionLabel.REJECT, reason="test")
+
+    import DocTest.llm.client as client_module
+    original_run_agent = client_module._run_agent
+
+    try:
+        client_module._run_agent = mock_run_agent
+
+        settings = _dummy_settings(pdf=True)
+        custom = "Reject any metadata differences"
+
+        assess_pdf_diff(
+            settings=settings,
+            textual_summary="Test PDF summary",
+            attachments=[],
+            system_prompt=custom,
+        )
+
+        full_prompt = captured_prompt["full"]
+        # Verify base prompt is included
+        assert "Respond as a JSON object" in full_prompt, "Base PDF prompt should be present"
+        assert '"decision": "approve" | "reject" | "flag"' in full_prompt, "Decision options should be present"
+        # Verify custom prompt is appended
+        assert "Additional criteria for this comparison:" in full_prompt
+        assert custom in full_prompt
+    finally:
+        client_module._run_agent = original_run_agent
+
+
+def test_assess_visual_diff_handles_empty_custom_prompt():
+    """Empty or whitespace-only custom prompts should be treated as no custom prompt."""
+    from DocTest.llm.client import assess_visual_diff
+
+    captured_prompt = {}
+
+    def mock_run_agent(settings, purpose, messages, output_type):
+        captured_prompt["full"] = messages[0] if messages else ""
+        return LLMDecision(decision=LLMDecisionLabel.APPROVE, reason="test")
+
+    import DocTest.llm.client as client_module
+    original_run_agent = client_module._run_agent
+
+    try:
+        client_module._run_agent = mock_run_agent
+
+        settings = _dummy_settings(visual=True)
+
+        # Test with empty string
+        assess_visual_diff(settings=settings, textual_summary="Test", attachments=[], system_prompt="")
+        assert "Additional criteria" not in captured_prompt["full"]
+
+        # Test with whitespace only
+        assess_visual_diff(settings=settings, textual_summary="Test", attachments=[], system_prompt="   ")
+        assert "Additional criteria" not in captured_prompt["full"]
+    finally:
+        client_module._run_agent = original_run_agent
