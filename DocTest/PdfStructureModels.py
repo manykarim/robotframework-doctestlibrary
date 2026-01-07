@@ -17,6 +17,7 @@ __all__ = [
     "collapse_whitespace",
     "round_bbox",
     "build_page_structure",
+    "flatten_document_text",
 ]
 
 
@@ -103,6 +104,29 @@ class DocumentStructure:
     @property
     def page_count(self) -> int:
         return len(self.pages)
+
+
+def flatten_document_text(structure: DocumentStructure) -> List[str]:
+    """Extract all text lines from a document in reading order, ignoring page boundaries.
+
+    This function traverses all pages, blocks, and lines in the document structure
+    and returns a flat list of text strings in the order they appear. Useful for
+    comparing document content when text may reflow across pages due to font or
+    layout changes.
+
+    Args:
+        structure: A DocumentStructure containing pages with text blocks and lines.
+
+    Returns:
+        A list of text strings from all lines in document reading order.
+    """
+    texts: List[str] = []
+    for page in structure.pages:
+        for block in page.blocks:
+            for line in block.lines:
+                if line.text:
+                    texts.append(line.text)
+    return texts
 
 
 def strip_font_subset(font_name: Optional[str]) -> Optional[str]:
