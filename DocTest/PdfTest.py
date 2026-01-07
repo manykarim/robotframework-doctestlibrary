@@ -24,6 +24,7 @@ from DocTest.PdfStructureModels import (
     TextLine,
 )
 from DocTest.llm import LLMDependencyError, load_llm_settings
+from DocTest.TextNormalization import apply_character_replacements
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from DocTest.llm.types import LLMDecision, LLMDecisionLabel
@@ -100,11 +101,34 @@ def _as_int_or_none(value):
 ROBOT_AUTO_KEYWORDS = False
 
 class PdfTest(object):
-    
-    
-    def __init__(self, **kwargs):
+    """Robot Framework library for PDF content and structure comparison.
+
+    Optional initialization arguments:
+
+    | =Argument= | =Description= |
+    | ``character_replacements`` | Dict mapping characters to replacements, applied to all text extraction/comparison. Example: ``{'\u00A0': ' '}`` to normalize non-breaking spaces. |
+    """
+
+    def __init__(self, character_replacements: Optional[Dict[str, str]] = None, **kwargs):
         fitz.TOOLS.set_aa_level(0)
-        pass
+        self.character_replacements = self._parse_character_replacements(character_replacements)
+
+    def _parse_character_replacements(
+        self, value: Optional[Any]
+    ) -> Optional[Dict[str, str]]:
+        """Parse character_replacements from various input formats."""
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                logger.warn(f"Invalid character_replacements JSON: {value}")
+        return None
     
     @keyword
     def compare_pdf_documents(self, reference_document, candidate_document, **kwargs):
@@ -203,8 +227,17 @@ class PdfTest(object):
         text_mask_patterns_arg = kwargs.pop('text_mask_patterns', None)
         ignore_ligatures = _as_bool(kwargs.pop('ignore_ligatures', False))
         check_pdf_text = _as_bool(kwargs.pop('check_pdf_text', False))
+
+        # Parse character_replacements from kwargs or use instance default
+        char_replacements_arg = kwargs.pop('character_replacements', None)
+        char_replacements = self._parse_character_replacements(char_replacements_arg)
+        if char_replacements is None:
+            char_replacements = self.character_replacements
+
         llm_general_notes.append(f"check_pdf_text={check_pdf_text}")
         llm_general_notes.append(f"ignore_ligatures={ignore_ligatures}")
+        if char_replacements:
+            llm_general_notes.append(f"character_replacements={len(char_replacements)} mapping(s)")
 
         compare_value = kwargs.pop('compare', "all")
         compare_value = compare_value.replace('|', ',')
@@ -258,6 +291,7 @@ class PdfTest(object):
             drop_empty_lines=structure_drop_empty_lines,
             round_precision=structure_round_precision,
             normalize_ligatures=ignore_ligatures,
+            character_replacements=char_replacements,
         )
         text_extraction_config = StructureExtractionConfig(
             collapse_whitespace=True,
@@ -267,6 +301,7 @@ class PdfTest(object):
             drop_empty_lines=True,
             round_precision=structure_round_precision,
             normalize_ligatures=ignore_ligatures,
+            character_replacements=char_replacements,
         )
 
         mask_file, mask_payload, text_pattern_values, mask_warnings = self._resolve_mask_arguments(
@@ -555,6 +590,12 @@ class PdfTest(object):
         text_mask_patterns_arg = kwargs.get('text_mask_patterns')
         ignore_ligatures = _as_bool(kwargs.get('ignore_ligatures', False), False)
 
+        # Parse character_replacements from kwargs or use instance default
+        char_replacements_arg = kwargs.get('character_replacements')
+        char_replacements = self._parse_character_replacements(char_replacements_arg)
+        if char_replacements is None:
+            char_replacements = self.character_replacements
+
         # New parameters for controlling comparison behavior
         ignore_page_boundaries = _as_bool(kwargs.get('ignore_page_boundaries', False), False)
         check_geometry = _as_bool(kwargs.get('check_geometry', True), True)
@@ -573,6 +614,7 @@ class PdfTest(object):
             drop_empty_lines=drop_empty_lines,
             round_precision=round_precision,
             normalize_ligatures=ignore_ligatures,
+            character_replacements=char_replacements,
         )
         tolerance = StructureTolerance(
             position=position_tolerance,
@@ -657,18 +699,30 @@ class PdfTest(object):
             raise AssertionError('Some expected texts were not found in document')
     
     @keyword
-    def PDF_should_contain_strings(self, expected_text_list, candidate_document):
+    def PDF_should_contain_strings(self, expected_text_list, candidate_document, **kwargs):
         """Checks if each item provided in the list ``expected_text_list`` appears in the PDF File ``candidate_document``.
-        
+
         ``expected_text_list`` is a list of strings or a single string, ``candidate_document`` is the path or URL to a PDF File.
-        
+
+        Optional arguments:
+
+            - ``character_replacements`` (dict): Maps characters to replacements before comparison.
+              Example: ``{'\u00A0': ' '}`` to normalize non-breaking spaces.
+
         Examples:
 
-        | @{strings}=    Create List    One String    Another String   
-        | `PDF Should Contain Strings`    ${strings}    candidate.pdf   
-        | `PDF Should Contain Strings`    One String    candidate.pdf   
-        
+        | @{strings}=    Create List    One String    Another String
+        | `PDF Should Contain Strings`    ${strings}    candidate.pdf
+        | `PDF Should Contain Strings`    One String    candidate.pdf
+        | `PDF Should Contain Strings`    ${strings}    candidate.pdf    character_replacements={'\u00A0': ' '}
+
         """
+        # Parse character_replacements from kwargs or use instance default
+        char_replacements_arg = kwargs.pop('character_replacements', None)
+        char_replacements = self._parse_character_replacements(char_replacements_arg)
+        if char_replacements is None:
+            char_replacements = self.character_replacements
+
         if is_url(candidate_document):
             candidate_document = download_file_from_url(candidate_document)
         doc = fitz.open(candidate_document)
@@ -681,7 +735,11 @@ class PdfTest(object):
         for text_item in expected_text_list:
             text_found_in_page = False
             for page in doc.pages():
-                if any(text_item in s for s in page.get_text("text").splitlines()):
+                page_text = page.get_text("text")
+                # Apply character replacements if configured
+                if char_replacements:
+                    page_text = apply_character_replacements(page_text, char_replacements)
+                if any(text_item in s for s in page_text.splitlines()):
                     text_found_in_page = True
                     found_text_list.append({'text':text_item, 'document':candidate_document, 'page':page.number+1})
                     break
@@ -699,18 +757,30 @@ class PdfTest(object):
             print(f"Found Texts:\n{found_text_list}")
 
     @keyword
-    def PDF_should_not_contain_strings(self, expected_text_list, candidate_document):
+    def PDF_should_not_contain_strings(self, expected_text_list, candidate_document, **kwargs):
         """Checks if each item provided in the list ``expected_text_list`` does NOT appear in the PDF File ``candidate_document``.
-        
+
         ``expected_text_list`` is a list of strings or a single string, ``candidate_document`` is the path or URL to a PDF File.
-        
+
+        Optional arguments:
+
+            - ``character_replacements`` (dict): Maps characters to replacements before comparison.
+              Example: ``{'\u00A0': ' '}`` to normalize non-breaking spaces.
+
         Examples:
 
-        | @{strings}=    Create List    One String    Another String   
-        | `PDF Should Not Contain Strings`    ${strings}    candidate.pdf   
-        | `PDF Should Not Contain Strings`    One String    candidate.pdf   
-        
+        | @{strings}=    Create List    One String    Another String
+        | `PDF Should Not Contain Strings`    ${strings}    candidate.pdf
+        | `PDF Should Not Contain Strings`    One String    candidate.pdf
+        | `PDF Should Not Contain Strings`    ${strings}    candidate.pdf    character_replacements={'\u00A0': ' '}
+
         """
+        # Parse character_replacements from kwargs or use instance default
+        char_replacements_arg = kwargs.pop('character_replacements', None)
+        char_replacements = self._parse_character_replacements(char_replacements_arg)
+        if char_replacements is None:
+            char_replacements = self.character_replacements
+
         if is_url(candidate_document):
             candidate_document = download_file_from_url(candidate_document)
         doc = fitz.open(candidate_document)
@@ -722,7 +792,11 @@ class PdfTest(object):
         for text_item in expected_text_list:
             text_item_found = False
             for page in doc.pages():
-                if any(text_item in s for s in page.get_text("text").splitlines()):
+                page_text = page.get_text("text")
+                # Apply character replacements if configured
+                if char_replacements:
+                    page_text = apply_character_replacements(page_text, char_replacements)
+                if any(text_item in s for s in page_text.splitlines()):
                     text_item_found = True
                     found_text_list.append({'text':text_item, 'document':candidate_document, 'page':page.number+1})
                     continue

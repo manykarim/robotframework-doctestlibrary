@@ -16,6 +16,7 @@ from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import download_file_from_url, is_url
 from DocTest.config import DEFAULT_CONFIDENCE
 from DocTest.llm import LLMDependencyError, load_llm_settings
+from DocTest.TextNormalization import apply_character_replacements
 
 if TYPE_CHECKING:  # pragma: no cover - type checking only
     from DocTest.llm.types import LLMDecision, LLMDecisionLabel
@@ -106,6 +107,7 @@ class VisualTest:
         stream_documents: bool = True,
         document_page_cache_size: int = 2,
         verbose_movement_logging: bool = False,
+        character_replacements: Optional[Dict[str, str]] = None,
         **kwargs,
     ):
         """
@@ -131,6 +133,7 @@ class VisualTest:
         | ``stream_documents`` | When ``True``, VisualTest renders PDF pages lazily instead of loading entire documents into memory. Default is ``True``. |
         | ``document_page_cache_size`` | Maximum number of rendered pages to keep in memory per document when streaming. Default is ``2``. |
         | ``verbose_movement_logging`` | When ``True``, emit detailed warnings from movement detection helpers (template, ORB, SIFT). Disabled by default to reduce noise. |
+        | ``character_replacements`` | Dict mapping characters to replacements, applied to text extraction results. Example: ``{'\u00A0': ' '}`` to normalize non-breaking spaces. |
         | ``**kwargs`` | Everything else. |
 
 
@@ -164,6 +167,7 @@ class VisualTest:
         self.stream_documents = bool(stream_documents)
         self.document_page_cache_size = max(1, int(document_page_cache_size))
         self.verbose_movement_logging = bool(verbose_movement_logging)
+        self.character_replacements = self._parse_character_replacements(character_replacements)
 
         output_dir, reference_run, pabot_index = self._read_robot_variables()
         self.output_directory = output_dir
@@ -195,6 +199,23 @@ class VisualTest:
             output_path = Path.cwd()
 
         return output_path, bool(reference_run), pabot_index
+
+    def _parse_character_replacements(
+        self, value: Optional[Any]
+    ) -> Optional[Dict[str, str]]:
+        """Parse character_replacements from various input formats."""
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                LOG.warning(f"Invalid character_replacements JSON: {value}")
+        return None
 
     @keyword
     def compare_images(
@@ -1375,7 +1396,8 @@ class VisualTest:
         | `Get Text From Area` | document.pdf | {"x": 100, "y": 100, "width": 200, "height": 300} | == | "Expected text" | # Get the text content of the area |
         | `Get Text From Area` | document.pdf | [{"x": 100, "y": 100, "width": 200, "height": 300}, {"x": 300, "y": 300, "width": 200, "height": 300}] | == | ["Expected text 1", "Expected text 2"] | # Get the text content of multiple areas |
 
-
+        Note: Character replacements can be configured via library initialization or
+        ``Set Character Replacements`` keyword to normalize special characters.
         """
         if is_url(document):
             document = download_file_from_url(document)
@@ -1388,7 +1410,16 @@ class VisualTest:
             area = json.loads(area)
 
         # Get the text content of the area
-        return doc.get_text_from_area(area=area)
+        text = doc.get_text_from_area(area=area)
+
+        # Apply character replacements if configured
+        if self.character_replacements and text:
+            if isinstance(text, list):
+                text = [apply_character_replacements(t, self.character_replacements) if t else t for t in text]
+            else:
+                text = apply_character_replacements(text, self.character_replacements)
+
+        return text
 
     @keyword
     def get_text_from_document(
@@ -1435,6 +1466,10 @@ class VisualTest:
         | `Get Text`    document.pdf    !=    "Unexpected text"    # Get the text content of the document and check if it's not equal to the expected text
         | ${text}    `Get Text`    document.pdf    # Get the text content of the document and store it in a variable
         | `Should Be Equal`    ${text}    "Expected text"    # Check if the text content is equal to the expected text
+
+        Note: Character replacements can be configured via library initialization or
+        ``Set Character Replacements`` keyword to normalize special characters like
+        non-breaking spaces before comparison.
         """
         if is_url(document):
             document = download_file_from_url(document)
@@ -1444,6 +1479,11 @@ class VisualTest:
 
         # Get the text content of the document
         text = doc.get_text(force_ocr=self.force_ocr)
+
+        # Apply character replacements if configured
+        if self.character_replacements:
+            text = apply_character_replacements(text, self.character_replacements)
+
         return verify_assertion(text, assertion_operator, assertion_expected, message)
 
     @keyword
@@ -1583,6 +1623,27 @@ class VisualTest:
 
         """
         self.force_ocr = force_ocr
+
+    @keyword
+    def set_character_replacements(
+        self, character_replacements: Optional[Union[Dict[str, str], str]] = None
+    ):
+        """Set character replacements to be applied during text extraction.
+
+        Replacements are applied before returning text from keywords like
+        ``Get Text``, ``Get Text From Document``, and ``Get Text From Area``.
+
+        | =Arguments= | =Description= |
+        | ``character_replacements`` | Dict mapping source chars to replacements, JSON string, or ``${NONE}`` to clear. |
+
+        Examples:
+        | `Set Character Replacements`    {'\u00A0': ' '}    # Replace non-breaking space with regular space
+        | `Set Character Replacements`    {'\\u00A0': ' ', '\\u2013': '-'}    # Multiple replacements
+        | ${text}=    `Get Text`    document.pdf    # Extracted text will have replacements applied
+        | `Set Character Replacements`    ${NONE}    # Clear/disable replacements
+
+        """
+        self.character_replacements = self._parse_character_replacements(character_replacements)
 
     @keyword
     def get_barcodes(
