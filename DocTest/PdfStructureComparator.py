@@ -71,6 +71,13 @@ class StructureComparisonResult:
         """Add a document-level (page-agnostic) text difference."""
         self.passed = False
         self.document_differences.append(diff)
+    
+    def remove_document_difference(self, diff: DocumentTextDifference):
+        """remove a document-level (page-agnostic) text difference."""
+        ''''''
+        
+        if diff in self.document_differences:
+            self.document_differences.remove(diff)
 
     def extend_summary(self, message: str):
         self.summary.append(message)
@@ -195,16 +202,42 @@ def compare_document_text_only(
                 cand_idx = j1 + offset if offset < (j2 - j1) else None
                 ref_t = ref_originals[ref_idx] if ref_idx is not None else None
                 cand_t = cand_originals[cand_idx] if cand_idx is not None else None
-                result.add_document_difference(
-                    DocumentTextDifference(
-                        diff_type="text_mismatch",
-                        message=f"Text mismatch: reference='{ref_t}', candidate='{cand_t}'",
-                        ref_text=ref_t,
-                        cand_text=cand_t,
-                        ref_index=ref_idx,
-                        cand_index=cand_idx,
-                    )
+                
+                if ref_t is not None and cand_t is not None:
+                
+                    result.add_document_difference(
+                        DocumentTextDifference(
+                            diff_type="text_mismatch",
+                            message=f"Text mismatch: reference='{ref_t}', candidate='{cand_t}'",
+                            ref_text=ref_t,
+                            cand_text=cand_t,
+                            ref_index=ref_idx,
+                            cand_index=cand_idx,
+                        )                
                 )
+
+                elif ref_t is None and cand_t is not None:
+                    result.add_document_difference(
+                        DocumentTextDifference(
+                            diff_type="extra_text",
+                            message=f"Extra text in candidate: '{cand_t}'",
+                            cand_text=cand_t,
+                            cand_index=cand_idx,
+                        )
+                    )    
+                
+                elif ref_t is not None and cand_t is None:
+                    result.add_document_difference(
+                        DocumentTextDifference(
+                            diff_type="missing_text",
+                            message=f"Text missing in candidate: '{ref_t}'",
+                            ref_text=ref_t,
+                            ref_index=ref_idx,
+                        )
+                    )
+
+                    
+                    
         elif tag == "delete":
             for idx in range(i1, i2):
                 result.add_document_difference(
@@ -225,6 +258,25 @@ def compare_document_text_only(
                         cand_index=idx,
                     )
                 )
+
+    '''if same text but different diff_type exist, remove them'''
+    to_remove = []
+    num = len(result.document_differences)
+    for i in range(num-1):
+        doc_diff_i = result.document_differences[i]
+        for j in range(i + 1, num):
+            doc_diff_j = result.document_differences[j]
+            if doc_diff_i.diff_type == "missing_text" and doc_diff_j.diff_type == "extra_text" and doc_diff_i.ref_text == doc_diff_j.cand_text:
+                to_remove.append(doc_diff_i)
+                to_remove.append(doc_diff_j)
+                break
+            elif doc_diff_i.diff_type == "extra_text" and doc_diff_j.diff_type == "missing_text" and doc_diff_i.cand_text == doc_diff_j.ref_text:
+                to_remove.append(doc_diff_i)
+                to_remove.append(doc_diff_j)
+                break
+
+    for diff in to_remove:
+        result.remove_document_difference(diff)
 
     return result
 
