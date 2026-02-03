@@ -17,6 +17,7 @@ from DocTest.PdfStructureComparator import (
     compare_document_text_only,
     compare_document_words,
 )
+from DocTest.HeaderFooterDetector import HeaderFooterConfig, filter_headers_footers
 from DocTest.PdfStructureModels import (
     DocumentStructure,
     PageStructure,
@@ -272,6 +273,15 @@ class PdfTest(object):
         check_geometry = _as_bool(kwargs.pop('check_geometry', True), True)
         check_block_count = _as_bool(kwargs.pop('check_block_count', True), True)
 
+        header_scan_height = _as_float(kwargs.pop('header_scan_height', 0), 0)
+        footer_scan_height = _as_float(kwargs.pop('footer_scan_height', 0), 0)
+        header_repeat_threshold = int(_as_float(kwargs.pop('header_repeat_threshold', 2), 2))
+        header_footer_config = HeaderFooterConfig(
+            header_scan_height=header_scan_height,
+            footer_scan_height=footer_scan_height,
+            repeat_threshold=header_repeat_threshold,
+        )
+
         # When ignoring page boundaries, disable geometry and block count checks
         if ignore_page_boundaries:
             check_geometry = False
@@ -461,6 +471,7 @@ class PdfTest(object):
                     compare_word_level=compare_word_level,
                     check_geometry=check_geometry,
                     check_block_count=check_block_count,
+                    header_footer_config=header_footer_config,
                 )
                 if not structure_result.passed:
                     differences_detected = True
@@ -609,6 +620,15 @@ class PdfTest(object):
         check_geometry = _as_bool(kwargs.get('check_geometry', True), True)
         check_block_count = _as_bool(kwargs.get('check_block_count', True), True)
 
+        header_scan_height = _as_float(kwargs.get('header_scan_height', 0), 0)
+        footer_scan_height = _as_float(kwargs.get('footer_scan_height', 0), 0)
+        header_repeat_threshold = int(_as_float(kwargs.get('header_repeat_threshold', 2), 2))
+        header_footer_config = HeaderFooterConfig(
+            header_scan_height=header_scan_height,
+            footer_scan_height=footer_scan_height,
+            repeat_threshold=header_repeat_threshold,
+        )
+
         # When ignoring page boundaries, disable geometry and block count checks
         if ignore_page_boundaries:
             check_geometry = False
@@ -666,6 +686,7 @@ class PdfTest(object):
                 compare_word_level=compare_word_level,
                 check_geometry=check_geometry,
                 check_block_count=check_block_count,
+                header_footer_config=header_footer_config,
             )
         finally:
             reference_repr.close()
@@ -981,6 +1002,7 @@ class PdfTest(object):
         compare_word_level: bool = True,
         check_geometry: bool = True,
         check_block_count: bool = True,
+        header_footer_config: Optional["HeaderFooterConfig"] = None,
     ):
         release_reference = False
         release_candidate = False
@@ -994,6 +1016,11 @@ class PdfTest(object):
         try:
             reference_structure = reference_representation.get_pdf_structure(config=extraction_config)
             candidate_structure = candidate_representation.get_pdf_structure(config=extraction_config)
+
+            # Repetition-based header/footer detection
+            if header_footer_config and header_footer_config.enabled:
+                reference_structure = filter_headers_footers(reference_structure, header_footer_config)
+                candidate_structure = filter_headers_footers(candidate_structure, header_footer_config)
 
             if text_mask_patterns:
                 reference_structure = self._prune_structure_lines(reference_structure, text_mask_patterns)
