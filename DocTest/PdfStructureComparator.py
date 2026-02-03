@@ -4,16 +4,18 @@ import difflib
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from DocTest.PdfStructureModels import DocumentStructure, PageStructure, TextLine
+from DocTest.PdfStructureModels import DocumentStructure, PageStructure, TextLine, WordToken
 
 
 __all__ = [
     "StructureTolerance",
     "LineDifference",
     "DocumentTextDifference",
+    "DocumentWordDifference",
     "StructureComparisonResult",
     "compare_document_structures",
     "compare_document_text_only",
+    "compare_document_words",
 ]
 
 
@@ -55,12 +57,27 @@ class DocumentTextDifference:
 
 
 @dataclass
+class DocumentWordDifference:
+    """Details about word-level content mismatch in page-agnostic comparison."""
+
+    diff_type: str  # "missing_words", "extra_words", "word_mismatch"
+    message: str
+    ref_words: Optional[List[str]] = None
+    cand_words: Optional[List[str]] = None
+    ref_start_index: Optional[int] = None
+    ref_end_index: Optional[int] = None
+    cand_start_index: Optional[int] = None
+    cand_end_index: Optional[int] = None
+
+
+@dataclass
 class StructureComparisonResult:
     """Aggregate differences found during structure comparison."""
 
     passed: bool = True
     page_differences: Dict[int, List[LineDifference]] = field(default_factory=dict)
     document_differences: List[DocumentTextDifference] = field(default_factory=list)
+    word_differences: List[DocumentWordDifference] = field(default_factory=list)
     summary: List[str] = field(default_factory=list)
 
     def add_difference(self, diff: LineDifference):
@@ -72,13 +89,18 @@ class StructureComparisonResult:
         self.passed = False
         self.document_differences.append(diff)
 
+    def add_word_difference(self, diff: DocumentWordDifference):
+        """Add a document-level word difference."""
+        self.passed = False
+        self.word_differences.append(diff)
+
     def extend_summary(self, message: str):
         self.summary.append(message)
 
     def difference_count(self) -> int:
-        """Return total count of all differences (page-level and document-level)."""
+        """Return total count of all differences (page-level, document-level, and word-level)."""
         page_diff_count = sum(len(diffs) for diffs in self.page_differences.values())
-        return page_diff_count + len(self.document_differences)
+        return page_diff_count + len(self.document_differences) + len(self.word_differences)
 
 
 def compare_document_structures(
@@ -227,6 +249,114 @@ def compare_document_text_only(
                 )
 
     return result
+
+
+def compare_document_words(
+    reference: DocumentStructure,
+    candidate: DocumentStructure,
+    *,
+    case_sensitive: bool = True,
+) -> StructureComparisonResult:
+    """Compare document text at the word level, ignoring line and page boundaries.
+
+    Flattens all text into word tokens and uses SequenceMatcher to detect
+    insertions, deletions, and replacements at word granularity. Contiguous
+    diff opcodes of the same type are grouped into single difference records
+    for cleaner reporting.
+
+    Args:
+        reference: The reference document structure.
+        candidate: The candidate document structure to compare.
+        case_sensitive: Whether word comparison is case-sensitive.
+
+    Returns:
+        A StructureComparisonResult with document-level word differences.
+    """
+    from DocTest.PdfStructureModels import flatten_document_words
+
+    result = StructureComparisonResult()
+
+    ref_words, ref_tokens = flatten_document_words(reference)
+    cand_words, cand_tokens = flatten_document_words(candidate)
+
+    # Preserve originals for reporting before potential case normalization
+    ref_originals = list(ref_words)
+    cand_originals = list(cand_words)
+
+    if not case_sensitive:
+        ref_words = [w.lower() for w in ref_words]
+        cand_words = [w.lower() for w in cand_words]
+
+    matcher = difflib.SequenceMatcher(a=ref_words, b=cand_words, autojunk=False)
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+
+        ref_slice = ref_originals[i1:i2] if i1 < i2 else None
+        cand_slice = cand_originals[j1:j2] if j1 < j2 else None
+
+        if tag == "replace":
+            ref_preview = " ".join(ref_slice) if ref_slice else ""
+            cand_preview = " ".join(cand_slice) if cand_slice else ""
+            message = (
+                f"Word mismatch at positions {i1}-{i2 - 1}: "
+                f"reference='{_truncate_text(ref_preview, 80)}', "
+                f"candidate='{_truncate_text(cand_preview, 80)}'"
+            )
+            result.add_word_difference(
+                DocumentWordDifference(
+                    diff_type="word_mismatch",
+                    message=message,
+                    ref_words=ref_slice,
+                    cand_words=cand_slice,
+                    ref_start_index=i1,
+                    ref_end_index=i2,
+                    cand_start_index=j1,
+                    cand_end_index=j2,
+                )
+            )
+
+        elif tag == "delete":
+            ref_preview = " ".join(ref_slice) if ref_slice else ""
+            message = (
+                f"Words missing in candidate at positions {i1}-{i2 - 1}: "
+                f"'{_truncate_text(ref_preview, 80)}'"
+            )
+            result.add_word_difference(
+                DocumentWordDifference(
+                    diff_type="missing_words",
+                    message=message,
+                    ref_words=ref_slice,
+                    ref_start_index=i1,
+                    ref_end_index=i2,
+                )
+            )
+
+        elif tag == "insert":
+            cand_preview = " ".join(cand_slice) if cand_slice else ""
+            message = (
+                f"Extra words in candidate at positions {j1}-{j2 - 1}: "
+                f"'{_truncate_text(cand_preview, 80)}'"
+            )
+            result.add_word_difference(
+                DocumentWordDifference(
+                    diff_type="extra_words",
+                    message=message,
+                    cand_words=cand_slice,
+                    cand_start_index=j1,
+                    cand_end_index=j2,
+                )
+            )
+
+    return result
+
+
+def _truncate_text(text: str, max_length: int) -> str:
+    """Truncate text with ellipsis if it exceeds max_length."""
+    if len(text) <= max_length:
+        return text
+    return text[: max_length - 3] + "..."
 
 
 def _compare_page(

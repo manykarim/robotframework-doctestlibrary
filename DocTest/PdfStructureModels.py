@@ -13,11 +13,13 @@ __all__ = [
     "PageStructure",
     "DocumentStructure",
     "StructureExtractionConfig",
+    "WordToken",
     "strip_font_subset",
     "collapse_whitespace",
     "round_bbox",
     "build_page_structure",
     "flatten_document_text",
+    "flatten_document_words",
 ]
 
 
@@ -114,6 +116,15 @@ class DocumentStructure:
         return len(self.pages)
 
 
+@dataclass(frozen=True)
+class WordToken:
+    """A single word token extracted from a document, with provenance metadata."""
+    text: str
+    source_page: int
+    source_line_index: int
+    word_index: int
+
+
 def flatten_document_text(structure: DocumentStructure) -> List[str]:
     """Extract all text lines from a document in reading order, ignoring page boundaries.
 
@@ -135,6 +146,51 @@ def flatten_document_text(structure: DocumentStructure) -> List[str]:
                 if line.text:
                     texts.append(line.text)
     return texts
+
+
+def flatten_document_words(
+    structure: DocumentStructure,
+) -> Tuple[List[str], List[WordToken]]:
+    """Extract all words from a document in reading order, ignoring page/line boundaries.
+
+    Splits every text line on whitespace to produce individual word tokens.
+    This enables comparison at word granularity, making the comparison resilient
+    to text reflow caused by font or layout changes.
+
+    Args:
+        structure: A DocumentStructure containing pages with text blocks and lines.
+
+    Returns:
+        A tuple of:
+        - words: Flat list of word strings for use with SequenceMatcher.
+        - tokens: Corresponding list of WordToken objects with provenance.
+    """
+    words: List[str] = []
+    tokens: List[WordToken] = []
+    global_line_index = 0
+    word_index = 0
+
+    for page in structure.pages:
+        for block in page.blocks:
+            for line in block.lines:
+                if not line.text:
+                    global_line_index += 1
+                    continue
+                line_words = line.text.split()
+                for w in line_words:
+                    words.append(w)
+                    tokens.append(
+                        WordToken(
+                            text=w,
+                            source_page=page.page_number,
+                            source_line_index=global_line_index,
+                            word_index=word_index,
+                        )
+                    )
+                    word_index += 1
+                global_line_index += 1
+
+    return words, tokens
 
 
 def strip_font_subset(font_name: Optional[str]) -> Optional[str]:

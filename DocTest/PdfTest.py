@@ -15,6 +15,7 @@ from DocTest.PdfStructureComparator import (
     StructureTolerance,
     compare_document_structures,
     compare_document_text_only,
+    compare_document_words,
 )
 from DocTest.PdfStructureModels import (
     DocumentStructure,
@@ -267,6 +268,7 @@ class PdfTest(object):
 
         # New parameters for controlling structure comparison behavior
         ignore_page_boundaries = _as_bool(kwargs.pop('ignore_page_boundaries', False), False)
+        compare_word_level = _as_bool(kwargs.pop('compare_word_level', True), True)
         check_geometry = _as_bool(kwargs.pop('check_geometry', True), True)
         check_block_count = _as_bool(kwargs.pop('check_block_count', True), True)
 
@@ -456,6 +458,7 @@ class PdfTest(object):
                     candidate_representation=candidate_repr,
                     text_mask_patterns=compiled_text_patterns,
                     ignore_page_boundaries=ignore_page_boundaries,
+                    compare_word_level=compare_word_level,
                     check_geometry=check_geometry,
                     check_block_count=check_block_count,
                 )
@@ -474,6 +477,10 @@ class PdfTest(object):
                     if doc_diffs:
                         for diff in doc_diffs:
                             details_parts.append(f"Document: {diff.message}")
+                    word_diffs = getattr(structure_result, "word_differences", None)
+                    if word_diffs:
+                        for diff in word_diffs:
+                            details_parts.append(f"Words: {diff.message}")
                     llm_differences.append(
                         {
                             "facet": "structure",
@@ -598,6 +605,7 @@ class PdfTest(object):
 
         # New parameters for controlling comparison behavior
         ignore_page_boundaries = _as_bool(kwargs.get('ignore_page_boundaries', False), False)
+        compare_word_level = _as_bool(kwargs.get('compare_word_level', True), True)
         check_geometry = _as_bool(kwargs.get('check_geometry', True), True)
         check_block_count = _as_bool(kwargs.get('check_block_count', True), True)
 
@@ -655,6 +663,7 @@ class PdfTest(object):
                 candidate_representation=candidate_repr,
                 text_mask_patterns=compiled_text_patterns,
                 ignore_page_boundaries=ignore_page_boundaries,
+                compare_word_level=compare_word_level,
                 check_geometry=check_geometry,
                 check_block_count=check_block_count,
             )
@@ -969,6 +978,7 @@ class PdfTest(object):
         candidate_representation: Optional[DocumentRepresentation] = None,
         text_mask_patterns: Optional[List[Pattern[str]]] = None,
         ignore_page_boundaries: bool = False,
+        compare_word_level: bool = True,
         check_geometry: bool = True,
         check_block_count: bool = True,
     ):
@@ -990,12 +1000,18 @@ class PdfTest(object):
                 candidate_structure = self._prune_structure_lines(candidate_structure, text_mask_patterns)
 
             if ignore_page_boundaries:
-                # Use text-only comparison that ignores page boundaries
-                result = compare_document_text_only(
-                    reference=reference_structure,
-                    candidate=candidate_structure,
-                    case_sensitive=case_sensitive,
-                )
+                if compare_word_level:
+                    result = compare_document_words(
+                        reference=reference_structure,
+                        candidate=candidate_structure,
+                        case_sensitive=case_sensitive,
+                    )
+                else:
+                    result = compare_document_text_only(
+                        reference=reference_structure,
+                        candidate=candidate_structure,
+                        case_sensitive=case_sensitive,
+                    )
             else:
                 # Use standard page-by-page comparison
                 result = compare_document_structures(
@@ -1109,6 +1125,19 @@ class PdfTest(object):
                     details.append(f"reference position={diff.ref_index}")
                 if diff.cand_index is not None:
                     details.append(f"candidate position={diff.cand_index}")
+                if details:
+                    message = f"{message} ({', '.join(details)})"
+                logger.info(message)
+
+        # Log word-level differences as INFO (for word-level mode)
+        if hasattr(result, 'word_differences') and result.word_differences:
+            for diff in result.word_differences:
+                message = f"[PDF Words] {diff.message}"
+                details = []
+                if diff.ref_start_index is not None:
+                    details.append(f"ref positions {diff.ref_start_index}-{diff.ref_end_index}")
+                if diff.cand_start_index is not None:
+                    details.append(f"cand positions {diff.cand_start_index}-{diff.cand_end_index}")
                 if details:
                     message = f"{message} ({', '.join(details)})"
                 logger.info(message)
