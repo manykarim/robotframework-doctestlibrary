@@ -577,6 +577,7 @@ class PdfTest(object):
             - ``compare_order`` (str, default ``"ordered"``): comparison strategy for word-level comparison. ``"ordered"`` uses sequence-sensitive matching; ``"unordered"`` uses bag-of-words frequency comparison that ignores word order, useful when text reflows across pages.
             - ``check_geometry`` (bool, default ``True``): when ``False``, skip line position/size comparison. Useful for comparing content when layout may differ. Automatically set to ``False`` when ``ignore_page_boundaries`` is ``True``.
             - ``check_block_count`` (bool, default ``True``): when ``False``, skip block count validation per page. Automatically set to ``False`` when ``ignore_page_boundaries`` is ``True``.
+            - ``spatial_word_sorting`` (bool, default ``False``): when ``True``, build page structure from individual word bounding boxes instead of text blocks. This bypasses block fragmentation differences caused by different PDF generators and produces consistent word ordering. Recommended when ``ignore_page_boundaries`` is ``True``.
 
         Examples:
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf
@@ -584,6 +585,7 @@ class PdfTest(object):
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf    mask=${CURDIR}${/}mask.json    text_mask_patterns=\\d{4}-\\d{4}    ignore_ligatures=${True}
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf    ignore_page_boundaries=${True}
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf    check_geometry=${False}    check_block_count=${False}
+        | `Compare Pdf Structure`    reference.pdf    candidate.pdf    ignore_page_boundaries=${True}    spatial_word_sorting=${True}
         | `Run Keyword And Expect Error`    The compared PDF structure is different.    Compare Pdf Structure    reference.pdf    candidate_with_changed_text.pdf
 
         """
@@ -623,6 +625,7 @@ class PdfTest(object):
         compare_word_level = _as_bool(kwargs.get('compare_word_level', True), True)
         check_geometry = _as_bool(kwargs.get('check_geometry', True), True)
         check_block_count = _as_bool(kwargs.get('check_block_count', True), True)
+        spatial_word_sorting = _as_bool(kwargs.get('spatial_word_sorting', False), False)
 
         header_scan_height = _as_float(kwargs.get('header_scan_height', 0), 0)
         footer_scan_height = _as_float(kwargs.get('footer_scan_height', 0), 0)
@@ -647,6 +650,7 @@ class PdfTest(object):
             round_precision=round_precision,
             normalize_ligatures=ignore_ligatures,
             character_replacements=char_replacements,
+            spatial_word_sorting=spatial_word_sorting,
         )
         tolerance = StructureTolerance(
             position=position_tolerance,

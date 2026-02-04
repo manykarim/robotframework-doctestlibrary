@@ -64,10 +64,12 @@ def merge_split_words(
         curr_token = tokens[i]
         prev_word = merged_words[-1]
 
-        # Only merge if tokens are from different lines AND previous word ends with connector
+        # Only merge if tokens are from different lines AND previous word ends with connector.
+        # Skip standalone connectors (e.g. a bare "-" used as punctuation, not a split word).
         if (prev_token.source_line_index != curr_token.source_line_index
                 and prev_word
-                and prev_word[-1] in connectors):
+                and prev_word[-1] in connectors
+                and len(prev_word) > 1):
             # Merge: concatenate words, keep first token's provenance
             merged_words[-1] = prev_word + words[i]
             # Update token with merged text

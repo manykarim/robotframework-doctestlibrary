@@ -17,6 +17,7 @@ from DocTest.PdfStructureModels import (
     PageStructure,
     StructureExtractionConfig,
     build_page_structure,
+    build_page_structure_from_words,
 )
 from DocTest.config import DEFAULT_DPI, OCR_ENGINE_DEFAULT, DEFAULT_CONFIDENCE, MINIMUM_OCR_RESOLUTION, ADD_PIXELS_TO_IGNORE_AREA, TESSERACT_CONFIG
 import tempfile
@@ -197,13 +198,27 @@ class Page:
         cached = self._structure_cache.get(config)
         if cached:
             return cached
-        structure = build_page_structure(
-            page_number=self.page_number,
-            pdf_dict=self.pdf_text_dict,
-            config=config,
-            dpi=self.dpi,
-            image_shape=self.image.shape,
-        )
+        if config.spatial_word_sorting and self.pdf_text_words:
+            # Derive page dimensions from the dict if available.
+            pw = float(self.pdf_text_dict.get("width", 0)) if self.pdf_text_dict else 0.0
+            ph = float(self.pdf_text_dict.get("height", 0)) if self.pdf_text_dict else 0.0
+            structure = build_page_structure_from_words(
+                page_number=self.page_number,
+                pdf_text_words=self.pdf_text_words,
+                config=config,
+                page_width=pw,
+                page_height=ph,
+                dpi=self.dpi,
+                image_shape=self.image.shape,
+            )
+        else:
+            structure = build_page_structure(
+                page_number=self.page_number,
+                pdf_dict=self.pdf_text_dict,
+                config=config,
+                dpi=self.dpi,
+                image_shape=self.image.shape,
+            )
         self._structure_cache[config] = structure
         return structure
 
