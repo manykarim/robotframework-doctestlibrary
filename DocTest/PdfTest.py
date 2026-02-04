@@ -478,25 +478,17 @@ class PdfTest(object):
                     summary = getattr(structure_result, "summary", None)
                     page_diffs = getattr(structure_result, "page_differences", None)
                     doc_diffs = getattr(structure_result, "document_differences", None)
-                    details_parts: List[str] = []
-                    if summary:
-                        details_parts.extend(str(item) for item in summary)
-                    if page_diffs:
-                        for page, diffs in page_diffs.items():
-                            for diff in diffs:
-                                details_parts.append(f"Page {page}: {diff.message}")
-                    if doc_diffs:
-                        for diff in doc_diffs:
-                            details_parts.append(f"Document: {diff.message}")
-                    word_diffs = getattr(structure_result, "word_differences", None)
-                    if word_diffs:
-                        for diff in word_diffs:
-                            details_parts.append(f"Words: {diff.message}")
+                    try:
+                        from DocTest.StructureReportBuilder import build_structure_report_plain_text
+                        plain_report = build_structure_report_plain_text(structure_result)
+                        detail_text = plain_report if plain_report else "Structure comparison differences detected."
+                    except Exception:
+                        detail_text = "Structure comparison differences detected."
                     llm_differences.append(
                         {
                             "facet": "structure",
                             "description": "PDF structural comparison failed.",
-                            "details": "\n".join(details_parts) if details_parts else "Structure comparison differences detected.",
+                            "details": detail_text,
                         }
                     )
 
@@ -1049,7 +1041,33 @@ class PdfTest(object):
                     check_geometry=check_geometry,
                     check_block_count=check_block_count,
                 )
-            self._log_structure_result(result, ignore_page_boundaries=ignore_page_boundaries)
+            # Capture text lists for context display in the report
+            ref_texts = None
+            cand_texts = None
+            try:
+                from DocTest.PdfStructureModels import flatten_document_text
+                ref_texts = flatten_document_text(reference_structure)
+                cand_texts = flatten_document_text(candidate_structure)
+            except Exception:
+                pass
+
+            exclusions = []
+            if text_mask_patterns:
+                exclusions.extend(f"text_mask: {p.pattern}" for p in text_mask_patterns)
+            if not check_geometry:
+                exclusions.append("check_geometry: False")
+            if not check_block_count:
+                exclusions.append("check_block_count: False")
+
+            self._log_structure_result(
+                result,
+                ignore_page_boundaries=ignore_page_boundaries,
+                reference_name=Path(reference_document).name,
+                candidate_name=Path(candidate_document).name,
+                reference_texts=ref_texts,
+                candidate_texts=cand_texts,
+                exclusions_applied=exclusions,
+            )
             return result
         finally:
             if release_reference:
@@ -1103,12 +1121,23 @@ class PdfTest(object):
             )
         return DocumentStructure(pages=filtered_pages, config=structure.config)
 
-    def _log_structure_result(self, result, ignore_page_boundaries: bool = False):
-        """Log comparison results with single summary WARN and detail INFO messages.
+    def _log_structure_result(
+        self,
+        result,
+        *,
+        ignore_page_boundaries: bool = False,
+        reference_name: str = "",
+        candidate_name: str = "",
+        reference_texts: Optional[List[str]] = None,
+        candidate_texts: Optional[List[str]] = None,
+        exclusions_applied: Optional[List[str]] = None,
+    ):
+        """Log comparison results with single summary WARN, HTML report INFO, and detail DEBUG.
 
         Robot Framework displays WARN messages at the top of log.html. To avoid
-        cluttering that section, we emit a single summary warning and log all
-        individual differences as INFO (visible only within keyword output).
+        cluttering that section, we emit a single summary warning. All differences
+        are rendered as a single consolidated HTML report at INFO level. Individual
+        per-difference output is preserved at DEBUG level for troubleshooting.
         """
         if result.passed:
             logger.info("[PDF Structure] Documents match within configured tolerances.")
@@ -1118,15 +1147,34 @@ class PdfTest(object):
         diff_count = result.difference_count()
         mode = "text-only (ignoring page boundaries)" if ignore_page_boundaries else "structure"
 
-        # Single summary warning (appears at top of log.html)
+        # Single summary warning (appears at top of log.html) -- UNCHANGED
         logger.warn(f"[PDF Structure] Comparison failed: {diff_count} difference(s) found in {mode} comparison.")
 
-        # Log summary entries as INFO
+        # --- Consolidated HTML report at INFO level ---
+        try:
+            from DocTest.StructureReportBuilder import ReportMetadata, build_structure_report
+            metadata = ReportMetadata(
+                reference_name=reference_name or "(unknown)",
+                candidate_name=candidate_name or "(unknown)",
+                comparison_mode=mode,
+                exclusions_applied=exclusions_applied or [],
+            )
+            html_report = build_structure_report(
+                result,
+                metadata=metadata,
+                reference_texts=reference_texts,
+                candidate_texts=candidate_texts,
+            )
+            if html_report:
+                logger.info(html_report, html=True)
+        except Exception:
+            pass  # Degrade gracefully if report builder fails
+
+        # --- Per-difference output at DEBUG level ---
         if result.summary:
             for entry in result.summary:
-                logger.info(f"[PDF Structure] {entry}")
+                logger.debug(f"[PDF Structure] {entry}")
 
-        # Log page differences as INFO
         if result.page_differences:
             for page in sorted(result.page_differences.keys()):
                 for diff in result.page_differences[page]:
@@ -1138,12 +1186,11 @@ class PdfTest(object):
                         details.append(f"candidate line={diff.candidate_index}")
                     if details:
                         message = f"{message} ({', '.join(details)})"
-                    logger.info(message)
+                    logger.debug(message)
                     if diff.deltas:
                         pretty = ", ".join(f"{axis}={value:.3f}" for axis, value in diff.deltas.items())
                         logger.debug(f"[PDF Structure] Page {page} deltas: {pretty}")
 
-        # Log document-level differences as INFO (for text-only mode)
         if result.document_differences:
             for diff in result.document_differences:
                 message = f"[PDF Text] {diff.message}"
@@ -1154,9 +1201,9 @@ class PdfTest(object):
                     details.append(f"candidate position={diff.cand_index}")
                 if details:
                     message = f"{message} ({', '.join(details)})"
-                logger.info(message)
+                logger.debug(message)
 
-        # Log word-level differences as INFO (for word-level mode)
+        # Log word-level differences at DEBUG
         if hasattr(result, 'word_differences') and result.word_differences:
             for diff in result.word_differences:
                 message = f"[PDF Words] {diff.message}"
@@ -1167,7 +1214,7 @@ class PdfTest(object):
                     details.append(f"cand positions {diff.cand_start_index}-{diff.cand_end_index}")
                 if details:
                     message = f"{message} ({', '.join(details)})"
-                logger.info(message)
+                logger.debug(message)
 
     def _ensure_local_document(self, document):
         return download_file_from_url(document) if is_url(document) else document
