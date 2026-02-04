@@ -15,7 +15,9 @@ from DocTest.PdfStructureComparator import (
     StructureTolerance,
     compare_document_structures,
     compare_document_text_only,
+    compare_document_words,
 )
+from DocTest.HeaderFooterDetector import HeaderFooterConfig, filter_headers_footers
 from DocTest.PdfStructureModels import (
     DocumentStructure,
     PageStructure,
@@ -226,6 +228,10 @@ class PdfTest(object):
         mask_value = kwargs.pop('mask', None)
         text_mask_patterns_arg = kwargs.pop('text_mask_patterns', None)
         ignore_ligatures = _as_bool(kwargs.pop('ignore_ligatures', False))
+        normalize_word_boundaries = _as_bool(kwargs.pop('normalize_word_boundaries', False), False)
+        compare_order = kwargs.pop('compare_order', 'ordered')
+        if compare_order not in ('ordered', 'unordered'):
+            compare_order = 'ordered'
         check_pdf_text = _as_bool(kwargs.pop('check_pdf_text', False))
 
         # Parse character_replacements from kwargs or use instance default
@@ -267,8 +273,18 @@ class PdfTest(object):
 
         # New parameters for controlling structure comparison behavior
         ignore_page_boundaries = _as_bool(kwargs.pop('ignore_page_boundaries', False), False)
+        compare_word_level = _as_bool(kwargs.pop('compare_word_level', True), True)
         check_geometry = _as_bool(kwargs.pop('check_geometry', True), True)
         check_block_count = _as_bool(kwargs.pop('check_block_count', True), True)
+
+        header_scan_height = _as_float(kwargs.pop('header_scan_height', 0), 0)
+        footer_scan_height = _as_float(kwargs.pop('footer_scan_height', 0), 0)
+        header_repeat_threshold = int(_as_float(kwargs.pop('header_repeat_threshold', 2), 2))
+        header_footer_config = HeaderFooterConfig(
+            header_scan_height=header_scan_height,
+            footer_scan_height=footer_scan_height,
+            repeat_threshold=header_repeat_threshold,
+        )
 
         # When ignoring page boundaries, disable geometry and block count checks
         if ignore_page_boundaries:
@@ -456,29 +472,29 @@ class PdfTest(object):
                     candidate_representation=candidate_repr,
                     text_mask_patterns=compiled_text_patterns,
                     ignore_page_boundaries=ignore_page_boundaries,
+                    compare_word_level=compare_word_level,
                     check_geometry=check_geometry,
                     check_block_count=check_block_count,
+                    header_footer_config=header_footer_config,
+                    normalize_word_boundaries=normalize_word_boundaries,
+                    compare_order=compare_order,
                 )
                 if not structure_result.passed:
                     differences_detected = True
                     summary = getattr(structure_result, "summary", None)
                     page_diffs = getattr(structure_result, "page_differences", None)
                     doc_diffs = getattr(structure_result, "document_differences", None)
-                    details_parts: List[str] = []
-                    if summary:
-                        details_parts.extend(str(item) for item in summary)
-                    if page_diffs:
-                        for page, diffs in page_diffs.items():
-                            for diff in diffs:
-                                details_parts.append(f"Page {page}: {diff.message}")
-                    if doc_diffs:
-                        for diff in doc_diffs:
-                            details_parts.append(f"Document: {diff.message}")
+                    try:
+                        from DocTest.StructureReportBuilder import build_structure_report_plain_text
+                        plain_report = build_structure_report_plain_text(structure_result)
+                        detail_text = plain_report if plain_report else "Structure comparison differences detected."
+                    except Exception:
+                        detail_text = "Structure comparison differences detected."
                     llm_differences.append(
                         {
                             "facet": "structure",
                             "description": "PDF structural comparison failed.",
-                            "details": "\n".join(details_parts) if details_parts else "Structure comparison differences detected.",
+                            "details": detail_text,
                         }
                     )
 
@@ -557,8 +573,11 @@ class PdfTest(object):
             - ``text_mask_patterns``: regex or list of regex strings to skip lines during comparison.
             - ``ignore_ligatures`` (bool, default ``False``): normalise common ligatures (``ﬁ`` → ``fi``) prior to comparison.
             - ``ignore_page_boundaries`` (bool, default ``False``): ignore page breaks and compare text content in reading order across the entire document. When enabled, geometry and block structure are not checked. Useful when font/size changes cause text to reflow across pages.
+            - ``normalize_word_boundaries`` (bool, default ``False``): merge words split across line boundaries by connector characters (``/``, ``-``, ``\\``). Recommended when using ``ignore_page_boundaries``.
+            - ``compare_order`` (str, default ``"ordered"``): comparison strategy for word-level comparison. ``"ordered"`` uses sequence-sensitive matching; ``"unordered"`` uses bag-of-words frequency comparison that ignores word order, useful when text reflows across pages.
             - ``check_geometry`` (bool, default ``True``): when ``False``, skip line position/size comparison. Useful for comparing content when layout may differ. Automatically set to ``False`` when ``ignore_page_boundaries`` is ``True``.
             - ``check_block_count`` (bool, default ``True``): when ``False``, skip block count validation per page. Automatically set to ``False`` when ``ignore_page_boundaries`` is ``True``.
+            - ``spatial_word_sorting`` (bool, default ``False``): when ``True``, build page structure from individual word bounding boxes instead of text blocks. This bypasses block fragmentation differences caused by different PDF generators and produces consistent word ordering. Recommended when ``ignore_page_boundaries`` is ``True``.
 
         Examples:
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf
@@ -566,6 +585,7 @@ class PdfTest(object):
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf    mask=${CURDIR}${/}mask.json    text_mask_patterns=\\d{4}-\\d{4}    ignore_ligatures=${True}
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf    ignore_page_boundaries=${True}
         | `Compare Pdf Structure`    reference.pdf    candidate.pdf    check_geometry=${False}    check_block_count=${False}
+        | `Compare Pdf Structure`    reference.pdf    candidate.pdf    ignore_page_boundaries=${True}    spatial_word_sorting=${True}
         | `Run Keyword And Expect Error`    The compared PDF structure is different.    Compare Pdf Structure    reference.pdf    candidate_with_changed_text.pdf
 
         """
@@ -589,6 +609,10 @@ class PdfTest(object):
         mask_value = kwargs.get('mask')
         text_mask_patterns_arg = kwargs.get('text_mask_patterns')
         ignore_ligatures = _as_bool(kwargs.get('ignore_ligatures', False), False)
+        normalize_word_boundaries = _as_bool(kwargs.get('normalize_word_boundaries', False), False)
+        compare_order = kwargs.get('compare_order', 'ordered')
+        if compare_order not in ('ordered', 'unordered'):
+            compare_order = 'ordered'
 
         # Parse character_replacements from kwargs or use instance default
         char_replacements_arg = kwargs.get('character_replacements')
@@ -598,8 +622,19 @@ class PdfTest(object):
 
         # New parameters for controlling comparison behavior
         ignore_page_boundaries = _as_bool(kwargs.get('ignore_page_boundaries', False), False)
+        compare_word_level = _as_bool(kwargs.get('compare_word_level', True), True)
         check_geometry = _as_bool(kwargs.get('check_geometry', True), True)
         check_block_count = _as_bool(kwargs.get('check_block_count', True), True)
+        spatial_word_sorting = _as_bool(kwargs.get('spatial_word_sorting', False), False)
+
+        header_scan_height = _as_float(kwargs.get('header_scan_height', 0), 0)
+        footer_scan_height = _as_float(kwargs.get('footer_scan_height', 0), 0)
+        header_repeat_threshold = int(_as_float(kwargs.get('header_repeat_threshold', 2), 2))
+        header_footer_config = HeaderFooterConfig(
+            header_scan_height=header_scan_height,
+            footer_scan_height=footer_scan_height,
+            repeat_threshold=header_repeat_threshold,
+        )
 
         # When ignoring page boundaries, disable geometry and block count checks
         if ignore_page_boundaries:
@@ -615,6 +650,7 @@ class PdfTest(object):
             round_precision=round_precision,
             normalize_ligatures=ignore_ligatures,
             character_replacements=char_replacements,
+            spatial_word_sorting=spatial_word_sorting,
         )
         tolerance = StructureTolerance(
             position=position_tolerance,
@@ -655,8 +691,12 @@ class PdfTest(object):
                 candidate_representation=candidate_repr,
                 text_mask_patterns=compiled_text_patterns,
                 ignore_page_boundaries=ignore_page_boundaries,
+                compare_word_level=compare_word_level,
                 check_geometry=check_geometry,
                 check_block_count=check_block_count,
+                header_footer_config=header_footer_config,
+                normalize_word_boundaries=normalize_word_boundaries,
+                compare_order=compare_order,
             )
         finally:
             reference_repr.close()
@@ -969,8 +1009,12 @@ class PdfTest(object):
         candidate_representation: Optional[DocumentRepresentation] = None,
         text_mask_patterns: Optional[List[Pattern[str]]] = None,
         ignore_page_boundaries: bool = False,
+        compare_word_level: bool = True,
         check_geometry: bool = True,
         check_block_count: bool = True,
+        header_footer_config: Optional["HeaderFooterConfig"] = None,
+        normalize_word_boundaries: bool = False,
+        compare_order: str = "ordered",
     ):
         release_reference = False
         release_candidate = False
@@ -985,17 +1029,31 @@ class PdfTest(object):
             reference_structure = reference_representation.get_pdf_structure(config=extraction_config)
             candidate_structure = candidate_representation.get_pdf_structure(config=extraction_config)
 
+            # Repetition-based header/footer detection
+            if header_footer_config and header_footer_config.enabled:
+                reference_structure = filter_headers_footers(reference_structure, header_footer_config)
+                candidate_structure = filter_headers_footers(candidate_structure, header_footer_config)
+
             if text_mask_patterns:
                 reference_structure = self._prune_structure_lines(reference_structure, text_mask_patterns)
                 candidate_structure = self._prune_structure_lines(candidate_structure, text_mask_patterns)
 
             if ignore_page_boundaries:
-                # Use text-only comparison that ignores page boundaries
-                result = compare_document_text_only(
-                    reference=reference_structure,
-                    candidate=candidate_structure,
-                    case_sensitive=case_sensitive,
-                )
+                if compare_word_level:
+                    result = compare_document_words(
+                        reference=reference_structure,
+                        candidate=candidate_structure,
+                        case_sensitive=case_sensitive,
+                        normalize_ligatures=extraction_config.normalize_ligatures,
+                        normalize_word_boundaries=normalize_word_boundaries,
+                        compare_order=compare_order,
+                    )
+                else:
+                    result = compare_document_text_only(
+                        reference=reference_structure,
+                        candidate=candidate_structure,
+                        case_sensitive=case_sensitive,
+                    )
             else:
                 # Use standard page-by-page comparison
                 result = compare_document_structures(
@@ -1006,7 +1064,45 @@ class PdfTest(object):
                     check_geometry=check_geometry,
                     check_block_count=check_block_count,
                 )
-            self._log_structure_result(result, ignore_page_boundaries=ignore_page_boundaries)
+            # Capture text lists for context display in the report
+            ref_texts = None
+            cand_texts = None
+            try:
+                from DocTest.PdfStructureModels import flatten_document_text
+                ref_texts = flatten_document_text(reference_structure)
+                cand_texts = flatten_document_text(candidate_structure)
+            except Exception:
+                pass
+
+            exclusions = []
+            if text_mask_patterns:
+                exclusions.extend(f"text_mask: {p.pattern}" for p in text_mask_patterns)
+            if header_footer_config and header_footer_config.enabled:
+                if header_footer_config.header_scan_height > 0:
+                    exclusions.append(f"header_filter: {header_footer_config.header_scan_height}pt")
+                if header_footer_config.footer_scan_height > 0:
+                    exclusions.append(f"footer_filter: {header_footer_config.footer_scan_height}pt")
+            # Only report disabled checks when explicitly set by the user,
+            # not when auto-disabled by ignore_page_boundaries
+            if not ignore_page_boundaries:
+                if not check_geometry:
+                    exclusions.append("check_geometry: False")
+                if not check_block_count:
+                    exclusions.append("check_block_count: False")
+            if normalize_word_boundaries:
+                exclusions.append("normalize_word_boundaries: True")
+            if compare_order == "unordered":
+                exclusions.append("compare_order: unordered")
+
+            self._log_structure_result(
+                result,
+                ignore_page_boundaries=ignore_page_boundaries,
+                reference_name=Path(reference_document).name,
+                candidate_name=Path(candidate_document).name,
+                reference_texts=ref_texts,
+                candidate_texts=cand_texts,
+                exclusions_applied=exclusions,
+            )
             return result
         finally:
             if release_reference:
@@ -1060,12 +1156,23 @@ class PdfTest(object):
             )
         return DocumentStructure(pages=filtered_pages, config=structure.config)
 
-    def _log_structure_result(self, result, ignore_page_boundaries: bool = False):
-        """Log comparison results with single summary WARN and detail INFO messages.
+    def _log_structure_result(
+        self,
+        result,
+        *,
+        ignore_page_boundaries: bool = False,
+        reference_name: str = "",
+        candidate_name: str = "",
+        reference_texts: Optional[List[str]] = None,
+        candidate_texts: Optional[List[str]] = None,
+        exclusions_applied: Optional[List[str]] = None,
+    ):
+        """Log comparison results with single summary WARN, HTML report INFO, and detail DEBUG.
 
         Robot Framework displays WARN messages at the top of log.html. To avoid
-        cluttering that section, we emit a single summary warning and log all
-        individual differences as INFO (visible only within keyword output).
+        cluttering that section, we emit a single summary warning. All differences
+        are rendered as a single consolidated HTML report at INFO level. Individual
+        per-difference output is preserved at DEBUG level for troubleshooting.
         """
         if result.passed:
             logger.info("[PDF Structure] Documents match within configured tolerances.")
@@ -1075,15 +1182,34 @@ class PdfTest(object):
         diff_count = result.difference_count()
         mode = "text-only (ignoring page boundaries)" if ignore_page_boundaries else "structure"
 
-        # Single summary warning (appears at top of log.html)
+        # Single summary warning (appears at top of log.html) -- UNCHANGED
         logger.warn(f"[PDF Structure] Comparison failed: {diff_count} difference(s) found in {mode} comparison.")
 
-        # Log summary entries as INFO
+        # --- Consolidated HTML report at INFO level ---
+        try:
+            from DocTest.StructureReportBuilder import ReportMetadata, build_structure_report
+            metadata = ReportMetadata(
+                reference_name=reference_name or "(unknown)",
+                candidate_name=candidate_name or "(unknown)",
+                comparison_mode=mode,
+                exclusions_applied=exclusions_applied or [],
+            )
+            html_report = build_structure_report(
+                result,
+                metadata=metadata,
+                reference_texts=reference_texts,
+                candidate_texts=candidate_texts,
+            )
+            if html_report:
+                logger.info(html_report, html=True)
+        except Exception:
+            pass  # Degrade gracefully if report builder fails
+
+        # --- Per-difference output at DEBUG level ---
         if result.summary:
             for entry in result.summary:
-                logger.info(f"[PDF Structure] {entry}")
+                logger.debug(f"[PDF Structure] {entry}")
 
-        # Log page differences as INFO
         if result.page_differences:
             for page in sorted(result.page_differences.keys()):
                 for diff in result.page_differences[page]:
@@ -1095,12 +1221,11 @@ class PdfTest(object):
                         details.append(f"candidate line={diff.candidate_index}")
                     if details:
                         message = f"{message} ({', '.join(details)})"
-                    logger.info(message)
+                    logger.debug(message)
                     if diff.deltas:
                         pretty = ", ".join(f"{axis}={value:.3f}" for axis, value in diff.deltas.items())
                         logger.debug(f"[PDF Structure] Page {page} deltas: {pretty}")
 
-        # Log document-level differences as INFO (for text-only mode)
         if result.document_differences:
             for diff in result.document_differences:
                 message = f"[PDF Text] {diff.message}"
@@ -1111,7 +1236,20 @@ class PdfTest(object):
                     details.append(f"candidate position={diff.cand_index}")
                 if details:
                     message = f"{message} ({', '.join(details)})"
-                logger.info(message)
+                logger.debug(message)
+
+        # Log word-level differences at DEBUG
+        if hasattr(result, 'word_differences') and result.word_differences:
+            for diff in result.word_differences:
+                message = f"[PDF Words] {diff.message}"
+                details = []
+                if diff.ref_start_index is not None:
+                    details.append(f"ref positions {diff.ref_start_index}-{diff.ref_end_index}")
+                if diff.cand_start_index is not None:
+                    details.append(f"cand positions {diff.cand_start_index}-{diff.cand_end_index}")
+                if details:
+                    message = f"{message} ({', '.join(details)})"
+                logger.debug(message)
 
     def _ensure_local_document(self, document):
         return download_file_from_url(document) if is_url(document) else document
