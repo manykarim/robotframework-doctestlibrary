@@ -29,6 +29,7 @@ from DocTest.StructureReportBuilder import (
     ReportMetadata,
     ReportSummary,
     _classify_diff_type,
+    _collect_all_diffs,
     _compute_summary,
     _escape,
     _group_into_hunks,
@@ -109,7 +110,7 @@ class TestSingleDifferences:
         result = _make_result_with_page_diffs([diff])
         html = build_structure_report(result)
 
-        assert "#fdd" in html, "Missing line should use red background #fdd"
+        assert "#f8d7da" in html, "Missing line should use red background #f8d7da"
         assert "<b>-</b>" in html, "Missing line should display '-' symbol"
         assert "vanished line" in html
 
@@ -122,7 +123,7 @@ class TestSingleDifferences:
         result = _make_result_with_page_diffs([diff])
         html = build_structure_report(result)
 
-        assert "#dfd" in html, "Extra line should use green background #dfd"
+        assert "#d4edda" in html, "Extra line should use green background #d4edda"
         assert "<b>+</b>" in html, "Extra line should display '+' symbol"
         assert "new line appeared" in html
 
@@ -137,7 +138,7 @@ class TestSingleDifferences:
         result = _make_result_with_page_diffs([diff])
         html = build_structure_report(result)
 
-        assert "#ffd" in html, "Text mismatch should use yellow background #ffd"
+        assert "#fff3cd" in html, "Text mismatch should use yellow background #fff3cd"
         assert "ref:" in html, "Text mismatch should show 'ref:' label"
         assert "cand:" in html, "Text mismatch should show 'cand:' label"
         assert "foo" in html
@@ -153,7 +154,7 @@ class TestSingleDifferences:
         result = _make_result_with_page_diffs([diff])
         html = build_structure_report(result)
 
-        assert "#eee" in html, "Geometry mismatch should use grey background #eee"
+        assert "#e2e3e5" in html, "Geometry mismatch should use grey background #e2e3e5"
         # The delta symbol U+0394
         assert "\u0394" in html or "&#916;" in html or "&Delta;" in html, \
             "Geometry mismatch should display delta symbol"
@@ -247,7 +248,7 @@ class TestContext:
         # The "..." context wrapper should not appear
         # (the only "..." might come from truncation, but there should be
         #  no context div with the pattern ...word...)
-        assert "color:#888;\">..." not in html
+        assert "color:#999" not in html
 
 
 # ===========================================================================
@@ -640,6 +641,147 @@ class TestTruncateHelper:
         truncated = _truncate(text, max_length=7)
         assert truncated == "abcd..."
         assert len(truncated) == 7
+
+
+# ===========================================================================
+# Overview table
+# ===========================================================================
+
+
+class TestOverviewTable:
+
+    def test_table_present_in_html(self):
+        """HTML report contains an overview table with columns."""
+        diff = _make_line_diff("missing_line", ref_text="gone",
+                               reference_index=5)
+        result = _make_result_with_page_diffs([diff])
+        html = build_structure_report(result)
+
+        assert "<table" in html
+        assert "Type" in html
+        assert "Reference" in html
+        assert "Candidate" in html
+        assert "Location" in html
+
+    def test_table_rows_match_diff_count(self):
+        """Table contains one row per difference plus a header row."""
+        result = StructureComparisonResult()
+        result.add_difference(_make_line_diff(
+            "missing_line", ref_text="a", reference_index=0))
+        result.add_difference(_make_line_diff(
+            "extra_line", cand_text="b", candidate_index=1))
+        html = build_structure_report(result)
+        # Two data rows + one header row = 3 total <tr> elements
+        assert html.count("<tr") == 3
+
+    def test_table_shows_location(self):
+        """Table location column contains page and line info."""
+        diff = _make_line_diff("text_mismatch", ref_text="old", cand_text="new",
+                               reference_index=7, candidate_index=7, page=2)
+        result = _make_result_with_page_diffs([diff], page=2)
+        html = build_structure_report(result)
+        assert "Page 2" in html
+        assert "line 7" in html
+
+    def test_collect_all_diffs_word_level_uses_word_label(self):
+        """Word-level diffs use 'word N' location label."""
+        result = StructureComparisonResult()
+        result.add_word_difference(DocumentWordDifference(
+            diff_type="word_mismatch",
+            message="changed",
+            ref_words=["old"],
+            cand_words=["new"],
+            ref_start_index=42,
+            ref_end_index=43,
+            cand_start_index=42,
+            cand_end_index=43,
+        ))
+        items = _collect_all_diffs(result)
+        assert len(items) == 1
+        assert items[0][1] == "word 42"
+
+
+# ===========================================================================
+# Zero-count badges hidden
+# ===========================================================================
+
+
+class TestZeroBadgesSuppressed:
+
+    def test_zero_missing_badge_hidden(self):
+        """When there are no missing diffs, '0 missing' badge is hidden."""
+        diff = _make_line_diff("text_mismatch", ref_text="old", cand_text="new",
+                               reference_index=0, candidate_index=0)
+        result = _make_result_with_page_diffs([diff])
+        html = build_structure_report(result)
+        assert "0 missing" not in html
+
+    def test_zero_extra_badge_hidden(self):
+        """When there are no extra diffs, '0 extra' badge is hidden."""
+        diff = _make_line_diff("missing_line", ref_text="gone",
+                               reference_index=0)
+        result = _make_result_with_page_diffs([diff])
+        html = build_structure_report(result)
+        assert "0 extra" not in html
+
+    def test_nonzero_badges_shown(self):
+        """Non-zero count badges are shown."""
+        diff = _make_line_diff("missing_line", ref_text="gone",
+                               reference_index=0)
+        result = _make_result_with_page_diffs([diff])
+        html = build_structure_report(result)
+        assert "1 missing" in html
+
+
+# ===========================================================================
+# Word index label
+# ===========================================================================
+
+
+class TestWordIndexLabel:
+
+    def test_word_level_hunk_uses_word_label(self):
+        """Word-level hunks use 'word N' instead of 'line N'."""
+        result = StructureComparisonResult()
+        result.add_word_difference(DocumentWordDifference(
+            diff_type="word_mismatch",
+            message="changed",
+            ref_words=["old"],
+            cand_words=["new"],
+            ref_start_index=15,
+            ref_end_index=16,
+            cand_start_index=15,
+            cand_end_index=16,
+        ))
+        html = build_structure_report(result)
+        assert "word 15" in html
+        assert "line 15" not in html
+
+    def test_page_level_hunk_uses_line_label(self):
+        """Page-level hunks use 'line N' label."""
+        diff = _make_line_diff("missing_line", ref_text="gone",
+                               reference_index=5)
+        result = _make_result_with_page_diffs([diff])
+        html = build_structure_report(result)
+        assert "line 5" in html
+
+
+# ===========================================================================
+# Context separator
+# ===========================================================================
+
+
+class TestContextSeparator:
+
+    def test_context_uses_pipe_separator(self):
+        """Context items are separated by ' | ' not just spaces."""
+        ref_texts = [f"word_{i}" for i in range(20)]
+        diff = _make_line_diff("missing_line", ref_text="word_10",
+                               reference_index=10)
+        result = _make_result_with_page_diffs([diff])
+        html = build_structure_report(result, reference_texts=ref_texts,
+                                      context_lines=3)
+        assert " | " in html
 
 
 # ===========================================================================

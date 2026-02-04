@@ -150,6 +150,9 @@ def flatten_document_text(structure: DocumentStructure) -> List[str]:
 
 def flatten_document_words(
     structure: DocumentStructure,
+    *,
+    normalize_word_boundaries: bool = False,
+    normalize_ligatures_in_words: bool = False,
 ) -> Tuple[List[str], List[WordToken]]:
     """Extract all words from a document in reading order, ignoring page/line boundaries.
 
@@ -159,6 +162,10 @@ def flatten_document_words(
 
     Args:
         structure: A DocumentStructure containing pages with text blocks and lines.
+        normalize_word_boundaries: When True, merge tokens that were split
+            across line boundaries by connector characters (``/``, ``-``, ``\\``).
+        normalize_ligatures_in_words: When True, replace known typographic
+            ligatures with their ASCII equivalents in each word.
 
     Returns:
         A tuple of:
@@ -189,6 +196,25 @@ def flatten_document_words(
                     )
                     word_index += 1
                 global_line_index += 1
+
+    # Apply ligature normalization to individual words if requested
+    if normalize_ligatures_in_words:
+        from DocTest.TextNormalization import normalize_ligatures
+        words = [normalize_ligatures(w) for w in words]
+        tokens = [
+            WordToken(
+                text=normalize_ligatures(t.text),
+                source_page=t.source_page,
+                source_line_index=t.source_line_index,
+                word_index=t.word_index,
+            )
+            for t in tokens
+        ]
+
+    # Merge words split across line boundaries
+    if normalize_word_boundaries:
+        from DocTest.TextNormalization import merge_split_words
+        words, tokens = merge_split_words(words, tokens)
 
     return words, tokens
 

@@ -228,6 +228,10 @@ class PdfTest(object):
         mask_value = kwargs.pop('mask', None)
         text_mask_patterns_arg = kwargs.pop('text_mask_patterns', None)
         ignore_ligatures = _as_bool(kwargs.pop('ignore_ligatures', False))
+        normalize_word_boundaries = _as_bool(kwargs.pop('normalize_word_boundaries', False), False)
+        compare_order = kwargs.pop('compare_order', 'ordered')
+        if compare_order not in ('ordered', 'unordered'):
+            compare_order = 'ordered'
         check_pdf_text = _as_bool(kwargs.pop('check_pdf_text', False))
 
         # Parse character_replacements from kwargs or use instance default
@@ -472,6 +476,8 @@ class PdfTest(object):
                     check_geometry=check_geometry,
                     check_block_count=check_block_count,
                     header_footer_config=header_footer_config,
+                    normalize_word_boundaries=normalize_word_boundaries,
+                    compare_order=compare_order,
                 )
                 if not structure_result.passed:
                     differences_detected = True
@@ -567,6 +573,8 @@ class PdfTest(object):
             - ``text_mask_patterns``: regex or list of regex strings to skip lines during comparison.
             - ``ignore_ligatures`` (bool, default ``False``): normalise common ligatures (``ﬁ`` → ``fi``) prior to comparison.
             - ``ignore_page_boundaries`` (bool, default ``False``): ignore page breaks and compare text content in reading order across the entire document. When enabled, geometry and block structure are not checked. Useful when font/size changes cause text to reflow across pages.
+            - ``normalize_word_boundaries`` (bool, default ``False``): merge words split across line boundaries by connector characters (``/``, ``-``, ``\\``). Recommended when using ``ignore_page_boundaries``.
+            - ``compare_order`` (str, default ``"ordered"``): comparison strategy for word-level comparison. ``"ordered"`` uses sequence-sensitive matching; ``"unordered"`` uses bag-of-words frequency comparison that ignores word order, useful when text reflows across pages.
             - ``check_geometry`` (bool, default ``True``): when ``False``, skip line position/size comparison. Useful for comparing content when layout may differ. Automatically set to ``False`` when ``ignore_page_boundaries`` is ``True``.
             - ``check_block_count`` (bool, default ``True``): when ``False``, skip block count validation per page. Automatically set to ``False`` when ``ignore_page_boundaries`` is ``True``.
 
@@ -599,6 +607,10 @@ class PdfTest(object):
         mask_value = kwargs.get('mask')
         text_mask_patterns_arg = kwargs.get('text_mask_patterns')
         ignore_ligatures = _as_bool(kwargs.get('ignore_ligatures', False), False)
+        normalize_word_boundaries = _as_bool(kwargs.get('normalize_word_boundaries', False), False)
+        compare_order = kwargs.get('compare_order', 'ordered')
+        if compare_order not in ('ordered', 'unordered'):
+            compare_order = 'ordered'
 
         # Parse character_replacements from kwargs or use instance default
         char_replacements_arg = kwargs.get('character_replacements')
@@ -679,6 +691,8 @@ class PdfTest(object):
                 check_geometry=check_geometry,
                 check_block_count=check_block_count,
                 header_footer_config=header_footer_config,
+                normalize_word_boundaries=normalize_word_boundaries,
+                compare_order=compare_order,
             )
         finally:
             reference_repr.close()
@@ -995,6 +1009,8 @@ class PdfTest(object):
         check_geometry: bool = True,
         check_block_count: bool = True,
         header_footer_config: Optional["HeaderFooterConfig"] = None,
+        normalize_word_boundaries: bool = False,
+        compare_order: str = "ordered",
     ):
         release_reference = False
         release_candidate = False
@@ -1024,6 +1040,9 @@ class PdfTest(object):
                         reference=reference_structure,
                         candidate=candidate_structure,
                         case_sensitive=case_sensitive,
+                        normalize_ligatures=extraction_config.normalize_ligatures,
+                        normalize_word_boundaries=normalize_word_boundaries,
+                        compare_order=compare_order,
                     )
                 else:
                     result = compare_document_text_only(
@@ -1054,10 +1073,22 @@ class PdfTest(object):
             exclusions = []
             if text_mask_patterns:
                 exclusions.extend(f"text_mask: {p.pattern}" for p in text_mask_patterns)
-            if not check_geometry:
-                exclusions.append("check_geometry: False")
-            if not check_block_count:
-                exclusions.append("check_block_count: False")
+            if header_footer_config and header_footer_config.enabled:
+                if header_footer_config.header_scan_height > 0:
+                    exclusions.append(f"header_filter: {header_footer_config.header_scan_height}pt")
+                if header_footer_config.footer_scan_height > 0:
+                    exclusions.append(f"footer_filter: {header_footer_config.footer_scan_height}pt")
+            # Only report disabled checks when explicitly set by the user,
+            # not when auto-disabled by ignore_page_boundaries
+            if not ignore_page_boundaries:
+                if not check_geometry:
+                    exclusions.append("check_geometry: False")
+                if not check_block_count:
+                    exclusions.append("check_block_count: False")
+            if normalize_word_boundaries:
+                exclusions.append("normalize_word_boundaries: True")
+            if compare_order == "unordered":
+                exclusions.append("compare_order: unordered")
 
             self._log_structure_result(
                 result,

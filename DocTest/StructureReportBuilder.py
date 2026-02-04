@@ -25,7 +25,7 @@ __all__ = [
 
 DEFAULT_CONTEXT_LINES = 3
 MAX_TEXT_DISPLAY_LENGTH = 120
-MAX_HUNKS_BEFORE_COLLAPSE = 50
+MAX_HUNKS_BEFORE_COLLAPSE = 20
 
 
 @dataclass
@@ -97,11 +97,12 @@ def _get_diff_display(diff: Any) -> Tuple[str, str, Optional[str], Optional[str]
 
 
 _CATEGORY_STYLES = {
-    "missing": ("#fdd", "-"),
-    "extra": ("#dfd", "+"),
-    "mismatch": ("#ffd", "~"),
-    "geometry": ("#eee", "\u0394"),  # delta symbol
-    "other": ("#eee", "!"),
+    # (background, text_color, symbol) — chosen for WCAG AA contrast
+    "missing": ("#f8d7da", "#721c24", "-"),
+    "extra": ("#d4edda", "#155724", "+"),
+    "mismatch": ("#fff3cd", "#856404", "~"),
+    "geometry": ("#e2e3e5", "#383d41", "\u0394"),  # delta symbol
+    "other": ("#e2e3e5", "#383d41", "!"),
 }
 
 
@@ -143,10 +144,10 @@ def _compute_summary(result: StructureComparisonResult) -> ReportSummary:
 def _render_diff_html(diff: Any) -> str:
     """Render a single difference as an HTML div with color coding."""
     category, message, ref_text, cand_text = _get_diff_display(diff)
-    bg, symbol = _CATEGORY_STYLES.get(category, ("#eee", "?"))
+    bg, fg, symbol = _CATEGORY_STYLES.get(category, ("#e2e3e5", "#383d41", "?"))
 
     parts = []
-    parts.append(f'<div style="background:{bg};padding:1px 4px;margin:1px 0;">')
+    parts.append(f'<div style="background:{bg};color:{fg};padding:1px 4px;margin:1px 0;">')
 
     if category == "mismatch" and ref_text and cand_text:
         parts.append(f'<b>{_escape(symbol)}</b> ref: &quot;{_escape(_truncate(ref_text))}&quot;')
@@ -171,7 +172,7 @@ def _render_diff_html(diff: Any) -> str:
 def _render_diff_plain(diff: Any) -> str:
     """Render a single difference as plain text."""
     category, message, ref_text, cand_text = _get_diff_display(diff)
-    _, symbol = _CATEGORY_STYLES.get(category, ("", "?"))
+    _, _, symbol = _CATEGORY_STYLES.get(category, ("", "", "?"))
 
     if category == "mismatch" and ref_text and cand_text:
         return f'  {symbol} ref: "{_truncate(ref_text)}"\n    cand: "{_truncate(cand_text)}"'
@@ -181,6 +182,29 @@ def _render_diff_plain(diff: Any) -> str:
         return f'  {symbol} "{_truncate(cand_text)}"'
     else:
         return f'  {symbol} {_truncate(message)}'
+
+
+def _collect_all_diffs(result: StructureComparisonResult) -> List[Tuple[Any, str]]:
+    """Collect all differences with location labels for the overview table."""
+    items: List[Tuple[Any, str]] = []
+    for page_num in sorted(result.page_differences.keys()):
+        for d in result.page_differences[page_num]:
+            loc = f"Page {page_num}"
+            if isinstance(d, LineDifference):
+                idx = d.reference_index if d.reference_index is not None else d.candidate_index
+                if idx is not None:
+                    loc += f", line {idx}"
+            items.append((d, loc))
+    for d in result.document_differences:
+        idx = d.ref_index if d.ref_index is not None else d.cand_index
+        loc = f"line {idx}" if idx is not None else "document"
+        items.append((d, loc))
+    if hasattr(result, 'word_differences'):
+        for d in result.word_differences:
+            idx = d.ref_start_index if d.ref_start_index is not None else d.cand_start_index
+            loc = f"word {idx}" if idx is not None else "document"
+            items.append((d, loc))
+    return items
 
 
 def _get_diff_index(diff: Any) -> int:
@@ -280,19 +304,20 @@ def build_structure_report(
     summary = _compute_summary(result)
     parts = []
 
-    # Outer container
-    parts.append('<div style="font-family:monospace;font-size:12px;border:1px solid #ccc;'
-                 'border-radius:4px;margin:4px 0;max-width:100%;overflow-x:auto;">')
+    # Outer container — explicit bg+color so report is self-contained in both light/dark mode
+    parts.append('<div style="font-family:monospace;font-size:12px;border:1px solid #adb5bd;'
+                 'border-radius:4px;margin:4px 0;max-width:100%;overflow-x:auto;'
+                 'background:#fff;color:#212529;">')
 
     # Title
-    parts.append('<div style="background:#f0f0f0;padding:8px 12px;border-bottom:1px solid #ccc;'
+    parts.append('<div style="background:#343a40;color:#fff;padding:8px 12px;border-bottom:1px solid #adb5bd;'
                  'font-weight:bold;font-size:13px;">PDF Structure Comparison Report</div>')
 
     # Metadata
     if metadata:
-        parts.append('<div style="padding:6px 12px;border-bottom:1px solid #eee;font-size:11px;">')
-        parts.append(f'<div><b>Reference:</b> {_escape(metadata.reference_name)}</div>')
-        parts.append(f'<div><b>Candidate:</b> {_escape(metadata.candidate_name)}</div>')
+        parts.append('<div style="padding:6px 12px;border-bottom:1px solid #dee2e6;font-size:11px;color:#212529;">')
+        parts.append(f'<div style="word-break:break-all;"><b>Reference:</b> {_escape(metadata.reference_name)}</div>')
+        parts.append(f'<div style="word-break:break-all;"><b>Candidate:</b> {_escape(metadata.candidate_name)}</div>')
         mode_str = _escape(metadata.comparison_mode)
         page_str = ""
         if metadata.page_count_ref is not None or metadata.page_count_cand is not None:
@@ -304,19 +329,47 @@ def build_structure_report(
         parts.append('</div>')
 
     # Summary
-    parts.append('<div style="padding:8px 12px;border-bottom:1px solid #ccc;background:#fafafa;">')
+    parts.append('<div style="padding:8px 12px;border-bottom:1px solid #adb5bd;background:#f8f9fa;color:#212529;">')
     parts.append(f'<div><b>{summary.total_differences}</b> difference(s)</div>')
     parts.append('<div style="margin-top:4px;">')
-    parts.append(f'<span style="background:#fdd;padding:2px 6px;border-radius:2px;margin-right:4px;">{summary.missing_count} missing</span>')
-    parts.append(f'<span style="background:#dfd;padding:2px 6px;border-radius:2px;margin-right:4px;">{summary.extra_count} extra</span>')
-    parts.append(f'<span style="background:#ffd;padding:2px 6px;border-radius:2px;margin-right:4px;">{summary.mismatch_count} mismatch</span>')
+    if summary.missing_count:
+        parts.append(f'<span style="background:#f8d7da;color:#721c24;padding:2px 6px;border-radius:2px;margin-right:4px;">{summary.missing_count} missing</span>')
+    if summary.extra_count:
+        parts.append(f'<span style="background:#d4edda;color:#155724;padding:2px 6px;border-radius:2px;margin-right:4px;">{summary.extra_count} extra</span>')
+    if summary.mismatch_count:
+        parts.append(f'<span style="background:#fff3cd;color:#856404;padding:2px 6px;border-radius:2px;margin-right:4px;">{summary.mismatch_count} mismatch</span>')
     if summary.geometry_count:
-        parts.append(f'<span style="background:#eee;padding:2px 6px;border-radius:2px;margin-right:4px;">{summary.geometry_count} geometry</span>')
+        parts.append(f'<span style="background:#e2e3e5;color:#383d41;padding:2px 6px;border-radius:2px;margin-right:4px;">{summary.geometry_count} geometry</span>')
     if summary.other_count:
-        parts.append(f'<span style="background:#eee;padding:2px 6px;border-radius:2px;">{summary.other_count} other</span>')
+        parts.append(f'<span style="background:#e2e3e5;color:#383d41;padding:2px 6px;border-radius:2px;">{summary.other_count} other</span>')
     parts.append('</div></div>')
 
-    # Content sections
+    # Differences overview table
+    all_diffs_for_table = _collect_all_diffs(result)
+    if all_diffs_for_table:
+        parts.append('<div style="padding:8px 12px;border-bottom:1px solid #adb5bd;">')
+        parts.append('<table style="width:100%;border-collapse:collapse;font-size:11px;">')
+        parts.append('<tr style="background:#495057;color:#fff;text-align:left;">'
+                     '<th style="padding:4px 6px;border:1px solid #6c757d;">#</th>'
+                     '<th style="padding:4px 6px;border:1px solid #6c757d;">Type</th>'
+                     '<th style="padding:4px 6px;border:1px solid #6c757d;">Reference</th>'
+                     '<th style="padding:4px 6px;border:1px solid #6c757d;">Candidate</th>'
+                     '<th style="padding:4px 6px;border:1px solid #6c757d;">Location</th></tr>')
+        for row_idx, (diff, location) in enumerate(all_diffs_for_table, 1):
+            category, _, ref_text, cand_text = _get_diff_display(diff)
+            bg, fg, symbol = _CATEGORY_STYLES.get(category, ("#e2e3e5", "#383d41", "?"))
+            ref_cell = _escape(_truncate(ref_text, 60)) if ref_text else "&mdash;"
+            cand_cell = _escape(_truncate(cand_text, 60)) if cand_text else "&mdash;"
+            parts.append(
+                f'<tr style="background:{bg};color:{fg};">'
+                f'<td style="padding:3px 6px;border:1px solid #bbb;">{row_idx}</td>'
+                f'<td style="padding:3px 6px;border:1px solid #bbb;">{_escape(symbol)} {_escape(category)}</td>'
+                f'<td style="padding:3px 6px;border:1px solid #bbb;word-break:break-all;">{ref_cell}</td>'
+                f'<td style="padding:3px 6px;border:1px solid #bbb;word-break:break-all;">{cand_cell}</td>'
+                f'<td style="padding:3px 6px;border:1px solid #bbb;">{_escape(location)}</td></tr>')
+        parts.append('</table></div>')
+
+    # Content sections (hunk detail)
     parts.append('<div style="padding:4px 12px;">')
 
     total_hunks = 0
@@ -327,41 +380,45 @@ def build_structure_report(
             diffs = result.page_differences[page_num]
             hunks = _group_into_hunks(diffs, context_lines, reference_texts)
             total_hunks += len(hunks)
-            parts.append(f'<div style="font-weight:bold;margin:8px 0 4px;border-bottom:1px solid #eee;padding-bottom:4px;">'
+            parts.append(f'<div style="font-weight:bold;margin:8px 0 4px;border-bottom:1px solid #dee2e6;padding-bottom:4px;color:#212529;">'
                          f'Page {page_num} &mdash; {len(hunks)} hunk(s), {len(diffs)} difference(s)</div>')
             for i, hunk in enumerate(hunks):
                 if total_hunks > MAX_HUNKS_BEFORE_COLLAPSE and i > 0:
-                    parts.append(f'<div style="color:#888;font-style:italic;margin:4px 0;">... and more hunks (showing first {MAX_HUNKS_BEFORE_COLLAPSE})</div>')
+                    parts.append(f'<div style="color:#6c757d;font-style:italic;margin:4px 0;">... and more hunks (showing first {MAX_HUNKS_BEFORE_COLLAPSE})</div>')
                     break
-                _render_hunk_to_parts(parts, hunk, i + 1)
+                _render_hunk_to_parts(parts, hunk, i + 1, index_label="line")
 
     # Document-level differences
     if result.document_differences:
         hunks = _group_into_hunks(result.document_differences, context_lines, reference_texts)
         total_hunks += len(hunks)
-        parts.append(f'<div style="font-weight:bold;margin:8px 0 4px;border-bottom:1px solid #eee;padding-bottom:4px;">'
+        parts.append(f'<div style="font-weight:bold;margin:8px 0 4px;border-bottom:1px solid #dee2e6;padding-bottom:4px;color:#212529;">'
                      f'Document (text-only) &mdash; {len(hunks)} hunk(s), {len(result.document_differences)} difference(s)</div>')
         for i, hunk in enumerate(hunks):
-            _render_hunk_to_parts(parts, hunk, i + 1)
+            if total_hunks > MAX_HUNKS_BEFORE_COLLAPSE:
+                remaining = len(hunks) - i
+                parts.append(f'<div style="color:#6c757d;font-style:italic;margin:4px 0;">... {remaining} more hunk(s) not shown</div>')
+                break
+            _render_hunk_to_parts(parts, hunk, i + 1, index_label="line")
 
     # Word-level differences
     if hasattr(result, 'word_differences') and result.word_differences:
         hunks = _group_into_hunks(result.word_differences, context_lines, reference_texts)
         total_hunks += len(hunks)
-        parts.append(f'<div style="font-weight:bold;margin:8px 0 4px;border-bottom:1px solid #eee;padding-bottom:4px;">'
+        parts.append(f'<div style="font-weight:bold;margin:8px 0 4px;border-bottom:1px solid #dee2e6;padding-bottom:4px;color:#212529;">'
                      f'Document (word-level) &mdash; {len(hunks)} hunk(s), {len(result.word_differences)} difference(s)</div>')
         rendered = 0
         for i, hunk in enumerate(hunks):
             if rendered >= MAX_HUNKS_BEFORE_COLLAPSE:
                 remaining = len(hunks) - rendered
-                parts.append(f'<div style="color:#888;font-style:italic;margin:4px 0;">... {remaining} more hunk(s) not shown</div>')
+                parts.append(f'<div style="color:#6c757d;font-style:italic;margin:4px 0;">... {remaining} more hunk(s) not shown</div>')
                 break
-            _render_hunk_to_parts(parts, hunk, i + 1)
+            _render_hunk_to_parts(parts, hunk, i + 1, index_label="word")
             rendered += 1
 
     # Summary line
     if result.summary:
-        parts.append('<div style="margin-top:8px;padding-top:4px;border-top:1px solid #eee;color:#666;font-size:11px;">')
+        parts.append('<div style="margin-top:8px;padding-top:4px;border-top:1px solid #dee2e6;color:#495057;font-size:11px;">')
         for entry in result.summary:
             parts.append(f'<div>{_escape(str(entry))}</div>')
         parts.append('</div>')
@@ -373,19 +430,22 @@ def build_structure_report(
     return "\n".join(parts)
 
 
-def _render_hunk_to_parts(parts: List[str], hunk: dict, hunk_number: int) -> None:
+def _render_hunk_to_parts(parts: List[str], hunk: dict, hunk_number: int, index_label: str = "line") -> None:
     """Render a hunk into the HTML parts list."""
     start = hunk["start_index"]
     end = hunk["end_index"]
-    label = f"line {start}" if start == end else f"lines {start}&ndash;{end}"
+    if start == end:
+        label = f"{index_label} {start}"
+    else:
+        label = f"{index_label}s {start}&ndash;{end}"
 
-    parts.append(f'<div style="margin:4px 0;padding:4px 8px;border-left:3px solid #888;background:#fafafa;">')
-    parts.append(f'<div style="font-size:10px;color:#888;margin-bottom:2px;">Hunk {hunk_number} ({label})</div>')
+    parts.append(f'<div style="margin:4px 0;padding:4px 8px;border-left:3px solid #6c757d;background:#f8f9fa;">')
+    parts.append(f'<div style="font-size:10px;color:#6c757d;margin-bottom:2px;">Hunk {hunk_number} ({label})</div>')
 
     # Context before
     if hunk["context_before"]:
-        ctx = " ".join(_truncate(t, 40) for t in hunk["context_before"])
-        parts.append(f'<div style="color:#888;">...{_escape(ctx)}...</div>')
+        ctx = " | ".join(_truncate(t, 40) for t in hunk["context_before"])
+        parts.append(f'<div style="color:#6c757d;font-size:11px;padding:1px 0;">... {_escape(ctx)} ...</div>')
 
     # Differences
     for diff in hunk["differences"]:
@@ -393,8 +453,8 @@ def _render_hunk_to_parts(parts: List[str], hunk: dict, hunk_number: int) -> Non
 
     # Context after
     if hunk["context_after"]:
-        ctx = " ".join(_truncate(t, 40) for t in hunk["context_after"])
-        parts.append(f'<div style="color:#888;">...{_escape(ctx)}...</div>')
+        ctx = " | ".join(_truncate(t, 40) for t in hunk["context_after"])
+        parts.append(f'<div style="color:#6c757d;font-size:11px;padding:1px 0;">... {_escape(ctx)} ...</div>')
 
     parts.append('</div>')
 
@@ -442,14 +502,20 @@ def build_structure_report_plain_text(
             hunks = _group_into_hunks(diffs, context_lines, reference_texts)
             lines.append(f"\nPage {page_num} -- {len(hunks)} hunk(s), {len(diffs)} difference(s)")
             for i, hunk in enumerate(hunks):
-                _render_hunk_plain(lines, hunk, i + 1)
+                if i >= MAX_HUNKS_BEFORE_COLLAPSE:
+                    lines.append(f"  ... {len(hunks) - i} more hunk(s) not shown")
+                    break
+                _render_hunk_plain(lines, hunk, i + 1, index_label="line")
 
     # Document-level
     if result.document_differences:
         hunks = _group_into_hunks(result.document_differences, context_lines, reference_texts)
         lines.append(f"\nDocument (text-only) -- {len(hunks)} hunk(s), {len(result.document_differences)} difference(s)")
         for i, hunk in enumerate(hunks):
-            _render_hunk_plain(lines, hunk, i + 1)
+            if i >= MAX_HUNKS_BEFORE_COLLAPSE:
+                lines.append(f"  ... {len(hunks) - i} more hunk(s) not shown")
+                break
+            _render_hunk_plain(lines, hunk, i + 1, index_label="line")
 
     # Word-level
     if hasattr(result, 'word_differences') and result.word_differences:
@@ -459,7 +525,7 @@ def build_structure_report_plain_text(
             if i >= MAX_HUNKS_BEFORE_COLLAPSE:
                 lines.append(f"  ... {len(hunks) - i} more hunk(s) not shown")
                 break
-            _render_hunk_plain(lines, hunk, i + 1)
+            _render_hunk_plain(lines, hunk, i + 1, index_label="word")
 
     if result.summary:
         lines.append("")
@@ -470,20 +536,23 @@ def build_structure_report_plain_text(
     return "\n".join(lines)
 
 
-def _render_hunk_plain(lines: List[str], hunk: dict, hunk_number: int) -> None:
+def _render_hunk_plain(lines: List[str], hunk: dict, hunk_number: int, index_label: str = "line") -> None:
     """Render a hunk into the plain text lines list."""
     start = hunk["start_index"]
     end = hunk["end_index"]
-    label = f"line {start}" if start == end else f"lines {start}-{end}"
+    if start == end:
+        label = f"{index_label} {start}"
+    else:
+        label = f"{index_label}s {start}-{end}"
     lines.append(f"  Hunk {hunk_number} ({label})")
 
     if hunk["context_before"]:
-        ctx = " ".join(_truncate(t, 40) for t in hunk["context_before"])
-        lines.append(f"  ...{ctx}...")
+        ctx = " | ".join(_truncate(t, 40) for t in hunk["context_before"])
+        lines.append(f"  ... {ctx} ...")
 
     for diff in hunk["differences"]:
         lines.append(_render_diff_plain(diff))
 
     if hunk["context_after"]:
-        ctx = " ".join(_truncate(t, 40) for t in hunk["context_after"])
-        lines.append(f"  ...{ctx}...")
+        ctx = " | ".join(_truncate(t, 40) for t in hunk["context_after"])
+        lines.append(f"  ... {ctx} ...")
