@@ -63,3 +63,8 @@ ai = ["pydantic-ai-slim", "python-dotenv"]
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.13.4",
+]
