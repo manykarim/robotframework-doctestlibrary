@@ -66,10 +66,12 @@ jobs:
   test:
     needs: smoke-no-ai
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DOCTEST_LLM_MODEL: ${{ vars.DOCTEST_LLM_MODEL }}
       DOCTEST_LLM_VISION_MODEL: ${{ vars.DOCTEST_LLM_VISION_MODEL }}
       DOCTEST_LLM_PROVIDER: ${{ vars.DOCTEST_LLM_PROVIDER }}
+      DOCTEST_LLM_ENABLED=true
+      DOCTEST_LLM_API_KEY=${{ secrets.LLM_API_KEY }}
+      DOCTEST_LLM_BASE_URL=https://openrouter.ai/api/v1
     runs-on: ubuntu-latest
     strategy:
       matrix:
