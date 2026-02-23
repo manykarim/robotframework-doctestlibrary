@@ -966,7 +966,7 @@ class VisualTest:
             print(str(exc))
             return None
         except Exception as exc:  # pragma: no cover - defensive
-            LOG.warning("Failed to prepare LLM payload: %s", exc)
+            print(f"Failed to prepare LLM payload: {exc}")
             return None
 
         try:
@@ -981,7 +981,7 @@ class VisualTest:
             print(str(exc))
             return None
         except Exception as exc:  # pragma: no cover - defensive
-            LOG.warning("LLM evaluation failed: %s", exc)
+            print(f"LLM evaluation failed: {exc}")
             return None
         return decision
 
