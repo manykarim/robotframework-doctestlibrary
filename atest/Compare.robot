@@ -1,5 +1,6 @@
 *** Settings ***
-Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png    #pdf_rendering_engine=ghostscript
+Library    DocTest.VisualTest    show_diff=true    take_screenshots=true    screenshot_format=png  
+...    run_keyword_on_warn_threshold=Set Tags \ test:warn    #pdf_rendering_engine=ghostscript
 Library    Collections
 Library    String
 
@@ -129,3 +130,22 @@ Compare Images with Combined Watermarks
     Log    Testing combined watermarks feature - parameter acceptance
     @{single_watermark}    Create List    testdata/Beach_date_mask_full.png
     Compare Images    testdata/Beach_date.png    testdata/Beach_left.png    watermark_file=${single_watermark}
+
+
+Compare Two Similar Map Images
+    Compare Images    testdata/map_orig.png   testdata/map_orig.png
+
+Compare Two Map Images With Differences
+    Run Keyword And Expect Error   The compared images are different.  
+    ...    Compare Images   testdata/map_orig.png   testdata/map_3_diff.png
+
+Compare Two Map Images With Differences And Passing Warn Threshold
+    Compare Images   testdata/map_orig.png   testdata/map_3_diff.png
+    ...      threshold_warn=0.001  threshold=0.002
+
+
+Compare Two Map Images With Differences And Exceeding Warn Threshold
+    Run Keyword And Expect Error   The compared images are different.  
+    ...    Compare Images   testdata/map_orig.png   testdata/map_29pct_diff.png
+    ...    threshold_warn=0.001  threshold=0.002
+
