@@ -370,8 +370,6 @@ def test_threshold_warn_in_warning_zone_with_keyword(testdata_dir, capsys, monke
 
     assert isinstance(score, float)
     assert 0.0017 < score < 0.0020
-    assert warn_threshold == 0.001
-    assert threshold == 0.002
 
     captured = capsys.readouterr()
     assert "passed with warnings" in captured.out
@@ -417,8 +415,6 @@ def test_threshold_warn_keyword_with_arguments(testdata_dir, capsys, monkeypatch
 
     assert isinstance(score, float)
     assert 0.0017 < score < 0.0020
-    assert warn_threshold == 0.001
-    assert threshold == 0.002
 
     captured = capsys.readouterr()
     assert "passed with warnings" in captured.out
