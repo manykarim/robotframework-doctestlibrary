@@ -699,6 +699,7 @@ class VisualTest:
                                 f"Reference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}"
                             )
 
+                movement_output_buffer = []
                 if move_tolerance and int(move_tolerance) > 0 and not similar:
                     diff_rectangles = (
                         diff_rectangles_cache
@@ -732,6 +733,7 @@ class VisualTest:
                         auto_detection_method == "text" or auto_use_pdf_content
                     )
 
+                    movement_output_buffer = []
                     if text_based_detection:
                         similar = self._check_movement_with_text(
                             ref_page=ref_page,
@@ -741,6 +743,7 @@ class VisualTest:
                             detection_method=auto_detection_method,
                             use_pdf_content=auto_use_pdf_content,
                             force_ocr=force_ocr,
+                            output_buffer=movement_output_buffer,
                         )
                     else:
                         similar = self._check_movement_with_images(
@@ -749,6 +752,7 @@ class VisualTest:
                             diff_rectangles=diff_rectangles,
                             move_tolerance=move_tolerance,
                             detection_method=auto_detection_method,
+                            output_buffer=movement_output_buffer,
                         )
 
                 if not similar:
@@ -803,6 +807,15 @@ class VisualTest:
                         absolute_diff, suffix="_absolute_diff", original_size=False
                     )
 
+                    # Flush buffered movement output (messages + screenshots) after overview
+                    for entry in movement_output_buffer:
+                        if entry[0] == "print":
+                            print(entry[1])
+                        elif entry[0] == "screenshot":
+                            self.add_screenshot_to_log(
+                                entry[1], entry[2], original_size=entry[3]
+                            )
+
                     if diff_rectangles_cache is None:
                         diff_rectangles_cache = self.get_diff_rectangles(absolute_diff)
 
@@ -821,6 +834,12 @@ class VisualTest:
                             "notes": page_notes[:],
                         }
                     )
+                else:
+                    # Movement was within tolerance (similar=True) — flush buffered
+                    # messages so they still appear in the Robot Framework log.
+                    for entry in movement_output_buffer:
+                        if entry[0] == "print":
+                            print(entry[1])
 
             llm_decision = None
             llm_label_enum = None
@@ -1000,10 +1019,23 @@ class VisualTest:
         detection_method: str,
         use_pdf_content: bool,
         force_ocr: bool,
+        output_buffer: list = None,
     ) -> bool:
         if not diff_rectangles:
             print("No difference areas detected for movement tolerance check.")
             return True
+
+        def _log_screenshot(image, suffix, original_size=False):
+            if output_buffer is not None:
+                output_buffer.append(("screenshot", image, suffix, original_size))
+            else:
+                self.add_screenshot_to_log(image, suffix, original_size=original_size)
+
+        def _log_message(msg):
+            if output_buffer is not None:
+                output_buffer.append(("print", msg))
+            else:
+                print(msg)
 
         failed_areas = []
         prefer_pdf = use_pdf_content or (
@@ -1016,14 +1048,14 @@ class VisualTest:
             diff_area_reference = ref_page.get_area(rect)
             diff_area_candidate = cand_page.get_area(rect)
 
-            self.add_screenshot_to_log(
+            _log_screenshot(
                 diff_area_reference,
                 "_page_"
                 + str(ref_page.page_number + 1)
                 + "_diff_area_reference_"
                 + str(index),
             )
-            self.add_screenshot_to_log(
+            _log_screenshot(
                 diff_area_candidate,
                 "_page_"
                 + str(ref_page.page_number + 1)
@@ -1060,7 +1092,7 @@ class VisualTest:
 
             if not ref_words or not cand_words:
                 failed_areas.append((rect, "no textual elements found"))
-                self.add_screenshot_to_log(
+                _log_screenshot(
                     self.blend_two_images(diff_area_reference, diff_area_candidate),
                     suffix="_moved_area",
                     original_size=False,
@@ -1070,7 +1102,7 @@ class VisualTest:
             measurement = self._measure_text_movement(ref_words, cand_words)
             if measurement["status"] != "ok":
                 failed_areas.append((rect, measurement["message"]))
-                self.add_screenshot_to_log(
+                _log_screenshot(
                     self.blend_two_images(diff_area_reference, diff_area_candidate),
                     suffix="_moved_area",
                     original_size=False,
@@ -1078,31 +1110,31 @@ class VisualTest:
                 continue
 
             distance = measurement["distance"]
-            self.add_screenshot_to_log(
+            _log_screenshot(
                 self.blend_two_images(diff_area_reference, diff_area_candidate),
                 "_diff_area_blended",
             )
 
             if distance > move_tolerance + epsilon:
                 failed_areas.append((rect, round(distance, 3)))
-                print(
+                _log_message(
                     f"Area {rect} is moved {distance:.2f} pixels which is more than the tolerated {move_tolerance} pixels."
                 )
             else:
                 source = ref_source or cand_source or "text"
-                print(
+                _log_message(
                     f"Area {rect} movement (max {distance:.2f}px) detected via {source}; within tolerance ({move_tolerance}px)."
                 )
 
         if failed_areas:
-            print(
+            _log_message(
                 f"Movement tolerance check failed for {len(failed_areas)} area(s) out of {len(diff_rectangles)} total areas."
             )
             for rect, reason in failed_areas:
-                print(f"  - Area {rect}: {reason}")
-            raise AssertionError("The compared images are different.")
+                _log_message(f"  - Area {rect}: {reason}")
+            return False
 
-        print(
+        _log_message(
             f"All {len(diff_rectangles)} moved area(s) are within the {move_tolerance} pixel tolerance."
         )
         return True
@@ -1244,10 +1276,23 @@ class VisualTest:
         diff_rectangles,
         move_tolerance: int,
         detection_method: str,
+        output_buffer: list = None,
     ) -> bool:
         if not diff_rectangles:
             print("No difference areas detected for movement tolerance check.")
             return True
+
+        def _log_screenshot(image, suffix, original_size=False):
+            if output_buffer is not None:
+                output_buffer.append(("screenshot", image, suffix, original_size))
+            else:
+                self.add_screenshot_to_log(image, suffix, original_size=original_size)
+
+        def _log_message(msg):
+            if output_buffer is not None:
+                output_buffer.append(("print", msg))
+            else:
+                print(msg)
 
         failed_areas = []
         fallback_detections = 0
@@ -1281,55 +1326,55 @@ class VisualTest:
 
                     if is_likely_fallback:
                         fallback_detections += 1
-                        print(
+                        _log_message(
                             f"Area {rect}: Detected likely content removal (fallback distance: {distance:.2f}px, method: {result.get('method', 'unknown')})"
                         )
 
                     if distance > move_tolerance + epsilon:
                         failed_areas.append((rect, round(distance, 3)))
-                        print(
+                        _log_message(
                             f"Area {rect} is moved {distance:.2f} pixels which is more than the tolerated {move_tolerance} pixels."
                         )
-                        self.add_screenshot_to_log(
+                        _log_screenshot(
                             self.blend_two_images(reference_area, candidate_area),
                             suffix="_moved_area",
                             original_size=False,
                         )
                     else:
-                        print(f"Area {rect} is moved {distance:.2f} pixels.")
+                        _log_message(f"Area {rect} is moved {distance:.2f} pixels.")
                 else:
                     failed_areas.append((rect, "detection_failed"))
-                    print(
+                    _log_message(
                         f"Area {rect} movement detection failed - assuming movement exceeds tolerance."
                     )
-                    self.add_screenshot_to_log(
+                    _log_screenshot(
                         self.blend_two_images(reference_area, candidate_area),
                         suffix="_moved_area",
                         original_size=False,
                     )
             except Exception as exc:
-                print(f"Could not compare areas: {exc}")
+                _log_message(f"Could not compare areas: {exc}")
                 failed_areas.append((rect, f"error: {str(exc)}"))
-                self.add_screenshot_to_log(
+                _log_screenshot(
                     self.blend_two_images(reference_area, candidate_area),
                     suffix="_moved_area",
                     original_size=False,
                 )
 
         if failed_areas:
-            print(
+            _log_message(
                 f"Movement tolerance check failed for {len(failed_areas)} area(s) out of {len(diff_rectangles)} total areas."
             )
             for rect, reason in failed_areas:
-                print(f"  - Area {rect}: {reason}")
-            raise AssertionError("The compared images are different.")
+                _log_message(f"  - Area {rect}: {reason}")
+            return False
 
         if fallback_detections:
-            print(
+            _log_message(
                 f"{fallback_detections} out of {len(diff_rectangles)} area(s) required fallback movement detection."
             )
 
-        print(
+        _log_message(
             f"All {len(diff_rectangles)} moved area(s) are within the {move_tolerance} pixel tolerance."
         )
         return True
