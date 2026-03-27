@@ -80,3 +80,9 @@ RELEASE*.md
 
 # Models and datasets
 *.pb
+
+# Local configuration and research files
+.claude-flow/
+.claude/
+.*cache/
+research/
