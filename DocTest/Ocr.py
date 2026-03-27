@@ -1,3 +1,4 @@
+import logging
 import time
 import os
 import cv2
@@ -8,6 +9,8 @@ from pytesseract import Output
 import urllib
 import re
 import unicodedata
+
+logger = logging.getLogger(__name__)
 
 PYTESSERACT_CONFIDENCE=20
 
@@ -143,7 +146,7 @@ class EastTextExtractor:
         end = time.time()
 
         # show timing information on text prediction
-        print('[INFO] text detection took {:.6f} seconds'.format(end - start))
+        logger.info('text detection took %.6f seconds', end - start)
         return (scores, geometry)
 
     def _load_assets(self):
@@ -151,7 +154,7 @@ class EastTextExtractor:
         start = time.time()
         self.east_net = cv2.dnn.readNet(self.east)
         end = time.time()
-        print('[INFO] Loaded EAST text detector {:.6f} seconds ...'.format(end - start))
+        logger.info('Loaded EAST text detector %.6f seconds ...', end - start)
 
     def _get_east(self):
         if os.path.exists(self.east):
@@ -165,7 +168,7 @@ class EastTextExtractor:
         # check if file abs_east_model_path exists
         if os.path.isfile(data_file) is False:
             # Download from url https://raw.githubusercontent.com/oyyd/frozen_east_text_detection.pb/master/frozen_east_text_detection.pb
-            print("Downloading frozen_east_text_detection.pb from url")
+            logger.info("Downloading frozen_east_text_detection.pb from url")
             url = "https://raw.githubusercontent.com/oyyd/frozen_east_text_detection.pb/master/frozen_east_text_detection.pb"
             urllib.request.urlretrieve(url, data_file)
 

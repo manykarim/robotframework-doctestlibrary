@@ -1,7 +1,8 @@
+import logging
 from inspect import signature
-from pprint import pprint, pformat
+from pprint import pformat
 from deepdiff import DeepDiff
-from robot.api import logger
+from robot.api import logger as robot_logger
 from robot.api.deco import keyword, library
 import fitz
 import json
@@ -33,6 +34,8 @@ else:  # pragma: no cover - runtime fallback
     LLMDecisionLabel = Any  # type: ignore[misc, assignment]
 
 
+LOG = logging.getLogger(__name__)
+
 _PDF_LLM_RUNTIME: Optional[Tuple[Any, Any, Any]] = None
 
 
@@ -59,7 +62,7 @@ def _load_pdf_llm_runtime() -> Tuple[Any, Any, Any]:
     try:
         from DocTest.llm.client import assess_pdf_diff, create_binary_content
         from DocTest.llm.types import LLMDecisionLabel as _LLMDecisionLabel
-    except Exception as exc:  # pragma: no cover - optional dependency missing
+    except ImportError as exc:  # pragma: no cover - optional dependency missing
         raise LLMDependencyError() from exc
     _PDF_LLM_RUNTIME = (assess_pdf_diff, create_binary_content, _LLMDecisionLabel)
     return _PDF_LLM_RUNTIME
@@ -127,7 +130,7 @@ class PdfTest(object):
                 if isinstance(parsed, dict):
                     return parsed
             except json.JSONDecodeError:
-                logger.warn(f"Invalid character_replacements JSON: {value}")
+                robot_logger.warn(f"Invalid character_replacements JSON: {value}")
         return None
     
     @keyword
@@ -309,11 +312,11 @@ class PdfTest(object):
             text_mask_patterns_arg,
         )
         for warning in mask_warnings:
-            logger.warn(warning)
+            robot_logger.warn(warning)
 
         compiled_text_patterns, pattern_warnings = self._compile_text_mask_patterns(text_pattern_values)
         for warning in pattern_warnings:
-            logger.warn(warning)
+            robot_logger.warn(warning)
 
         mask_applied = bool(mask_file or mask_payload)
         llm_general_notes.append(f"mask_applied={'yes' if mask_applied else 'no'}")
@@ -360,8 +363,8 @@ class PdfTest(object):
             def _record_diff(facet: str, description: str, diff_payload: Any):
                 nonlocal differences_detected
                 differences_detected = True
-                print(description)
-                pprint(diff_payload, width=200)
+                robot_logger.info(description)
+                robot_logger.info(pformat(diff_payload, width=200))
                 llm_differences.append(
                     {
                         "facet": facet,
@@ -490,7 +493,7 @@ class PdfTest(object):
                         _load_pdf_llm_runtime()
                     )
                 except LLMDependencyError as exc:
-                    print(str(exc))
+                    robot_logger.warn(str(exc))
                 else:
                     llm_decision = self._handle_llm_for_pdf_differences(
                         reference_document=reference_document,
@@ -504,19 +507,18 @@ class PdfTest(object):
                     )
                 if llm_decision:
                     decision_value = _coerce_label_value(llm_decision.decision)
-                    print(
-                        f"LLM decision: {decision_value} "
-                        f"(confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
+                    robot_logger.info(
+                        f"LLM decision: {decision_value} (confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
                     )
                     if llm_decision.notes:
-                        print(f"LLM notes: {llm_decision.notes}")
+                        robot_logger.info(f"LLM notes: {llm_decision.notes}")
                     if llm_override_result and llm_decision.is_positive:
-                        print("LLM approved PDF differences. Overriding baseline failure.")
+                        robot_logger.info("LLM approved PDF differences. Overriding baseline failure.")
                         differences_detected = False
                     elif _decision_equals_flag(llm_decision.decision, llm_label_enum):
-                        print("LLM returned FLAG - keeping original PDF comparison result.")
+                        robot_logger.info("LLM returned FLAG - keeping original PDF comparison result.")
                     elif not llm_decision.is_positive and llm_override_result:
-                        print("LLM rejected PDF differences. Baseline failure will stand.")
+                        robot_logger.info("LLM rejected PDF differences. Baseline failure will stand.")
 
             if differences_detected:
                 raise AssertionError('The compared PDF Document Data is different.')
@@ -626,10 +628,10 @@ class PdfTest(object):
             text_mask_patterns_arg,
         )
         for warning in mask_warnings:
-            logger.warn(warning)
+            robot_logger.warn(warning)
         compiled_text_patterns, pattern_warnings = self._compile_text_mask_patterns(text_pattern_values)
         for warning in pattern_warnings:
-            logger.warn(warning)
+            robot_logger.warn(warning)
 
         reference_repr = DocumentRepresentation(
             reference_document,
@@ -694,10 +696,10 @@ class PdfTest(object):
             all_texts_were_found = False
             missing_text_list.append({'text':text_item, 'document':candidate_document})
         if all_texts_were_found is False:
-            print(missing_text_list)
+            robot_logger.info(f"Missing texts: {missing_text_list}")
             doc = None
             raise AssertionError('Some expected texts were not found in document')
-    
+
     @keyword
     def PDF_should_contain_strings(self, expected_text_list, candidate_document, **kwargs):
         """Checks if each item provided in the list ``expected_text_list`` appears in the PDF File ``candidate_document``.
@@ -748,13 +750,13 @@ class PdfTest(object):
             all_texts_were_found = False
             missing_text_list.append({'text':text_item, 'document':candidate_document})
         if all_texts_were_found is False:
-            print(f"Missing Texts:\n{missing_text_list}")
-            print(f"Found Texts:\n{found_text_list}")
+            robot_logger.info(f"Missing Texts:\n{missing_text_list}")
+            robot_logger.info(f"Found Texts:\n{found_text_list}")
             doc = None
             raise AssertionError('Some expected texts were not found in document')
         else:
             doc = None
-            print(f"Found Texts:\n{found_text_list}")
+            robot_logger.info(f"Found Texts:\n{found_text_list}")
 
     @keyword
     def PDF_should_not_contain_strings(self, expected_text_list, candidate_document, **kwargs):
@@ -803,14 +805,14 @@ class PdfTest(object):
             if text_item_found == False:
                 missing_text_list.append({'text':text_item, 'document':candidate_document})
         if found_text_list:
-            print(f"Missing Texts:\n{missing_text_list}")
-            print(f"Found Texts:\n{found_text_list}")
+            robot_logger.info(f"Missing Texts:\n{missing_text_list}")
+            robot_logger.info(f"Found Texts:\n{found_text_list}")
             doc = None
             raise AssertionError('Some non-expected texts were found in document')
         else:
             doc = None
-            print('None of the non-expected texts were found in document')
-            print(f"Missing Texts:\n{missing_text_list}")
+            robot_logger.info('None of the non-expected texts were found in document')
+            robot_logger.info(f"Missing Texts:\n{missing_text_list}")
     
     @keyword
     def compare_pdf_documents_with_llm(self, *args, llm_override: bool = False, **kwargs):
@@ -1068,7 +1070,7 @@ class PdfTest(object):
         individual differences as INFO (visible only within keyword output).
         """
         if result.passed:
-            logger.info("[PDF Structure] Documents match within configured tolerances.")
+            robot_logger.info("[PDF Structure] Documents match within configured tolerances.")
             return
 
         # Count total differences
@@ -1076,12 +1078,12 @@ class PdfTest(object):
         mode = "text-only (ignoring page boundaries)" if ignore_page_boundaries else "structure"
 
         # Single summary warning (appears at top of log.html)
-        logger.warn(f"[PDF Structure] Comparison failed: {diff_count} difference(s) found in {mode} comparison.")
+        robot_logger.warn(f"[PDF Structure] Comparison failed: {diff_count} difference(s) found in {mode} comparison.")
 
         # Log summary entries as INFO
         if result.summary:
             for entry in result.summary:
-                logger.info(f"[PDF Structure] {entry}")
+                robot_logger.info(f"[PDF Structure] {entry}")
 
         # Log page differences as INFO
         if result.page_differences:
@@ -1095,10 +1097,10 @@ class PdfTest(object):
                         details.append(f"candidate line={diff.candidate_index}")
                     if details:
                         message = f"{message} ({', '.join(details)})"
-                    logger.info(message)
+                    robot_logger.info(message)
                     if diff.deltas:
                         pretty = ", ".join(f"{axis}={value:.3f}" for axis, value in diff.deltas.items())
-                        logger.debug(f"[PDF Structure] Page {page} deltas: {pretty}")
+                        robot_logger.debug(f"[PDF Structure] Page {page} deltas: {pretty}")
 
         # Log document-level differences as INFO (for text-only mode)
         if result.document_differences:
@@ -1111,7 +1113,7 @@ class PdfTest(object):
                     details.append(f"candidate position={diff.cand_index}")
                 if details:
                     message = f"{message} ({', '.join(details)})"
-                logger.info(message)
+                robot_logger.info(message)
 
     def _ensure_local_document(self, document):
         return download_file_from_url(document) if is_url(document) else document
@@ -1133,19 +1135,19 @@ class PdfTest(object):
 
         try:
             settings = load_llm_settings(overrides)
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warn(f"Failed to load LLM settings: {exc}")
+        except Exception as exc:  # pragma: no cover - defensive: config parsing may raise varied errors
+            robot_logger.warn(f"Failed to load LLM settings: {exc}")
             return None
 
         if not settings.pdf_enabled:
-            print("LLM PDF evaluation requested but disabled via settings.")
+            robot_logger.info("LLM PDF evaluation requested but disabled via settings.")
             return None
 
         if create_binary_content_fn is None or assess_pdf_diff_fn is None:
             try:
                 default_assess, default_create, _ = _load_pdf_llm_runtime()
             except LLMDependencyError as exc:
-                print(str(exc))
+                robot_logger.warn(str(exc))
                 return None
             if assess_pdf_diff_fn is None:
                 assess_pdf_diff_fn = default_assess
@@ -1163,12 +1165,12 @@ class PdfTest(object):
                 create_binary_content_fn(reference_bytes, "application/pdf")
             )
         except FileNotFoundError:
-            logger.warn("Reference document not found for LLM attachment: %s", reference_document)
+            robot_logger.warn(f"Reference document not found for LLM attachment: {reference_document}")
         except LLMDependencyError as exc:
-            print(str(exc))
+            robot_logger.warn(str(exc))
             return None
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warn("Failed to attach reference document for LLM: %s", exc)
+        except Exception as exc:  # pragma: no cover - defensive: I/O or encoding errors from binary content creation
+            robot_logger.warn(f"Failed to attach reference document for LLM: {exc}")
 
         try:
             candidate_bytes = Path(candidate_document).read_bytes()
@@ -1176,12 +1178,12 @@ class PdfTest(object):
                 create_binary_content_fn(candidate_bytes, "application/pdf")
             )
         except FileNotFoundError:
-            logger.warn("Candidate document not found for LLM attachment: %s", candidate_document)
+            robot_logger.warn(f"Candidate document not found for LLM attachment: {candidate_document}")
         except LLMDependencyError as exc:
-            print(str(exc))
+            robot_logger.warn(str(exc))
             return None
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warn("Failed to attach candidate document for LLM: %s", exc)
+        except Exception as exc:  # pragma: no cover - defensive: I/O or encoding errors from binary content creation
+            robot_logger.warn(f"Failed to attach candidate document for LLM: {exc}")
 
         for item in differences:
             facet = item.get("facet", "unknown")
@@ -1205,10 +1207,10 @@ class PdfTest(object):
                 system_prompt=custom_prompt,
             )
         except LLMDependencyError as exc:
-            print(str(exc))
+            robot_logger.warn(str(exc))
             return None
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warn("LLM PDF evaluation failed: %s", exc)
+        except Exception as exc:  # pragma: no cover - defensive: LLM API may raise network/parsing/auth errors
+            robot_logger.warn(f"LLM PDF evaluation failed: {exc}")
             return None
         return decision
 

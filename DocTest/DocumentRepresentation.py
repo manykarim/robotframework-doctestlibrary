@@ -21,6 +21,8 @@ from DocTest.PdfStructureModels import (
 from DocTest.config import DEFAULT_DPI, OCR_ENGINE_DEFAULT, DEFAULT_CONFIDENCE, MINIMUM_OCR_RESOLUTION, ADD_PIXELS_TO_IGNORE_AREA, TESSERACT_CONFIG
 import tempfile
 
+logger = logging.getLogger(__name__)
+
 # Constants
 
 
@@ -569,7 +571,7 @@ class Page:
     def identify_barcodes_with_zbar(self):
         try:
             from pyzbar import pyzbar
-        except:
+        except ImportError:
             logging.debug('Failed to import pyzbar', exc_info=True)
             return
         image_height = self.image.shape[0]
@@ -592,19 +594,19 @@ class Page:
     def identify_datamatrices(self):
         try:
             from pylibdmtx import pylibdmtx
-        except:
+        except ImportError:
             logging.debug('Failed to import pylibdmtx', exc_info=True)
             return
         logging.debug("Identify datamatrices")
         image_height = self.image.shape[0]
         try:
             barcodes = pylibdmtx.decode(self.image, timeout=5000)
-        except:
+        except Exception:
             logging.debug("pylibdmtx could not be loaded",exc_info=True)
             return
         #Add barcode as placehoder
         for barcode in barcodes:
-            print(barcode)
+            logger.debug("Detected barcode: %s", barcode)
             x = barcode.rect.left
             y = image_height - barcode.rect.top - barcode.rect.height
             h = barcode.rect.height
@@ -614,7 +616,7 @@ class Page:
                 w += 1
             value = barcode.data.decode("utf-8")
             self.barcodes.append({"x":x, "y":y, "height":h, "width":w, "value":value})
-            self.pixel_ignore_areas.append({"x": x, "y:": y, "height": h, "width": w})
+            self.pixel_ignore_areas.append({"x": x, "y": y, "height": h, "width": w})
 
     def _process_ignore_area(self, ignore_area: Dict):
         """Process each ignore area based on its type and convert it into pixel-based coordinates."""
@@ -771,7 +773,7 @@ class Page:
         
         try:
             unit = area.get('unit', 'px')
-        except:
+        except (AttributeError, TypeError):
             unit = 'px'
         area_x, area_y, area_w, area_h  = self._convert_to_pixels(area, unit)
 
@@ -1053,7 +1055,7 @@ class DocumentRepresentation:
     def __del__(self):  # pragma: no cover - defensive cleanup
         try:
             self.close()
-        except Exception:
+        except Exception:  # defensive: destructor must never raise
             pass
 
     def _load_pcl(self):
@@ -1066,7 +1068,7 @@ class DocumentRepresentation:
         import subprocess
         try:
             command = shutil.which('pcl6') or shutil.which('gpcl6win64') or shutil.which('gpcl6win32') or shutil.which('gpcl6')
-        except Exception:
+        except (OSError, TypeError):
             command = None
         if not command:
             raise AssertionError("No pcl6 executable found in path. Please install ghostPCL")
@@ -1095,12 +1097,12 @@ class DocumentRepresentation:
         ]
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         toc = time.perf_counter()
-        print(f"Rendering pcl document to Image with ghostPCL performed in {toc - tic:0.4f} seconds")
+        logger.info("Rendering pcl document to Image with ghostPCL performed in %.4f seconds", toc - tic)
         tic = time.perf_counter()
         file_num =len(os.listdir(output_image_directory))
         for index in range(file_num):
             if (index == 0 or index == int(file_num-1)) and self.ignore_printfactory_envelope is True:
-                print("The printfactory envelope is ignored in page {}".format(index+1))
+                logger.info("The printfactory envelope is ignored in page %s", index+1)
                 continue
             else:
                 filename = 'output-' + str(index+1)+'.png'
@@ -1115,8 +1117,8 @@ class DocumentRepresentation:
                 self.pages.append(page)
 
         toc = time.perf_counter()
-        print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
-        shutil.rmtree(output_image_directory) 
+        logger.info("Conversion from Image to OpenCV Image performed in %.4f seconds", toc - tic)
+        shutil.rmtree(output_image_directory)
 
     def _load_ps(self):
         import subprocess
@@ -1127,7 +1129,7 @@ class DocumentRepresentation:
         from os.path import splitext, split 
         try:
             command = shutil.which('gs') or shutil.which('gswin64c') or shutil.which('gswin32c') or shutil.which('ghostscript')
-        except Exception:
+        except (OSError, TypeError):
             command = None
         if not command:
             raise AssertionError("No ghostscript executable found in path. Please install ghostscript")
@@ -1156,7 +1158,7 @@ class DocumentRepresentation:
         ]
         subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
         toc = time.perf_counter()
-        print(f"Rendering ps document to Image with ghostscript performed in {toc - tic:0.4f} seconds")
+        logger.info("Rendering ps document to Image with ghostscript performed in %.4f seconds", toc - tic)
         tic = time.perf_counter()
         file_num =len(os.listdir(output_image_directory))
         for index in range(file_num):
@@ -1170,7 +1172,7 @@ class DocumentRepresentation:
             self.pages.append(page)
         
         toc = time.perf_counter()
-        print(f"Conversion from Image to OpenCV Image performed in {toc - tic:0.4f} seconds")
+        logger.info("Conversion from Image to OpenCV Image performed in %.4f seconds", toc - tic)
         shutil.rmtree(output_image_directory)
 
     def get_barcodes(self):
@@ -1212,8 +1214,8 @@ class DocumentRepresentation:
                     page = pdf.load_page(page_num)
                     text_content += page.get_text("text")
                 return text_content if text_content.strip() else ""
-        except Exception as e:
-            print(f"Failed to extract text from PDF: {e}")
+        except Exception as e:  # defensive: covers ImportError, fitz internal errors, and I/O failures
+            logger.error("Failed to extract text from PDF: %s", e)
             return ""
 
     def compare_with(self, other_doc: 'DocumentRepresentation') -> bool:
@@ -1323,7 +1325,7 @@ class DocumentRepresentation:
         signatures = []
         try:
             widgets = page.widgets()
-        except Exception:
+        except Exception:  # defensive: PyMuPDF may raise varied errors on malformed PDFs
             widgets = []
         if not widgets:
             return signatures

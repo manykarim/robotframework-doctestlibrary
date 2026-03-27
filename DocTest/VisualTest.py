@@ -9,6 +9,7 @@ import cv2
 import imutils
 import numpy as np
 from assertionengine import AssertionOperator, verify_assertion
+from robot.api import logger as robot_logger
 from robot.api.deco import keyword, library
 from robot.libraries.BuiltIn import BuiltIn
 
@@ -53,7 +54,7 @@ def _load_visual_llm_runtime() -> Tuple[Any, Any, Any]:
     try:
         from DocTest.llm.client import assess_visual_diff, create_binary_content
         from DocTest.llm.types import LLMDecisionLabel as _LLMDecisionLabel
-    except Exception as exc:  # pragma: no cover - optional dependency missing
+    except ImportError as exc:  # pragma: no cover - optional dependency missing
         raise LLMDependencyError() from exc
     _VISUAL_LLM_RUNTIME = (assess_visual_diff, create_binary_content, _LLMDecisionLabel)
     return _VISUAL_LLM_RUNTIME
@@ -189,8 +190,9 @@ class VisualTest:
             output_dir = built_in.get_variable_value("${OUTPUT DIR}")
             reference_run = built_in.get_variable_value("${REFERENCE_RUN}", False)
             pabot_index = built_in.get_variable_value("${PABOTQUEUEINDEX}")
-        except Exception:
-            print("Robot Framework is not running")
+        except (AttributeError, RuntimeError):
+            # RobotNotRunningError is an AttributeError subclass in Robot Framework
+            LOG.debug("Robot Framework is not running")
             return Path.cwd(), False, None
 
         if output_dir:
@@ -478,7 +480,7 @@ class VisualTest:
                             and (h * 25.4 / dpi < self.WATERMARK_HEIGHT)
                         ):
                             similar = True
-                            print("Visual differences are only in the watermark area.")
+                            robot_logger.info("Visual differences are only in the watermark area.")
 
                 if not similar and watermark_file:
                     if watermarks == []:
@@ -504,7 +506,7 @@ class VisualTest:
                             or cv2.countNonZero(cv2.subtract(thresh, mask_inv)) == 0
                         ):
                             similar = True
-                            print(
+                            robot_logger.info(
                                 "A watermark file was provided. After removing watermark area, both images are equal"
                             )
                             break
@@ -513,7 +515,7 @@ class VisualTest:
                     # try combining all watermark files by merging their areas
                     if not similar and len(watermarks) > 1:
                         try:
-                            print(
+                            robot_logger.info(
                                 f"Individual watermarks failed. Attempting to merge {len(watermarks)} watermark masks..."
                             )
 
@@ -541,7 +543,7 @@ class VisualTest:
                                 # Count pixels for debugging
                                 mask_pixels = np.sum(mask > 0)
                                 total_individual_pixels += mask_pixels
-                                print(f"  Watermark {i + 1}: {mask_pixels} white pixels")
+                                robot_logger.debug(f"  Watermark {i + 1}: {mask_pixels} white pixels")
 
                                 # Add debugging screenshot for individual watermarks
                                 if self.take_screenshots:
@@ -559,7 +561,7 @@ class VisualTest:
 
                             if combined_mask is not None:
                                 combined_black_pixels = np.sum(combined_mask == 0)
-                                print(
+                                robot_logger.debug(
                                     f"  Combined mask: {combined_black_pixels} black pixels (union of all comparison areas)"
                                 )
 
@@ -621,7 +623,7 @@ class VisualTest:
                                     == 0
                                 ):
                                     similar = True
-                                    print(
+                                    robot_logger.info(
                                         "Multiple watermark files were provided. After removing combined watermark areas, both images are equal"
                                     )
 
@@ -649,7 +651,7 @@ class VisualTest:
                                         combined_diff,
                                         suffix="_combined_watermark_diff_blend",
                                     )
-                        except Exception as e:
+                        except Exception as e:  # defensive: cv2 mask operations may raise varied errors
                             LOG.warning(f"Failed to combine watermark masks: {str(e)}")
 
                 if check_text_content and not similar:
@@ -685,17 +687,17 @@ class VisualTest:
                             # Add log message with the text content differences
                             # Add screenshots to the log of the reference and candidate areas
 
-                            print(
+                            robot_logger.info(
                                 f"Text content in the area {rect} differs:\n\nReference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}"
                             )
                         else:
                             page_notes.append(
                                 f"Rect {rect} visual change but identical text."
                             )
-                            print(
+                            robot_logger.info(
                                 f"Visual differences in the area {rect} but text content is the same."
                             )
-                            print(
+                            robot_logger.debug(
                                 f"Reference Text:\n{ref_area_text}\n\nCandidate Text:\n{cand_area_text}"
                             )
 
@@ -718,7 +720,7 @@ class VisualTest:
                         # If no words are fount, proceed with nornmal tolerance check and set check_pdf_content to False
                         if len(ref_words) == 0 or len(cand_words) == 0:
                             check_pdf_content = False
-                            print(
+                            robot_logger.info(
                                 "No pdf layout elements found. Proceeding with normal tolerance check."
                             )
 
@@ -810,7 +812,7 @@ class VisualTest:
                     # Flush buffered movement output (messages + screenshots) after overview
                     for entry in movement_output_buffer:
                         if entry[0] == "print":
-                            print(entry[1])
+                            robot_logger.info(entry[1])
                         elif entry[0] == "screenshot":
                             self.add_screenshot_to_log(
                                 entry[1], entry[2], original_size=entry[3]
@@ -839,7 +841,7 @@ class VisualTest:
                     # messages so they still appear in the Robot Framework log.
                     for entry in movement_output_buffer:
                         if entry[0] == "print":
-                            print(entry[1])
+                            robot_logger.info(entry[1])
 
             llm_decision = None
             llm_label_enum = None
@@ -855,7 +857,7 @@ class VisualTest:
                         _load_visual_llm_runtime()
                     )
                 except LLMDependencyError as exc:
-                    print(str(exc))
+                    robot_logger.warn(str(exc))
                 else:
                     llm_decision = self._handle_llm_for_visual_differences(
                         reference_image=reference_image,
@@ -870,25 +872,24 @@ class VisualTest:
 
                 if llm_decision:
                     decision_value = _coerce_label_value(llm_decision.decision)
-                    print(
-                        f"LLM decision: {decision_value} "
-                        f"(confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
+                    robot_logger.info(
+                        f"LLM decision: {decision_value} (confidence={llm_decision.confidence!r}) - {llm_decision.reason}"
                     )
                     if llm_decision.notes:
-                        print(f"LLM notes: {llm_decision.notes}")
+                        robot_logger.info(f"LLM notes: {llm_decision.notes}")
                     if llm_override_result and llm_decision.is_positive:
-                        print("LLM approved differences. Overriding baseline failure.")
+                        robot_logger.info("LLM approved differences. Overriding baseline failure.")
                         detected_differences = []
                     elif _decision_equals_flag(llm_decision.decision, llm_label_enum):
-                        print("LLM returned FLAG - keeping original comparison result.")
+                        robot_logger.info("LLM returned FLAG - keeping original comparison result.")
                     elif not llm_decision.is_positive and llm_override_result:
-                        print("LLM rejected differences. Baseline failure will be raised.")
+                        robot_logger.info("LLM rejected differences. Baseline failure will be raised.")
 
             for diff in detected_differences:
-                print(diff["message"])
+                robot_logger.info(diff["message"])
                 self._raise_comparison_failure()
 
-            print("Images/Document comparison passed.")
+            robot_logger.info("Images/Document comparison passed.")
         finally:
             reference_doc.close()
             candidate_doc.close()
@@ -928,19 +929,19 @@ class VisualTest:
 
         try:
             settings = load_llm_settings(overrides)
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover - defensive: config parsing may raise varied errors
             LOG.warning("Failed to load LLM settings: %s", exc)
             return None
 
         if not settings.visual_enabled:
-            print("LLM visual evaluation requested but disabled via settings.")
+            robot_logger.info("LLM visual evaluation requested but disabled via settings.")
             return None
 
         if create_binary_content_fn is None or assess_visual_diff_fn is None:
             try:
                 default_assess, default_create, _ = _load_visual_llm_runtime()
             except LLMDependencyError as exc:
-                print(str(exc))
+                robot_logger.warn(str(exc))
                 return None
             if assess_visual_diff_fn is None:
                 assess_visual_diff_fn = default_assess
@@ -982,10 +983,10 @@ class VisualTest:
                         )
                     )
         except LLMDependencyError as exc:
-            print(str(exc))
+            robot_logger.warn(str(exc))
             return None
-        except Exception as exc:  # pragma: no cover - defensive
-            print(f"Failed to prepare LLM payload: {exc}")
+        except Exception as exc:  # pragma: no cover - defensive: image encoding or content creation may fail
+            LOG.warning("Failed to prepare LLM payload: %s", exc)
             return None
 
         try:
@@ -997,10 +998,10 @@ class VisualTest:
                 system_prompt=custom_prompt,
             )
         except LLMDependencyError as exc:
-            print(str(exc))
+            robot_logger.warn(str(exc))
             return None
-        except Exception as exc:  # pragma: no cover - defensive
-            print(f"LLM evaluation failed: {exc}")
+        except Exception as exc:  # pragma: no cover - defensive: LLM API may raise network/parsing/auth errors
+            LOG.warning("LLM evaluation failed: %s", exc)
             return None
         return decision
 
@@ -1022,7 +1023,7 @@ class VisualTest:
         output_buffer: list = None,
     ) -> bool:
         if not diff_rectangles:
-            print("No difference areas detected for movement tolerance check.")
+            robot_logger.info("No difference areas detected for movement tolerance check.")
             return True
 
         def _log_screenshot(image, suffix, original_size=False):
@@ -1035,7 +1036,7 @@ class VisualTest:
             if output_buffer is not None:
                 output_buffer.append(("print", msg))
             else:
-                print(msg)
+                robot_logger.info(msg)
 
         failed_areas = []
         prefer_pdf = use_pdf_content or (
@@ -1279,7 +1280,7 @@ class VisualTest:
         output_buffer: list = None,
     ) -> bool:
         if not diff_rectangles:
-            print("No difference areas detected for movement tolerance check.")
+            robot_logger.info("No difference areas detected for movement tolerance check.")
             return True
 
         def _log_screenshot(image, suffix, original_size=False):
@@ -1292,7 +1293,7 @@ class VisualTest:
             if output_buffer is not None:
                 output_buffer.append(("print", msg))
             else:
-                print(msg)
+                robot_logger.info(msg)
 
         failed_areas = []
         fallback_detections = 0
@@ -1352,7 +1353,7 @@ class VisualTest:
                         suffix="_moved_area",
                         original_size=False,
                     )
-            except Exception as exc:
+            except Exception as exc:  # defensive: cv2/numpy operations on image areas may raise varied errors
                 _log_message(f"Could not compare areas: {exc}")
                 failed_areas.append((rect, f"error: {str(exc)}"))
                 _log_screenshot(
@@ -1411,7 +1412,7 @@ class VisualTest:
                 f"Supported values are: {', '.join(sorted(self.MOVEMENT_DETECTION_METHODS))}."
             )
         self.movement_detection = method
-        print(f"Movement detection method set to '{method}'.")
+        robot_logger.info(f"Movement detection method set to '{method}'.")
 
     @keyword
     def get_text_from_area(
@@ -1815,8 +1816,8 @@ class VisualTest:
         original_template = DocumentRepresentation(template).pages[0].image
 
         # Log original dimensions for debugging
-        print(f"Original template dimensions: {original_template.shape}")
-        print(f"Original image dimensions: {img.shape}")
+        robot_logger.debug(f"Original template dimensions: {original_template.shape}")
+        robot_logger.debug(f"Original image dimensions: {img.shape}")
 
         # Crop the template image if crop boundaries are provided
         if all_crop_args:
@@ -1838,7 +1839,7 @@ class VisualTest:
             template = original_template[
                 tpl_crop_y1:tpl_crop_y2, tpl_crop_x1:tpl_crop_x2
             ].copy()
-            print(f"Cropped template dimensions: {template.shape}")
+            robot_logger.debug(f"Cropped template dimensions: {template.shape}")
         else:
             template = original_template
 
@@ -1861,17 +1862,17 @@ class VisualTest:
             )
 
         if detection == "template":
-            print(f"Using template matching with threshold: {threshold}")
+            robot_logger.debug(f"Using template matching with threshold: {threshold}")
 
             # Perform template matching
             res = cv2.matchTemplate(img_gray, template_gray, cv2.TM_SQDIFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
 
             # Log matching results for debugging
-            print(
+            robot_logger.debug(
                 f"Template matching results - min_val: {min_val:.6f}, max_val: {max_val:.6f}"
             )
-            print(f"Best match location: {min_loc}")
+            robot_logger.debug(f"Best match location: {min_loc}")
 
             top_left = min_loc
             bottom_right = (top_left[0] + w, top_left[1] + h)
@@ -1881,7 +1882,7 @@ class VisualTest:
             match = min_val <= threshold
 
             if match:
-                print(
+                robot_logger.info(
                     f"Template found at location: {top_left} with confidence: {1.0 - min_val:.6f}"
                 )
                 # Draw rectangle on a copy to avoid modifying original
@@ -1891,7 +1892,7 @@ class VisualTest:
                 if take_screenshots:
                     self.add_screenshot_to_log(img_result, "image_with_template")
             else:
-                print(
+                robot_logger.info(
                     f"Template not found. Best match confidence: {1.0 - min_val:.6f}, required: {1.0 - threshold:.6f}"
                 )
                 if take_screenshots:
@@ -2099,16 +2100,16 @@ class VisualTest:
                     ".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 70]
                 )  # im_arr: image in Numpy one-dim array format.
                 im_b64 = base64.b64encode(encoded_img).decode()
-                print(
-                    "*HTML* "
-                    + f'{suffix}:<br><img alt="screenshot" src="data:image/jpeg;base64,{im_b64}" style="{img_style}">'
+                robot_logger.info(
+                    f'{suffix}:<br><img alt="screenshot" src="data:image/jpeg;base64,{im_b64}" style="{img_style}">',
+                    html=True,
                 )
             else:
                 _, encoded_img = cv2.imencode(".png", image)
                 im_b64 = base64.b64encode(encoded_img).decode()
-                print(
-                    "*HTML* "
-                    + f'{suffix}:<br><img alt="screenshot" src="data:image/png;base64,{im_b64}" style="{img_style}">'
+                robot_logger.info(
+                    f'{suffix}:<br><img alt="screenshot" src="data:image/png;base64,{im_b64}" style="{img_style}">',
+                    html=True,
                 )
         else:
             screenshot_name = str(
@@ -2131,9 +2132,9 @@ class VisualTest:
                 )
             else:
                 cv2.imwrite(abs_screenshot_path, image)
-            print(
-                "*HTML* "
-                + f'{suffix}:<br><a href="{rel_screenshot_path}" target="_blank"><img src="{rel_screenshot_path}" style="{img_style}"></a>'
+            robot_logger.info(
+                f'{suffix}:<br><a href="{rel_screenshot_path}" target="_blank"><img src="{rel_screenshot_path}" style="{img_style}"></a>',
+                html=True,
             )
 
     def find_partial_image_position(
@@ -2224,7 +2225,7 @@ class VisualTest:
                         )
                     return result
 
-            except Exception as e:
+            except Exception as e:  # defensive: catch any error to try next detection method
                 self._log_verbose_warning(
                     f"Movement detection failed with {method} method: {str(e)}"
                 )
@@ -2308,7 +2309,7 @@ class VisualTest:
                         edgeThreshold=edge_threshold,
                         nfeatures=1000,
                     )
-                except Exception:
+                except Exception:  # defensive: cv2 may reject parameter combinations
                     # Fallback to basic SIFT if parameterized version fails
                     return cv2.SIFT_create()
 
@@ -2347,7 +2348,7 @@ class VisualTest:
                     ):
                         break
 
-                except Exception as e:
+                except Exception as e:  # defensive: catch any cv2 error to try next parameter set
                     self._log_verbose_warning(
                         f"SIFT: Failed with parameters ({contrast_thresh}, {edge_thresh}): {str(e)}"
                     )
@@ -2398,7 +2399,7 @@ class VisualTest:
                         else []
                     )
 
-                except Exception as e:
+                except Exception as e:  # defensive: cv2 FLANN matching may raise varied errors
                     self._log_verbose_warning(
                         f"SIFT: Matching failed: {str(e)}"
                     )
@@ -2467,7 +2468,7 @@ class VisualTest:
                                 ):  # At least 15% inliers (reduced for text)
                                     break
                         M = None  # Reset if validation failed
-                    except Exception as e:
+                    except Exception as e:  # defensive: catch any error to try next RANSAC config
                         self._log_verbose_warning(
                             f"SIFT: Homography computation failed with config {ransac_thresholds.index(ransac_thresh)}: {str(e)}"
                         )
@@ -2506,13 +2507,13 @@ class VisualTest:
                     "method": "sift",
                 }
 
-            except Exception as e:
+            except Exception as e:  # defensive: homography computation involves complex numpy/cv2 ops
                 self._log_verbose_warning(
                     f"SIFT: Homography computation failed: {str(e)}"
                 )
                 return None
 
-        except Exception as e:
+        except Exception as e:  # defensive: outermost safety net for entire SIFT pipeline
             LOG.error(f"SIFT: Unexpected error in movement detection: {str(e)}")
             return None
 
@@ -2554,7 +2555,7 @@ class VisualTest:
 
             return True
 
-        except Exception:
+        except Exception:  # defensive: validation must not crash on malformed input
             return False
 
     def find_partial_image_distance_with_matchtemplate(
@@ -2652,7 +2653,7 @@ class VisualTest:
                 cnts, hierarchy = cv2.findContours(
                     mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
                 )
-            except Exception as e:
+            except Exception as e:  # defensive: cv2 contour detection may fail on unusual masks
                 self._log_verbose_warning(
                     f"Template matching: Contour detection failed: {str(e)}"
                 )
@@ -2784,7 +2785,7 @@ class VisualTest:
                             results.append(
                                 (1 - max_val, max_loc, method)
                             )  # Convert to distance-like metric
-                    except Exception as e:
+                    except Exception as e:  # defensive: catch any error to try next matching method
                         self._log_verbose_warning(
                             f"Template matching method {method} failed: {str(e)}"
                         )
@@ -2849,7 +2850,7 @@ class VisualTest:
                 )
                 return None
 
-        except Exception as e:
+        except Exception as e:  # defensive: outermost safety net for entire template matching pipeline
             LOG.error(f"Template matching: Unexpected error: {str(e)}")
             return None
 
@@ -2890,7 +2891,7 @@ class VisualTest:
                         scaleFactor=1.2,
                         nlevels=8,
                     )
-                except Exception as e:
+                except Exception as e:  # defensive: cv2 may reject ORB parameter combinations
                     self._log_verbose_warning(
                         f"ORB keypoints: Failed to create detector: {str(e)}"
                     )
@@ -2904,7 +2905,7 @@ class VisualTest:
             try:
                 img1_kp, img1_des = orb.detectAndCompute(img1, None)
                 img2_kp, img2_des = orb.detectAndCompute(img2, None)
-            except Exception as e:
+            except Exception as e:  # defensive: cv2 detectAndCompute may fail on degenerate images
                 self._log_verbose_warning(
                     f"ORB keypoints: Detection failed: {str(e)}"
                 )
@@ -2937,7 +2938,7 @@ class VisualTest:
 
             return img1_kp, img1_des, img2_kp, img2_des
 
-        except Exception as e:
+        except Exception as e:  # defensive: outermost safety net for ORB keypoint pipeline
             LOG.error(f"ORB keypoints: Unexpected error: {str(e)}")
             return None, None, None, None
 
@@ -2986,7 +2987,7 @@ class VisualTest:
                     ):
                         return img1_kp, img1_des, img2_kp, img2_des
 
-                except Exception as e:
+                except Exception as e:  # defensive: catch any error to try next SIFT config
                     self._log_verbose_warning(
                         f"SIFT keypoints: Config {config} failed: {str(e)}"
                     )
@@ -2995,7 +2996,7 @@ class VisualTest:
             self._log_verbose_warning("SIFT keypoints: All configurations failed")
             return None, None, None, None
 
-        except Exception as e:
+        except Exception as e:  # defensive: outermost safety net for SIFT keypoint pipeline
             LOG.error(f"SIFT keypoints: Unexpected error: {str(e)}")
             return None, None, None, None
 
@@ -3076,7 +3077,7 @@ class VisualTest:
                 cnts, hierarchy = cv2.findContours(
                     mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
                 )
-            except Exception as e:
+            except Exception as e:  # defensive: cv2 contour detection may fail on unusual masks
                 self._log_verbose_warning(
                     f"ORB: Contour detection failed: {str(e)}"
                 )
@@ -3198,7 +3199,7 @@ class VisualTest:
                         ):
                             return template_kp, template_des, img_kp, img_des
 
-                    except Exception as e:
+                    except Exception as e:  # defensive: catch any error to try next ORB config
                         self._log_verbose_warning(
                             f"ORB: Configuration {orb_configs.index((nfeatures, edge_thresh, patch_size))} failed: {str(e)}"
                         )
@@ -3260,7 +3261,7 @@ class VisualTest:
 
                     return good_matches
 
-                except Exception as e:
+                except Exception as e:  # defensive: cv2 BFMatcher may raise varied errors
                     self._log_verbose_warning(f"ORB: Matching failed: {str(e)}")
                     return []
 
@@ -3323,7 +3324,7 @@ class VisualTest:
                                 best_homography = M
                                 best_inlier_ratio = inlier_ratio
 
-                    except Exception as e:
+                    except Exception as e:  # defensive: catch any error to try next RANSAC config
                         self._log_verbose_warning(
                             f"ORB: Homography computation failed with config {ransac_configs.index((ransac_thresh, max_iters, confidence))}: {str(e)}"
                         )
@@ -3365,7 +3366,7 @@ class VisualTest:
                             flags=cv2.DRAW_MATCHES_FLAGS_NOT_DRAW_SINGLE_POINTS,
                         )
                         self.add_screenshot_to_log(match_img, "ORB_matches")
-                    except Exception as e:
+                    except Exception as e:  # defensive: visualization is non-critical
                         self._log_verbose_warning(
                             f"ORB: Could not create match visualization: {str(e)}"
                         )
@@ -3379,13 +3380,13 @@ class VisualTest:
                     "method": "orb",
                 }
 
-            except Exception as e:
+            except Exception as e:  # defensive: homography computation involves complex numpy/cv2 ops
                 self._log_verbose_warning(
                     f"ORB: Error in homography computation: {str(e)}"
                 )
                 return None
 
-        except Exception as e:
+        except Exception as e:  # defensive: outermost safety net for entire ORB movement pipeline
             LOG.error(f"ORB: Unexpected error in movement detection: {str(e)}")
             return None
 
@@ -3454,8 +3455,8 @@ class VisualTest:
 
             return True
 
-        except Exception as e:
-            print(f"Error validating bounding box: {e}")
+        except Exception as e:  # defensive: validation must not crash on malformed input
+            LOG.warning("Error validating bounding box: %s", e)
             return False
 
         # Ensure the width and height are approximately consistent (not too skewed)
@@ -3694,7 +3695,7 @@ class VisualTest:
 
             return True
 
-        except Exception as e:
+        except Exception as e:  # defensive: validation must not crash on malformed result dict
             self._log_verbose_warning(
                 f"Error validating movement result: {str(e)}"
             )
@@ -3757,7 +3758,7 @@ class VisualTest:
                             f"No valid image files found in watermark directory: {watermark_file}"
                         )
                         return []
-                except Exception as e:
+                except OSError as e:
                     LOG.error(
                         f"Error reading watermark directory {watermark_file}: {str(e)}"
                     )
@@ -3800,7 +3801,7 @@ class VisualTest:
                             # Log mask statistics for debugging
                             mask_pixels = np.sum(mask > 0)
                             content_ratio = mask_pixels / watermark_gray.size
-                            print(
+                            robot_logger.debug(
                                 f"  Watermark mask: {mask_pixels} white pixels ({content_ratio:.1%})"
                             )
 
@@ -3813,7 +3814,7 @@ class VisualTest:
                                 f"Could not create valid mask for watermark: {single_watermark}"
                             )
 
-                    except Exception as e:
+                    except Exception as e:  # defensive: file loading + image processing may fail in various ways
                         LOG.warning(
                             f"Watermark file {single_watermark} could not be loaded: {str(e)}"
                         )

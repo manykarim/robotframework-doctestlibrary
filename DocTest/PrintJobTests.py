@@ -1,10 +1,14 @@
+import logging
+from pprint import pformat
 from parsimonious.grammar import Grammar, NodeVisitor
 import re
 from pathlib import Path
-from pprint import pprint
 from deepdiff import DeepDiff
+from robot.api import logger as robot_logger
 from robot.api.deco import keyword, library, not_keyword
 from DocTest.Downloader import is_url, download_file_from_url
+
+logger = logging.getLogger(__name__)
 
 ROBOT_AUTO_KEYWORDS = False
 
@@ -145,11 +149,11 @@ class PostscriptVisitor(NodeVisitor):
         return [comment for comment in comments if comment!=None]
 
     def visit_document_trailer(self, node, visited_children):
-        _, comments = visited_children
-        for comment in comments:
-            if comment!=None:
-                self.trailer.append(comment)
-        return [comment for comment in comments if comment!=None]
+        _, items = visited_children
+        for item in items:
+            if isinstance(item, dict):
+                self.trailer.append(item)
+        return [item for item in items if isinstance(item, dict)]
 
     def generic_visit(self, node, visited_children):
         if not node.expr_name and node.children:
@@ -228,11 +232,11 @@ def get_postscript_print_job(filename):
     """
     grammar_postscript_commands = Grammar(
         r"""
-        file = header defaults? procedure_definitions document_setup pages+ document_trailer eof emptyline?
+        file = header defaults? procedure_definitions document_setup? pages+ document_trailer eof emptyline?
         header = header_start (comments/pjl_commands)* end_comments
         header_start = "%!PS-Adobe-3.0" linefeed
         comments = comment_type dataline
-        comment_type = title_comment / copyright_comment / creator_comment / creation_date_comment / bounding_box_comment / orientation_comment / pages_comment / document_needed_resources_comment / document_supplied_resources_comment / document_data_comment / language_level_comment
+        comment_type = title_comment / copyright_comment / creator_comment / creation_date_comment / bounding_box_comment / orientation_comment / pages_comment / document_needed_resources_comment / document_supplied_resources_comment / document_data_comment / language_level_comment / generic_dsc_comment
         title_comment = "%%Title:"
         copyright_comment = "%%Copyright:"
         creator_comment = "%%Creator:"
@@ -244,6 +248,7 @@ def get_postscript_print_job(filename):
         document_supplied_resources_comment = "%%DocumentSuppliedResources:"
         document_data_comment = "%%DocumentData:"
         language_level_comment = "%%LanguageLevel:"
+        generic_dsc_comment = ~r"%%[A-Za-z]+:"
         end_comments= "%%EndComments" linefeed
         pjl_commands = begin_pjl pjl_content*
         pjl_content = (pjl_prefix _ dataline)
@@ -276,7 +281,7 @@ def get_postscript_print_job(filename):
         page_setup = begin_page_setup dataline* feature* dataline* end_page_setup
         begin_page_setup = "%%BeginPageSetup"
         end_page_setup= "%%EndPageSetup" linefeed
-        document_trailer = trailer comments*
+        document_trailer = trailer (comments / dataline)*
         trailer = "%%Trailer" linefeed
         dataline = (!postscript_prefix anything linefeed) postscript_continue*
         anything = ~r".*"
@@ -359,15 +364,13 @@ def compare_print_jobs(type, reference_file, test_file):
 def compare_properties(reference_print_job, test_print_job):
     properties_are_equal = True
     list_difference = []
-    print("Reference File:")
-    pprint(reference_print_job.properties)
-    
-    print("\n")
-    print("Candidate File:")
-    pprint(test_print_job.properties)
-    
-    print("\n")
-    pprint(DeepDiff(reference_print_job.properties, test_print_job.properties, verbose_level=2))
+    robot_logger.info("Reference File:")
+    robot_logger.info(pformat(reference_print_job.properties))
+
+    robot_logger.info("Candidate File:")
+    robot_logger.info(pformat(test_print_job.properties))
+
+    robot_logger.info(pformat(DeepDiff(reference_print_job.properties, test_print_job.properties, verbose_level=2)))
     for reference_property_item in reference_print_job.properties:
         test_property_item = next((item for item in test_print_job.properties if item["property"] == reference_property_item["property"]), None)
         if reference_property_item['value']!=test_property_item['value']:
@@ -376,19 +379,13 @@ def compare_properties(reference_print_job, test_print_job):
             for x in reference_property_item['value']:
                 if x not in test_property_item['value']:
                     list_difference.append({'file':'reference', 'property':reference_property_item['property'], 'value':x})
-            
+
             for x in test_property_item['value']:
                 if x not in reference_property_item['value']:
                     list_difference.append({'file':'test', 'property':test_property_item['property'], 'value':x})
 
-            
-            
-            #print("Reference Property ", reference_property_item['property'], ":", reference_property_item['value'], " is not equal to ","Test Property ", test_property_item['property'], ":", test_property_item['value'])
     if properties_are_equal==False:
-        
-        pprint(list_difference)
-        print("\n")
-#        print(*list_difference, sep = "\n") 
+        robot_logger.info(pformat(list_difference))
         raise AssertionError('The compared print jobs are different.')
 
 @keyword
@@ -437,10 +434,7 @@ def check_print_job_property(print_job, property, value):
     if not test_property_item:
         raise AssertionError('The property does not exist:', property, value)
     if value not in test_property_item['value']:
-        print("Expected property: ", property, "\n\nExpected value:\n")
-        pprint(value)
-        print(" \nActual value:\n")
-        pprint(test_property_item['value'])
+        robot_logger.info(f"Expected property: {property}\n\nExpected value:\n{pformat(value)}\n\nActual value:\n{pformat(test_property_item['value'])}")
         raise AssertionError('The print job property check failed.')
 
 def printTable(myDict, colList=None):
@@ -456,4 +450,4 @@ def printTable(myDict, colList=None):
    colSize = [max(map(len,col)) for col in zip(*myList)]
    formatStr = ' | '.join(["{{:<{}}}".format(i) for i in colSize])
    myList.insert(1, ['-' * i for i in colSize]) # Seperating line
-   for item in myList: print(formatStr.format(*item))
+   for item in myList: robot_logger.info(formatStr.format(*item))
