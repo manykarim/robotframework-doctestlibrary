@@ -244,3 +244,261 @@ def test_block_based_ssim(testdata_dir):
     ref_image=str(testdata_dir / "birthday_left.png")
     cand_image=str(testdata_dir / "birthday_right.png")
     ssim = visual_tester.compare_images(ref_image, cand_image, block_based_ssim=True, block_size=32)
+# ============================================================================
+# Threshold Warning Tests
+# ============================================================================
+
+
+def test_threshold_warn_validation_equal_to_threshold(testdata_dir):
+    """Test that threshold_warn equal to threshold raises ValueError."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "birthday_left.png")
+    cand_image = str(testdata_dir / "birthday_right.png")
+
+    with pytest.raises(ValueError, match="must be less than threshold"):
+        visual_tester.compare_images(
+            ref_image, cand_image, threshold=0.1, threshold_warn=0.1
+        )
+
+
+def test_threshold_warn_validation_greater_than_threshold(testdata_dir):
+    """Test that threshold_warn greater than threshold raises ValueError."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "birthday_left.png")
+    cand_image = str(testdata_dir / "birthday_right.png")
+
+    with pytest.raises(ValueError, match="must be less than threshold"):
+        visual_tester.compare_images(
+            ref_image, cand_image, threshold=0.1, threshold_warn=0.2
+        )
+
+
+def test_threshold_warn_validation_negative(testdata_dir):
+    """Test that negative threshold_warn raises ValueError."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "birthday_left.png")
+    cand_image = str(testdata_dir / "birthday_right.png")
+
+    with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):
+        visual_tester.compare_images(
+            ref_image, cand_image, threshold=0.1, threshold_warn=-0.1
+        )
+
+
+def test_threshold_warn_validation_above_one(testdata_dir):
+    """Test that threshold_warn > 1.0 raises ValueError."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "birthday_left.png")
+    cand_image = str(testdata_dir / "birthday_right.png")
+
+    with pytest.raises(ValueError, match="must be between 0.0 and 1.0"):
+        visual_tester.compare_images(
+            ref_image, cand_image, threshold=0.5, threshold_warn=1.5
+        )
+
+
+def test_threshold_warn_validation_non_numeric(testdata_dir):
+    """Test that non-numeric threshold_warn raises ValueError."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "birthday_left.png")
+    cand_image = str(testdata_dir / "birthday_right.png")
+
+    with pytest.raises(ValueError, match="must be a number"):
+        visual_tester.compare_images(
+            ref_image, cand_image, threshold=0.1, threshold_warn="invalid"
+        )
+
+
+def test_threshold_warn_passes_without_warning(testdata_dir):
+    """Test that images within threshold_warn pass without warning."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "birthday_left.png")
+    cand_image = str(testdata_dir / "birthday_left_copy.png")
+
+    visual_tester.compare_images(
+        ref_image, cand_image, threshold=0.1, threshold_warn=0.05
+    )
+
+
+def test_threshold_warn_in_warning_zone_without_keyword(testdata_dir, capsys):
+    """Test that differences in warning zone pass with warnings logged."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "map_orig.png")
+    cand_image = str(testdata_dir / "map_3_diff.png")
+
+    visual_tester.compare_images(
+        ref_image, cand_image, threshold=0.002, threshold_warn=0.001
+    )
+
+    captured = capsys.readouterr()
+    assert "Visual differences detected in warning zone" in captured.out
+    assert "Warning threshold:" in captured.out
+    assert "passed with warnings" in captured.out
+
+
+def test_threshold_warn_in_warning_zone_with_keyword(testdata_dir, capsys, monkeypatch):
+    """Test that differences in warning zone execute the warning keyword."""
+    from unittest.mock import MagicMock
+    from robot.libraries.BuiltIn import BuiltIn
+
+    mock_builtin = MagicMock()
+    mock_run_keyword = MagicMock()
+    mock_builtin.run_keyword = mock_run_keyword
+
+    def mock_builtin_init():
+        return mock_builtin
+
+    monkeypatch.setattr("DocTest.VisualTest.BuiltIn", mock_builtin_init)
+
+    visual_tester = VisualTest(run_keyword_on_warn_threshold="Log")
+    ref_image = str(testdata_dir / "map_orig.png")
+    cand_image = str(testdata_dir / "map_3_diff.png")
+
+    visual_tester.compare_images(
+        ref_image, cand_image, threshold=0.002, threshold_warn=0.001
+    )
+
+    assert mock_run_keyword.called
+    call_args = mock_run_keyword.call_args
+    # Verify keyword name is split correctly (first part)
+    assert call_args[0][0] == "Log"
+    # Verify all arguments are passed (3 required: score, threshold_warn, threshold)
+    assert len(call_args[0]) == 4
+    score = call_args[0][1]
+    warn_threshold = call_args[0][2]
+    threshold = call_args[0][3]
+
+    assert isinstance(score, float)
+    assert 0.0017 < score < 0.0020
+
+    captured = capsys.readouterr()
+    assert "passed with warnings" in captured.out
+    assert "Executed warning keyword: Log" in captured.out
+
+
+def test_threshold_warn_keyword_with_arguments(testdata_dir, capsys, monkeypatch):
+    """Test that keyword with pre-defined arguments splits correctly."""
+    from unittest.mock import MagicMock
+    from robot.libraries.BuiltIn import BuiltIn
+
+    mock_builtin = MagicMock()
+    mock_run_keyword = MagicMock()
+    mock_builtin.run_keyword = mock_run_keyword
+
+    def mock_builtin_init():
+        return mock_builtin
+
+    monkeypatch.setattr("DocTest.VisualTest.BuiltIn", mock_builtin_init)
+
+    # Use a keyword with pre-defined arguments: "Log WARN level=WARN"
+    visual_tester = VisualTest(run_keyword_on_warn_threshold="Log WARN level=WARN")
+    ref_image = str(testdata_dir / "map_orig.png")
+    cand_image = str(testdata_dir / "map_3_diff.png")
+
+    visual_tester.compare_images(
+        ref_image, cand_image, threshold=0.002, threshold_warn=0.001
+    )
+
+    assert mock_run_keyword.called
+    call_args = mock_run_keyword.call_args
+    # Verify keyword name is split correctly (first part)
+    assert call_args[0][0] == "Log"
+    # Verify all arguments: 2 pre-defined + 3 required = 5 total
+    assert len(call_args[0]) == 6
+    # Pre-defined arguments come first
+    assert call_args[0][1] == "WARN"
+    assert call_args[0][2] == "level=WARN"
+    # Then the three required parameters
+    score = call_args[0][3]
+    warn_threshold = call_args[0][4]
+    threshold = call_args[0][5]
+
+    assert isinstance(score, float)
+    assert 0.0017 < score < 0.0020
+
+    captured = capsys.readouterr()
+    assert "passed with warnings" in captured.out
+    assert "Executed warning keyword: Log WARN level=WARN" in captured.out
+
+
+def test_threshold_warn_keyword_execution_failure(testdata_dir, capsys, monkeypatch):
+    """Test that keyword execution failure is handled gracefully."""
+    from unittest.mock import MagicMock
+    from robot.libraries.BuiltIn import BuiltIn
+
+    mock_builtin = MagicMock()
+    mock_builtin.run_keyword.side_effect = Exception("Keyword execution failed")
+
+    def mock_builtin_init():
+        return mock_builtin
+
+    monkeypatch.setattr("DocTest.VisualTest.BuiltIn", mock_builtin_init)
+
+    visual_tester = VisualTest(run_keyword_on_warn_threshold="Failing Keyword")
+    ref_image = str(testdata_dir / "map_orig.png")
+    cand_image = str(testdata_dir / "map_3_diff.png")
+
+    visual_tester.compare_images(
+        ref_image, cand_image, threshold=0.002, threshold_warn=0.001
+    )
+
+    captured = capsys.readouterr()
+    assert "Failed to execute keyword" in captured.out
+    assert "passed with warnings" in captured.out
+
+
+def test_threshold_warn_actual_failure(testdata_dir):
+    """Test that differences exceeding threshold still fail."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "map_orig.png")
+    cand_image = str(testdata_dir / "map_3_diff.png")
+
+    with pytest.raises(AssertionError, match="The compared images are different"):
+        visual_tester.compare_images(
+            ref_image, cand_image, threshold=0.001, threshold_warn=0.0005
+        )
+
+
+def test_threshold_warn_none_backward_compatibility(testdata_dir):
+    """Test that threshold_warn=None maintains backward compatibility."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "birthday_1080.png")
+    cand_image = str(testdata_dir / "birthday_1080_noise_001.png")
+
+    with pytest.raises(AssertionError, match="The compared images are different"):
+        visual_tester.compare_images(
+            ref_image, cand_image, threshold=0.01, threshold_warn=None
+        )
+
+
+def test_threshold_warn_valid_range(testdata_dir):
+    """Test that valid threshold_warn values are accepted."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "birthday_left.png")
+    cand_image = str(testdata_dir / "birthday_left_copy.png")
+
+    visual_tester.compare_images(
+        ref_image, cand_image, threshold=0.1, threshold_warn=0.05
+    )
+    visual_tester.compare_images(
+        ref_image, cand_image, threshold=0.1, threshold_warn=0.0
+    )
+    visual_tester.compare_images(
+        ref_image, cand_image, threshold=1.0, threshold_warn=0.99
+    )
+
+
+def test_threshold_warn_without_score(testdata_dir):
+    """Test that differences without score (e.g., dimension mismatch) are treated as failures."""
+    visual_tester = VisualTest()
+    ref_image = str(testdata_dir / "birthday_1080.png")
+    cand_image = str(testdata_dir / "birthday_partial_banana.png")
+
+    with pytest.raises(AssertionError):
+        visual_tester.compare_images(
+            ref_image,
+            cand_image,
+            threshold=0.9,
+            threshold_warn=0.5,
+            resize_candidate=False,
+        )

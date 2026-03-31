@@ -4,6 +4,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+import re 
 
 import cv2
 import imutils
@@ -108,6 +109,7 @@ class VisualTest:
         document_page_cache_size: int = 2,
         verbose_movement_logging: bool = False,
         character_replacements: Optional[Dict[str, str]] = None,
+        run_keyword_on_warn_threshold: str = None,
         **kwargs,
     ):
         """
@@ -134,11 +136,13 @@ class VisualTest:
         | ``document_page_cache_size`` | Maximum number of rendered pages to keep in memory per document when streaming. Default is ``2``. |
         | ``verbose_movement_logging`` | When ``True``, emit detailed warnings from movement detection helpers (template, ORB, SIFT). Disabled by default to reduce noise. |
         | ``character_replacements`` | Dict mapping characters to replacements, applied to text extraction results. Example: ``{'\u00A0': ' '}`` to normalize non-breaking spaces. |
+        | ``run_keyword_on_warn_threshold`` | Robot Framework keyword (with optional arguments) to execute when differences exceed warning threshold but are within acceptable threshold. The keyword can include arguments separated by spaces (e.g., ``"Log WARN \ level=WARN"``). Default is ``None``. |
         | ``**kwargs`` | Everything else. |
 
 
         """
         self.threshold = threshold
+        self.run_keyword_on_warn_threshold = run_keyword_on_warn_threshold
         self.dpi = dpi
         self.take_screenshots = take_screenshots
         self.show_diff = show_diff
@@ -235,6 +239,7 @@ class VisualTest:
         resize_candidate: bool = False,
         blur: bool = False,
         threshold: float = None,
+        threshold_warn: float = None,
         mask: Union[str, dict, list] = None,
         get_pdf_content: bool = False,
         block_based_ssim: bool = False,
@@ -263,6 +268,7 @@ class VisualTest:
         | ``resize_candidate`` | Allow visual comparison, even of documents have different sizes |
         | ``blur`` | Blur the image before comparison to reduce visual difference caused by noise |
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
+        | ``threshold_warn`` | Warning threshold for visual comparison between 0.0000 and 1.0000 . If differences exceed this but are within ``threshold``, the test passes but executes ``run_keyword_on_warn_threshold``. Default is ``None`` (disabled). |
         | ``block_based_ssim`` | Uses additional block based block-based comparison, to catch differences in smaller areas. Makes only sense, for ``threshold`` > 0 . Default is `False` |
         | ``block_size`` | Size of the blocks for block-based comparison. Default is 32. Only relevant for ``block_based_ssim`` |
         | ``llm`` / ``llm_enabled`` | When ``${True}``, summarise differences and forward them to the configured LLM. Default ``${False}``. |
@@ -354,6 +360,22 @@ class VisualTest:
         dpi = DPI if DPI else self.dpi
         threshold = threshold if threshold is not None else self.threshold
 
+        # Validate threshold_warn parameter
+        if threshold_warn is not None:
+            if not isinstance(threshold_warn, (int, float)):
+                raise ValueError(
+                    f"threshold_warn must be a number, got {type(threshold_warn).__name__}"
+                )
+            if threshold_warn < 0.0 or threshold_warn > 1.0:
+                raise ValueError(
+                    f"threshold_warn must be between 0.0 and 1.0, got {threshold_warn}"
+                )
+            if threshold_warn >= threshold:
+                raise ValueError(
+                    f"threshold_warn ({threshold_warn}) must be less than threshold ({threshold}). "
+                    f"The warning threshold should be more strict (lower) than the acceptable threshold."
+                )
+
         # Set OCR engine if provided
         ocr_engine = ocr_engine if ocr_engine else self.ocr_engine
 
@@ -437,9 +459,14 @@ class VisualTest:
                     )
                     continue
 
+                # Use threshold_warn for comparison if it's set, so images in warning zone
+                # are still detected as different (and added to detected_differences)
+                comparison_threshold = (
+                    threshold_warn if threshold_warn is not None else threshold
+                )
                 similar, diff, thresh, absolute_diff, score = ref_page.compare_with(
                     cand_page,
-                    threshold=threshold,
+                    threshold=comparison_threshold,
                     blur=blur,
                     block_based_ssim=block_based_ssim,
                     block_size=block_size,
@@ -884,7 +911,59 @@ class VisualTest:
                     elif not llm_decision.is_positive and llm_override_result:
                         print("LLM rejected differences. Baseline failure will be raised.")
 
-            for diff in detected_differences:
+            # Classify differences into warning zone vs actual failures
+            differences_in_warn_zone = []
+            actual_failures = []
+
+            if threshold_warn is not None:
+                for diff in detected_differences:
+                    score = diff.get("score")
+                    if score is not None and threshold_warn < score <= threshold:
+                        differences_in_warn_zone.append(diff)
+                    else:
+                        actual_failures.append(diff)
+            else:
+                # If no warning threshold is set, all differences are failures
+                actual_failures = detected_differences
+
+            # Handle differences in warning zone (PASS with warning)
+            if differences_in_warn_zone:
+                for diff in differences_in_warn_zone:
+                    score = diff.get("score")
+                    print(
+                        f"Visual differences detected in warning zone. "
+                        f"SSIM score: {score:.6f}, "
+                        f"Warning threshold: {threshold_warn:.6f}, "
+                        f"Acceptable threshold: {threshold:.6f}"
+                    )
+
+                    # Execute the warning keyword if configured
+                    if self.run_keyword_on_warn_threshold:
+                        try:
+                            built_in = BuiltIn()
+                            # Split keyword name and its arguments
+                            parts = re.split(r'\s{2,}', self.run_keyword_on_warn_threshold)
+                            keyword_name = (
+                                parts[0]
+                                if parts
+                                else self.run_keyword_on_warn_threshold
+                            )
+                            all_args = parts[1:] if len(parts) > 1 else []
+
+                            built_in.run_keyword(keyword_name, *all_args)
+                            print(
+                                f"Executed warning keyword: {self.run_keyword_on_warn_threshold}"
+                            )
+                        except Exception as e:
+                            print(
+                                f"Failed to execute keyword '{self.run_keyword_on_warn_threshold}': {str(e)}"
+                            )
+
+                print("Images/Document comparison passed with warnings.")
+                # Return early - test passes despite warnings
+                return
+
+            for diff in actual_failures:
                 print(diff["message"])
                 self._raise_comparison_failure()
 
