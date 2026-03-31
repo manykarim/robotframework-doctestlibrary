@@ -13,11 +13,14 @@ __all__ = [
     "PageStructure",
     "DocumentStructure",
     "StructureExtractionConfig",
+    "WordToken",
     "strip_font_subset",
     "collapse_whitespace",
     "round_bbox",
     "build_page_structure",
+    "build_page_structure_from_words",
     "flatten_document_text",
+    "flatten_document_words",
 ]
 
 
@@ -80,6 +83,7 @@ class StructureExtractionConfig:
     round_precision: Optional[int] = 3
     normalize_ligatures: bool = False
     character_replacements: Optional[Dict[str, str]] = None
+    spatial_word_sorting: bool = False
 
     def __hash__(self) -> int:  # Allow usage as dictionary key for caching.
         # Convert character_replacements dict to a hashable tuple of sorted items
@@ -98,6 +102,7 @@ class StructureExtractionConfig:
                 self.round_precision,
                 self.normalize_ligatures,
                 replacements_hash,
+                self.spatial_word_sorting,
             )
         )
 
@@ -112,6 +117,15 @@ class DocumentStructure:
     @property
     def page_count(self) -> int:
         return len(self.pages)
+
+
+@dataclass(frozen=True)
+class WordToken:
+    """A single word token extracted from a document, with provenance metadata."""
+    text: str
+    source_page: int
+    source_line_index: int
+    word_index: int
 
 
 def flatten_document_text(structure: DocumentStructure) -> List[str]:
@@ -135,6 +149,77 @@ def flatten_document_text(structure: DocumentStructure) -> List[str]:
                 if line.text:
                     texts.append(line.text)
     return texts
+
+
+def flatten_document_words(
+    structure: DocumentStructure,
+    *,
+    normalize_word_boundaries: bool = False,
+    normalize_ligatures_in_words: bool = False,
+) -> Tuple[List[str], List[WordToken]]:
+    """Extract all words from a document in reading order, ignoring page/line boundaries.
+
+    Splits every text line on whitespace to produce individual word tokens.
+    This enables comparison at word granularity, making the comparison resilient
+    to text reflow caused by font or layout changes.
+
+    Args:
+        structure: A DocumentStructure containing pages with text blocks and lines.
+        normalize_word_boundaries: When True, merge tokens that were split
+            across line boundaries by connector characters (``/``, ``-``, ``\\``).
+        normalize_ligatures_in_words: When True, replace known typographic
+            ligatures with their ASCII equivalents in each word.
+
+    Returns:
+        A tuple of:
+        - words: Flat list of word strings for use with SequenceMatcher.
+        - tokens: Corresponding list of WordToken objects with provenance.
+    """
+    words: List[str] = []
+    tokens: List[WordToken] = []
+    global_line_index = 0
+    word_index = 0
+
+    for page in structure.pages:
+        for block in page.blocks:
+            for line in block.lines:
+                if not line.text:
+                    global_line_index += 1
+                    continue
+                line_words = line.text.split()
+                for w in line_words:
+                    words.append(w)
+                    tokens.append(
+                        WordToken(
+                            text=w,
+                            source_page=page.page_number,
+                            source_line_index=global_line_index,
+                            word_index=word_index,
+                        )
+                    )
+                    word_index += 1
+                global_line_index += 1
+
+    # Apply ligature normalization to individual words if requested
+    if normalize_ligatures_in_words:
+        from DocTest.TextNormalization import normalize_ligatures
+        words = [normalize_ligatures(w) for w in words]
+        tokens = [
+            WordToken(
+                text=normalize_ligatures(t.text),
+                source_page=t.source_page,
+                source_line_index=t.source_line_index,
+                word_index=t.word_index,
+            )
+            for t in tokens
+        ]
+
+    # Merge words split across line boundaries
+    if normalize_word_boundaries:
+        from DocTest.TextNormalization import merge_split_words
+        words, tokens = merge_split_words(words, tokens)
+
+    return words, tokens
 
 
 def strip_font_subset(font_name: Optional[str]) -> Optional[str]:
@@ -274,6 +359,154 @@ def build_page_structure(
                 lines=block_lines,
             )
         )
+        block_index += 1
+
+    return PageStructure(
+        page_number=page_number,
+        width=width,
+        height=height,
+        blocks=blocks,
+    )
+
+
+def build_page_structure_from_words(
+    page_number: int,
+    pdf_text_words: Optional[List],
+    config: Optional[StructureExtractionConfig] = None,
+    *,
+    page_width: float = 0.0,
+    page_height: float = 0.0,
+    dpi: Optional[int] = None,
+    image_shape: Optional[Tuple[int, int, int]] = None,
+) -> PageStructure:
+    """Build a ``PageStructure`` from PyMuPDF ``get_text("words")`` output.
+
+    This bypasses block-level extraction entirely, grouping individual word
+    bounding boxes into lines using adaptive Y-proximity.  The result is
+    immune to block fragmentation caused by different PDF generators.
+
+    Each word tuple from PyMuPDF has the form::
+
+        (x0, y0, x1, y1, "word", block_no, line_no, word_no)
+
+    Words are grouped into lines when their vertical midpoints are within
+    half the minimum word height of each other.  Within each line, words
+    are ordered left-to-right by ``x0``.  Lines are ordered top-to-bottom.
+    Each line becomes its own ``TextBlock`` (single-line blocks).
+
+    Args:
+        page_number: Zero-based page index.
+        pdf_text_words: List of word tuples from ``page.get_text("words")``.
+        config: Normalization settings (whitespace, ligatures, etc.).
+        page_width: Page width in points.
+        page_height: Page height in points.
+        dpi: Optional DPI for computing page dimensions from ``image_shape``.
+        image_shape: ``(height, width, channels)`` array shape, used with *dpi*
+            to derive page dimensions when ``page_width``/``page_height`` are zero.
+
+    Returns:
+        A ``PageStructure`` with one block per reconstructed text line.
+    """
+    config = config or StructureExtractionConfig()
+
+    width = page_width
+    height = page_height
+    if (width == 0.0 or height == 0.0) and image_shape and dpi:
+        px_height, px_width = image_shape[:2]
+        width = px_width * 72.0 / dpi
+        height = px_height * 72.0 / dpi
+
+    if not pdf_text_words:
+        return PageStructure(
+            page_number=page_number,
+            width=width,
+            height=height,
+            blocks=[],
+        )
+
+    # --- Group words into visual lines by Y-proximity ---
+    # Sort by vertical midpoint first, then horizontal position.
+    sorted_words = sorted(pdf_text_words, key=lambda w: ((w[1] + w[3]) / 2.0, w[0]))
+
+    lines: List[List] = []  # Each element: list of word tuples
+    line_y_mid: List[float] = []  # Representative Y midpoint per line
+    line_min_height: List[float] = []  # Cached minimum word height per line
+
+    for word in sorted_words:
+        w_y0, w_y1 = float(word[1]), float(word[3])
+        w_mid = (w_y0 + w_y1) / 2.0
+        w_height = max(w_y1 - w_y0, 1.0)
+
+        # Search backward from most recent line (words are Y-sorted, so the
+        # most recent line is the most likely match).  Break early once we
+        # move past the tolerance range.
+        merged = False
+        max_possible_tolerance = w_height * 0.5
+        for idx in range(len(lines) - 1, -1, -1):
+            ly_mid = line_y_mid[idx]
+            delta = abs(w_mid - ly_mid)
+            if delta > max_possible_tolerance and w_mid > ly_mid:
+                break  # Past tolerance; earlier lines are even further away.
+            tolerance = min(line_min_height[idx], w_height) * 0.5
+            if delta <= tolerance:
+                lines[idx].append(word)
+                n = len(lines[idx])
+                line_y_mid[idx] = ly_mid + (w_mid - ly_mid) / n
+                if w_height < line_min_height[idx]:
+                    line_min_height[idx] = w_height
+                merged = True
+                break
+        if not merged:
+            lines.append([word])
+            line_y_mid.append(w_mid)
+            line_min_height.append(w_height)
+
+    # Sort lines top-to-bottom by midpoint, words left-to-right within each.
+    indexed_lines = sorted(enumerate(lines), key=lambda pair: line_y_mid[pair[0]])
+
+    blocks: List[TextBlock] = []
+    global_line_index = 0
+    block_index = 0
+
+    for _orig_idx, line_words in indexed_lines:
+        line_words_sorted = sorted(line_words, key=lambda w: float(w[0]))
+
+        # Build text from words, applying normalization.
+        text_parts: List[str] = []
+        for w in line_words_sorted:
+            raw = str(w[4])
+            normalized = _sanitize_span_text(raw, config)
+            if normalized:
+                text_parts.append(normalized)
+
+        line_text = config.whitespace_replacement.join(text_parts) if text_parts else ""
+        if config.strip_line_edges:
+            line_text = line_text.strip()
+        if config.drop_empty_lines and not line_text:
+            continue
+
+        # Compute line bbox as union of all word bboxes.
+        x0 = min(float(w[0]) for w in line_words_sorted)
+        y0 = min(float(w[1]) for w in line_words_sorted)
+        x1 = max(float(w[2]) for w in line_words_sorted)
+        y1 = max(float(w[3]) for w in line_words_sorted)
+        bbox = round_bbox((x0, y0, x1, y1), config.round_precision)
+
+        text_line = TextLine(
+            index=global_line_index,
+            text=line_text,
+            bbox=bbox,
+            fonts=set(),
+            spans=[TextSpan(text=line_text, font=None, size=0.0)],
+        )
+        blocks.append(
+            TextBlock(
+                index=block_index,
+                bbox=bbox,
+                lines=[text_line],
+            )
+        )
+        global_line_index += 1
         block_index += 1
 
     return PageStructure(
