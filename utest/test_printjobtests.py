@@ -1,5 +1,6 @@
 """Unit tests for PrintJobTests module."""
 
+import os
 from unittest.mock import MagicMock, mock_open, patch
 
 from DocTest.PrintJobTests import (
@@ -7,9 +8,16 @@ from DocTest.PrintJobTests import (
     PostscriptVisitor,
     PrintJob,
     chop,
+    compare_print_jobs,
     get_pcl_print_job,
     get_postscript_print_job,
 )
+
+TESTDATA_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "testdata"
+)
+INVOICE_PS = os.path.join(TESTDATA_DIR, "invoice.ps")
+INVOICE_NO_LOGO_PS = os.path.join(TESTDATA_DIR, "invoice_no_logo.ps")
 
 
 class TestPrintJobFromPrintJobTests:
@@ -353,48 +361,62 @@ class TestGetPclPrintJob:
 
 
 class TestGetPostscriptPrintJob:
-    """Test cases for get_postscript_print_job function."""
+    """Test cases for get_postscript_print_job function using real fixture files."""
 
-    @patch("DocTest.PrintJobTests.is_url")
-    @patch(
-        "builtins.open", new_callable=mock_open, read_data="%!PS-Adobe-3.0\\n%%EOF\\n"
-    )
-    def test_get_postscript_print_job_local_file(self, mock_file, mock_is_url):
-        """Test getting PostScript print job from local file."""
-        mock_is_url.return_value = False
+    def test_get_postscript_print_job_invoice(self):
+        """Test parsing a real PostScript fixture (invoice.ps)."""
+        result = get_postscript_print_job(INVOICE_PS)
 
-        filename = "test.ps"
+        assert isinstance(result, PrintJob)
+        assert result.jobtype == "postscript"
+        assert len(result.properties) > 0
 
-        try:
-            result = get_postscript_print_job(filename)
-            # If we get here, check that it's a PrintJob
-            assert isinstance(result, PrintJob)
-            assert result.jobtype == "postscript"
-        except Exception:
-            # Expected due to simplified test content
-            pass
+        # Verify expected property keys exist
+        property_names = [p["property"] for p in result.properties]
+        assert "pjl_commands" in property_names
+        assert "pages" in property_names
+        assert "trailer" in property_names
 
-        mock_file.assert_called_once_with(filename, encoding="utf8", errors="ignore")
+    def test_get_postscript_print_job_invoice_no_logo(self):
+        """Test parsing a real PostScript fixture (invoice_no_logo.ps)."""
+        result = get_postscript_print_job(INVOICE_NO_LOGO_PS)
+
+        assert isinstance(result, PrintJob)
+        assert result.jobtype == "postscript"
+        assert len(result.properties) > 0
+
+        # Verify expected property keys exist
+        property_names = [p["property"] for p in result.properties]
+        assert "pjl_commands" in property_names
+        assert "pages" in property_names
+        assert "trailer" in property_names
+
+    def test_postscript_print_job_pages_parsed(self):
+        """Test that page metadata is correctly extracted from the fixture."""
+        result = get_postscript_print_job(INVOICE_PS)
+
+        pages_prop = next(
+            p for p in result.properties if p["property"] == "pages"
+        )
+        pages = pages_prop["value"]
+        assert len(pages) > 0
+        assert pages[0]["property"] == "PageBoundingBox"
+        assert pages[0]["page"] == "1"
+
+    def test_compare_postscript_print_jobs(self):
+        """Test comparing two real PostScript fixtures succeeds without error."""
+        # Both fixtures share the same page structure, so comparison should pass
+        compare_print_jobs("ps", INVOICE_PS, INVOICE_NO_LOGO_PS)
 
     @patch("DocTest.PrintJobTests.is_url")
     @patch("DocTest.PrintJobTests.download_file_from_url")
-    @patch(
-        "builtins.open", new_callable=mock_open, read_data="%!PS-Adobe-3.0\\n%%EOF\\n"
-    )
-    def test_get_postscript_print_job_url(self, mock_file, mock_download, mock_is_url):
-        """Test getting PostScript print job from URL."""
+    def test_get_postscript_print_job_url(self, mock_download, mock_is_url):
+        """Test that URL files are downloaded before parsing."""
         mock_is_url.return_value = True
-        mock_download.return_value = "downloaded_file.ps"
+        mock_download.return_value = INVOICE_PS
 
-        url = "http://example.com/test.ps"
+        result = get_postscript_print_job("http://example.com/test.ps")
 
-        try:
-            get_postscript_print_job(url)
-        except Exception:
-            # Expected due to simplified test content
-            pass
-
-        mock_download.assert_called_once_with(url)
-        mock_file.assert_called_once_with(
-            "downloaded_file.ps", encoding="utf8", errors="ignore"
-        )
+        mock_download.assert_called_once_with("http://example.com/test.ps")
+        assert isinstance(result, PrintJob)
+        assert result.jobtype == "postscript"

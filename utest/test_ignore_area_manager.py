@@ -1,6 +1,9 @@
 """Unit tests for IgnoreAreaManager module."""
 
+import logging
 from unittest.mock import mock_open, patch
+
+import numpy as np
 
 from DocTest.IgnoreAreaManager import IgnoreAreaManager
 
@@ -47,19 +50,18 @@ class TestIgnoreAreaManager:
         mock_file.assert_called_once_with("test.json", "r")
 
     @patch("builtins.open", side_effect=IOError("File not found"))
-    @patch("builtins.print")
-    def test_load_ignore_area_file_io_error(self, mock_print, mock_file):
+    def test_load_ignore_area_file_io_error(self, mock_file, caplog):
         """Test loading ignore area file with IO error."""
         manager = IgnoreAreaManager(ignore_area_file="nonexistent.json")
-        result = manager._load_ignore_area_file()
+        with caplog.at_level(logging.ERROR, logger="DocTest.IgnoreAreaManager"):
+            result = manager._load_ignore_area_file()
 
         assert result is None
-        assert mock_print.call_count >= 2  # Two print statements
+        assert len(caplog.records) >= 2  # Two log messages
 
     @patch("builtins.open", new_callable=mock_open, read_data="invalid json")
-    @patch("builtins.print")
-    def test_load_ignore_area_file_json_error(self, mock_print, mock_file):
-        """Test loading ignore area file with invalid JSON."""
+    def test_load_ignore_area_file_json_error(self, mock_file):
+        """Test loading ignore area file with invalid JSON raises exception."""
         manager = IgnoreAreaManager(ignore_area_file="invalid.json")
 
         try:
@@ -114,25 +116,27 @@ class TestIgnoreAreaManager:
         ]
         assert result == expected
 
-    @patch("builtins.print")
-    def test_parse_mask_string_invalid_location(self, mock_print):
+    def test_parse_mask_string_invalid_location(self, caplog):
         """Test parsing mask string with invalid location."""
         mask = "invalid:10"
         manager = IgnoreAreaManager(mask=mask)
-        result = manager._parse_mask()
+        with caplog.at_level(logging.WARNING, logger="DocTest.IgnoreAreaManager"):
+            result = manager._parse_mask()
 
         assert result == []
-        mock_print.assert_called()
+        assert len(caplog.records) == 1
+        assert "invalid location" in caplog.records[0].message
 
-    @patch("builtins.print")
-    def test_parse_mask_string_invalid_percent(self, mock_print):
+    def test_parse_mask_string_invalid_percent(self, caplog):
         """Test parsing mask string with invalid percent."""
         mask = "top:invalid"
         manager = IgnoreAreaManager(mask=mask)
-        result = manager._parse_mask()
+        with caplog.at_level(logging.WARNING, logger="DocTest.IgnoreAreaManager"):
+            result = manager._parse_mask()
 
         assert result == []
-        mock_print.assert_called()
+        assert len(caplog.records) == 1
+        assert "not a number" in caplog.records[0].message
 
     def test_parse_mask_string_empty(self):
         """Test parsing empty mask string."""
@@ -191,39 +195,228 @@ class TestIgnoreAreaManager:
 
         assert result == [{"page": 1, "type": "area"}]
 
-    def test_convert_to_pixels_px_unit(self):
-        """Test converting coordinates to pixels with px unit."""
-        manager = IgnoreAreaManager()
-        ignore_area = {"x": 10, "y": 20, "height": 30, "width": 40}
-        x, y, h, w = manager._convert_to_pixels(ignore_area, "px", 200)
+    def test_parse_mask_string_missing_colon(self, caplog):
+        """Test parsing mask string without colon separator."""
+        mask = "top10"
+        manager = IgnoreAreaManager(mask=mask)
+        with caplog.at_level(logging.WARNING, logger="DocTest.IgnoreAreaManager"):
+            result = manager._parse_mask()
 
-        assert x == 10
-        assert y == 20
-        assert h == 30
-        assert w == 40
+        assert result == []
+        assert len(caplog.records) == 1
+        assert "Expected format" in caplog.records[0].message
 
-    def test_convert_to_pixels_mm_unit(self):
-        """Test converting coordinates to pixels with mm unit."""
-        manager = IgnoreAreaManager()
-        ignore_area = {"x": 10, "y": 20, "height": 30, "width": 40}
-        x, y, h, w = manager._convert_to_pixels(
-            ignore_area, "mm", 254
-        )  # 254 DPI = 10 px/mm
 
-        assert x == 100  # 10 * (254/25.4) = 100
-        assert y == 200  # 20 * (254/25.4) = 200
-        assert h == 300  # 30 * (254/25.4) = 300
-        assert w == 400  # 40 * (254/25.4) = 400
+class TestAreaMaskExecution:
+    """Test area mask execution through the Page class (the real runtime path).
 
-    def test_convert_to_pixels_cm_unit(self):
-        """Test converting coordinates to pixels with cm unit."""
-        manager = IgnoreAreaManager()
-        ignore_area = {"x": 1, "y": 2, "height": 3, "width": 4}
-        x, y, h, w = manager._convert_to_pixels(
-            ignore_area, "cm", 254
-        )  # 254 DPI = 100 px/cm
+    IgnoreAreaManager parses mask strings into abstract ignore areas.
+    Page._process_area_ignore_area converts those into pixel-based ignore areas
+    using the actual image dimensions.
+    """
 
-        assert x == 100  # 1 * (254/2.54) = 100
-        assert y == 200  # 2 * (254/2.54) = 200
-        assert h == 300  # 3 * (254/2.54) = 300
-        assert w == 400  # 4 * (254/2.54) = 400
+    def _make_page(self, height=1000, width=800, page_number=1, dpi=200):
+        """Create a minimal Page object with a fake image for testing."""
+        from DocTest.DocumentRepresentation import Page
+
+        image = np.zeros((height, width, 3), dtype=np.uint8)
+        page = Page(image=image, page_number=page_number, dpi=dpi)
+        return page
+
+    def test_area_top(self):
+        """Test area mask for 'top' location."""
+        page = self._make_page(height=1000, width=800)
+        ignore_area = {"page": "all", "type": "area", "location": "top", "percent": "10"}
+
+        page._process_area_ignore_area(ignore_area)
+
+        assert len(page.pixel_ignore_areas) == 1
+        area = page.pixel_ignore_areas[0]
+        assert area["x"] == 0
+        assert area["y"] == 0
+        assert area["width"] == 800
+        assert area["height"] == 100  # 10% of 1000
+
+    def test_area_bottom(self):
+        """Test area mask for 'bottom' location."""
+        page = self._make_page(height=1000, width=800)
+        ignore_area = {"page": "all", "type": "area", "location": "bottom", "percent": "20"}
+
+        page._process_area_ignore_area(ignore_area)
+
+        assert len(page.pixel_ignore_areas) == 1
+        area = page.pixel_ignore_areas[0]
+        assert area["x"] == 0
+        assert area["y"] == 800  # 1000 - 200
+        assert area["width"] == 800
+        assert area["height"] == 200  # 20% of 1000
+
+    def test_area_left(self):
+        """Test area mask for 'left' location."""
+        page = self._make_page(height=1000, width=800)
+        ignore_area = {"page": "all", "type": "area", "location": "left", "percent": "25"}
+
+        page._process_area_ignore_area(ignore_area)
+
+        assert len(page.pixel_ignore_areas) == 1
+        area = page.pixel_ignore_areas[0]
+        assert area["x"] == 0
+        assert area["y"] == 0
+        assert area["width"] == 200  # 25% of 800
+        assert area["height"] == 1000
+
+    def test_area_right(self):
+        """Test area mask for 'right' location."""
+        page = self._make_page(height=1000, width=800)
+        ignore_area = {"page": "all", "type": "area", "location": "right", "percent": "15"}
+
+        page._process_area_ignore_area(ignore_area)
+
+        assert len(page.pixel_ignore_areas) == 1
+        area = page.pixel_ignore_areas[0]
+        assert area["x"] == 680  # 800 - 120
+        assert area["y"] == 0
+        assert area["width"] == 120  # 15% of 800
+        assert area["height"] == 1000
+
+    def test_page_filter_all(self):
+        """Test that page='all' applies ignore area to any page."""
+        for page_num in [1, 2, 5]:
+            page = self._make_page(height=1000, width=800, page_number=page_num)
+            ignore_area = {"page": "all", "type": "area", "location": "top", "percent": "10"}
+
+            page._process_area_ignore_area(ignore_area)
+
+            assert len(page.pixel_ignore_areas) == 1, (
+                f"page='all' should apply to page {page_num}"
+            )
+
+    def test_page_filter_specific_match(self):
+        """Test that a specific page number matches the correct page."""
+        page = self._make_page(height=1000, width=800, page_number=3)
+        ignore_area = {"page": 3, "type": "area", "location": "top", "percent": "10"}
+
+        page._process_area_ignore_area(ignore_area)
+
+        assert len(page.pixel_ignore_areas) == 1
+
+    def test_page_filter_specific_no_match(self):
+        """Test that a specific page number does not match a different page."""
+        page = self._make_page(height=1000, width=800, page_number=1)
+        ignore_area = {"page": 3, "type": "area", "location": "top", "percent": "10"}
+
+        page._process_area_ignore_area(ignore_area)
+
+        assert len(page.pixel_ignore_areas) == 0
+
+    def test_page_filter_string_page_number(self):
+        """Test that page number given as string is cast to int for comparison."""
+        page = self._make_page(height=1000, width=800, page_number=2)
+        ignore_area = {"page": "2", "type": "area", "location": "top", "percent": "10"}
+
+        page._process_area_ignore_area(ignore_area)
+
+        assert len(page.pixel_ignore_areas) == 1
+
+    def test_invalid_location_still_appends(self):
+        """Test that an unrecognized location still appends the full image area.
+
+        The Page implementation defaults to full image dimensions when
+        no location branch matches. This documents the current behavior.
+        """
+        page = self._make_page(height=1000, width=800)
+        ignore_area = {"page": "all", "type": "area", "location": "center", "percent": "10"}
+
+        page._process_area_ignore_area(ignore_area)
+
+        # Current behavior: appends the full image as ignore area
+        assert len(page.pixel_ignore_areas) == 1
+        area = page.pixel_ignore_areas[0]
+        assert area["x"] == 0
+        assert area["y"] == 0
+        assert area["width"] == 800
+        assert area["height"] == 1000
+
+    def test_missing_location_defaults_to_none(self):
+        """Test that a missing location key defaults to None and uses full image."""
+        page = self._make_page(height=1000, width=800)
+        ignore_area = {"page": "all", "type": "area", "percent": "10"}
+
+        page._process_area_ignore_area(ignore_area)
+
+        assert len(page.pixel_ignore_areas) == 1
+        area = page.pixel_ignore_areas[0]
+        assert area["width"] == 800
+        assert area["height"] == 1000
+
+    def test_end_to_end_parse_and_process(self):
+        """Test the full pipeline: IgnoreAreaManager parses, Page processes."""
+        manager = IgnoreAreaManager(mask="top:10;bottom:20;left:5")
+        areas = manager.read_ignore_areas()
+
+        assert len(areas) == 3
+
+        page = self._make_page(height=2000, width=1000, page_number=1)
+        for area in areas:
+            page._process_area_ignore_area(area)
+
+        assert len(page.pixel_ignore_areas) == 3
+
+        # top:10 => top 10% of 2000px height = 200px
+        top_area = page.pixel_ignore_areas[0]
+        assert top_area["x"] == 0
+        assert top_area["y"] == 0
+        assert top_area["height"] == 200
+        assert top_area["width"] == 1000
+
+        # bottom:20 => bottom 20% of 2000px height = 400px
+        bottom_area = page.pixel_ignore_areas[1]
+        assert bottom_area["x"] == 0
+        assert bottom_area["y"] == 1600  # 2000 - 400
+        assert bottom_area["height"] == 400
+        assert bottom_area["width"] == 1000
+
+        # left:5 => left 5% of 1000px width = 50px
+        left_area = page.pixel_ignore_areas[2]
+        assert left_area["x"] == 0
+        assert left_area["y"] == 0
+        assert left_area["width"] == 50
+        assert left_area["height"] == 2000
+
+    def test_end_to_end_json_mask_with_coordinates(self):
+        """Test end-to-end with a JSON coordinate mask."""
+        mask = '[{"page": "all", "type": "coordinates", "x": 10, "y": 20, "width": 100, "height": 50}]'
+        manager = IgnoreAreaManager(mask=mask)
+        areas = manager.read_ignore_areas()
+
+        assert len(areas) == 1
+
+        page = self._make_page(height=1000, width=800, page_number=1)
+        page._process_coordinates_ignore_area(areas[0])
+
+        assert len(page.pixel_ignore_areas) == 1
+        area = page.pixel_ignore_areas[0]
+        assert area["x"] == 10
+        assert area["y"] == 20
+        assert area["width"] == 100
+        assert area["height"] == 50
+
+    def test_multiple_pages_selective_application(self):
+        """Test that page-specific ignore areas apply only to matching pages."""
+        areas = [
+            {"page": 1, "type": "area", "location": "top", "percent": "10"},
+            {"page": 2, "type": "area", "location": "bottom", "percent": "20"},
+            {"page": "all", "type": "area", "location": "left", "percent": "5"},
+        ]
+
+        page1 = self._make_page(height=1000, width=800, page_number=1)
+        page2 = self._make_page(height=1000, width=800, page_number=2)
+
+        for area in areas:
+            page1._process_area_ignore_area(area)
+            page2._process_area_ignore_area(area)
+
+        # Page 1 gets: top (page=1 match) + left (page=all)
+        assert len(page1.pixel_ignore_areas) == 2
+        # Page 2 gets: bottom (page=2 match) + left (page=all)
+        assert len(page2.pixel_ignore_areas) == 2
