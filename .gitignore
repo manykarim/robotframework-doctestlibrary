@@ -86,3 +86,10 @@ RELEASE*.md
 .claude/
 .*cache/
 research/
+
+# Frontend build artifacts (dashboard web UI)
+frontend/node_modules/
+frontend/dist/
+
+# Dashboard runtime data
+.doctest_dashboard/

@@ -5,9 +5,10 @@ tasks:
       sudo apt-get update
       sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0 allure
       sudo cp policy.xml /etc/ImageMagick-6/
-      poetry install
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      uv sync --all-extras
     command: |
-      poetry run invoke tests
+      uv run invoke tests
 image: gitpod/workspace-full-vnc
 vscode:
   extensions:

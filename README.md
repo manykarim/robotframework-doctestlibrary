@@ -47,7 +47,24 @@ Count Items With LLM
 
 # Installation instructions
 
-`pip install --upgrade robotframework-doctestlibrary`
+```bash
+pip install --upgrade robotframework-doctestlibrary              # core library
+pip install --upgrade robotframework-doctestlibrary[ai]          # + LLM-assisted comparisons
+pip install --upgrade robotframework-doctestlibrary[dashboard]   # + visual review dashboard & mask editor
+pip install --upgrade robotframework-doctestlibrary[all]         # everything
+```
+
+## Development setup (contributors)
+
+The project is managed with [uv](https://docs.astral.sh/uv/) — one `pyproject.toml`, one lockfile:
+
+```bash
+uv sync --all-extras        # full dev environment (library, dashboard, test tooling)
+uv run invoke tests         # unit + acceptance suites
+uv run invoke multipython   # validate dependency resolution on Python 3.9–3.13
+uv run pytest e2e --browser chromium   # dashboard end-to-end journeys
+cd frontend && npm install && npm run build   # build the dashboard web UI once
+```
 
 ## Optional LLM-Assisted Comparisons
 
@@ -186,6 +203,33 @@ Afterwards you can, e.g., start the container and run the povided examples like 
 [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)  
 Try out the library using [Gitpod](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)
 
+# Visual Review Dashboard & Mask Editor
+
+The **doctest-dashboard** (shipped with the `[dashboard]` extra) is a locally runnable web app to review comparison results outside of `log.html`:
+
+- browse runs and failing comparisons with diff thumbnails
+- diff viewer with side-by-side / overlay / blink / swipe modes and next/previous-difference navigation
+- **accept** a difference → the candidate is promoted to the new reference (plain file copy, git-diffable, SHA-256 audit trail)
+- **reject** a difference → export a bug-data ZIP (reference + candidate + diffs + metadata)
+- **visual mask editor** for coordinate, area, and text-pattern masks with live preview — including one-click *create mask from diff region* and instant re-comparison of past runs with the adjusted masks
+
+Quick start:
+
+```bash
+pip install robotframework-doctestlibrary[dashboard]   # wheels include the web UI
+doctest-dashboard serve                                 # open http://127.0.0.1:8008
+doctest-dashboard ingest results/output.xml
+```
+
+Run your suites with the machine-readable sidecar enabled so the dashboard gets per-page data:
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest    result_json=true    take_screenshots=true    screenshot_format=png
+```
+
+See the full guide in [docs/dashboard.md](./docs/dashboard.md) for the review workflow, mask editor usage, team mode, and the API.
+
 # Examples
 
 Have a look at  
@@ -235,6 +279,8 @@ Compare two Farm images with area mask as string
 ```
 #### Different Mask Types to Ignore Parts When Comparing
 ##### Areas, Coordinates, Text Patterns
+
+Text pattern matching levels: `word_pattern` matches single words; `line_pattern` matches whole text lines (anchored, use `.*…​.*` to match anywhere); `pattern` matches single words — and when the regex contains whitespace it is searched anywhere within each line, masking **exactly the words the match span covers**. So `Robot Framework` masks just that phrase wherever it occurs, while `.*Robot Framework.*` extends the match over the whole line and masks all of it. Matching is case-sensitive; add `(?i)` for case-insensitive.
 ```python
 [
     {
@@ -269,6 +315,22 @@ Compare two Farm images with area mask as string
     }
 ]
 ```
+
+##### Creating and editing masks visually
+
+The companion **doctest-dashboard** ships a visual mask editor with live preview of coordinate, area, and pattern masks — including one-click mask creation from detected diff regions and instant re-comparison of past runs with the adjusted masks. It reads and writes the exact JSON schema shown above. See [docs/dashboard.md](./docs/dashboard.md) for the full guide.
+
+> **Deprecation note:** the tkinter tool `utilities/mask_editor.py` is superseded by the dashboard's mask editor and will be removed in a future release. It only supports pixel-based coordinate masks.
+
+##### Machine-readable results for review tooling
+
+Enable `result_json=true` on `DocTest.VisualTest` / `DocTest.PdfTest` to write a JSON sidecar per comparison into `{OUTPUT_DIR}/doctest_results/` (statuses, SSIM scores, diff regions, resolved masks, per-page renderings). The dashboard — and any other tooling — ingests these for review, accept/reject baseline management, and mask maintenance:
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest    result_json=true    take_screenshots=true    screenshot_format=png
+```
+
 ### Accept visual different by checking move distance or text content
 
 ```RobotFramework

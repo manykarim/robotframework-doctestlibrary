@@ -630,36 +630,126 @@ class Page:
             self._process_area_ignore_area(ignore_area)
 
     def _process_pattern_ignore_area_from_ocr(self, ignore_area: Dict):
-        """Handle pattern-based ignore areas by searching the OCR text for text patterns."""
+        """Handle pattern-based ignore areas by searching the OCR text for text patterns.
+
+        Matching levels mirror the PDF text path:
+
+        - ``word_pattern``: individual OCR tokens
+        - ``line_pattern``: whole OCR lines (anchored match on the joined line)
+        - ``pattern``: individual tokens; when the pattern contains
+          whitespace (phrases like ``Robot Framework`` cannot match a single
+          token) it is searched anywhere inside each line and only the words
+          covered by the match span are masked — wrap the phrase in ``.*``
+          to mask the entire line instead.
+        """
         import re
         pattern = ignore_area.get('pattern')
+        pattern_type = ignore_area.get('type') or 'pattern'
         xoffset = int(ignore_area.get('xoffset', 0))
         yoffset = int(ignore_area.get('yoffset', 0))
 
-        # Iterate through text data to identify matching patterns and mark as ignore areas
-        n_boxes = len(self.ocr_text_data['text'])
-        for j in range(n_boxes):
-            raw_text = self.ocr_text_data['text'][j]
-            normalized_text = self._normalize_token(raw_text)
-            if not normalized_text:
-                continue
-            match_target = normalized_text.upper()
-            if not re.match(pattern, match_target):
-                continue
+        def matches(text: str) -> bool:
+            # Match the original-case text first (consistent with the PDF text
+            # path); keep the legacy uppercased match as fallback so patterns
+            # written against uppercase targets continue to work.
+            return bool(re.match(pattern, text) or re.match(pattern, text.upper()))
 
-            x, y, w, h = (
-                self.ocr_text_data['left'][j],
-                self.ocr_text_data['top'][j],
-                self.ocr_text_data['width'][j],
-                self.ocr_text_data['height'][j],
-            )
-            text_mask = {
+        def add_area(x, y, w, h):
+            self.pixel_ignore_areas.append({
                 "x": int(x) - xoffset,
                 "y": int(y) - yoffset,
                 "width": int(w) + 2 * xoffset,
                 "height": int(h) + 2 * yoffset,
-            }
-            self.pixel_ignore_areas.append(text_mask)
+            })
+
+        has_line_info = all(
+            key in self.ocr_text_data for key in ('block_num', 'par_num', 'line_num')
+        )
+        word_level = pattern_type in ('pattern', 'word_pattern')
+        line_level = has_line_info and (
+            pattern_type == 'line_pattern'
+            or (pattern_type == 'pattern' and re.search(r'\s|\\s', pattern or ''))
+        )
+        if pattern_type == 'line_pattern' and not has_line_info:
+            # e.g. EAST engine output has no line structure — fall back to words
+            word_level = True
+
+        n_boxes = len(self.ocr_text_data['text'])
+
+        if word_level:
+            for j in range(n_boxes):
+                normalized_text = self._normalize_token(self.ocr_text_data['text'][j])
+                if not normalized_text or not matches(normalized_text):
+                    continue
+                add_area(
+                    self.ocr_text_data['left'][j],
+                    self.ocr_text_data['top'][j],
+                    self.ocr_text_data['width'][j],
+                    self.ocr_text_data['height'][j],
+                )
+
+        if line_level:
+            def add_union_area(token_indices):
+                x1 = min(self.ocr_text_data['left'][j] for j in token_indices)
+                y1 = min(self.ocr_text_data['top'][j] for j in token_indices)
+                x2 = max(
+                    self.ocr_text_data['left'][j] + self.ocr_text_data['width'][j]
+                    for j in token_indices
+                )
+                y2 = max(
+                    self.ocr_text_data['top'][j] + self.ocr_text_data['height'][j]
+                    for j in token_indices
+                )
+                add_area(x1, y1, x2 - x1, y2 - y1)
+
+            lines: Dict[tuple, list] = {}
+            for j in range(n_boxes):
+                normalized_text = self._normalize_token(self.ocr_text_data['text'][j])
+                if not normalized_text:
+                    continue
+                key = (
+                    self.ocr_text_data['block_num'][j],
+                    self.ocr_text_data['par_num'][j],
+                    self.ocr_text_data['line_num'][j],
+                )
+                lines.setdefault(key, []).append(j)
+            for indices in lines.values():
+                tokens = [
+                    self._normalize_token(self.ocr_text_data['text'][j]) for j in indices
+                ]
+                line_text = " ".join(tokens)
+
+                if pattern_type == 'line_pattern':
+                    if matches(line_text):
+                        add_union_area(indices)
+                    continue
+
+                # type 'pattern' with whitespace: search the phrase anywhere
+                # in the line and mask only the words the match span covers
+                spans = [
+                    m.span() for m in re.finditer(pattern, line_text) if m.end() > m.start()
+                ]
+                if not spans:
+                    # legacy fallback: patterns written against uppercase text
+                    spans = [
+                        m.span()
+                        for m in re.finditer(pattern, line_text, re.IGNORECASE)
+                        if m.end() > m.start()
+                    ]
+                if not spans:
+                    continue
+                offsets = []
+                position = 0
+                for token in tokens:
+                    offsets.append((position, position + len(token)))
+                    position += len(token) + 1
+                for start, end in spans:
+                    covered = [
+                        j for j, (token_start, token_end) in zip(indices, offsets)
+                        if token_start < end and token_end > start
+                    ]
+                    if covered:
+                        add_union_area(covered)
 
     def _process_pattern_ignore_area_from_pdf(self, ignore_area: Dict):
         import re
@@ -709,18 +799,27 @@ class Page:
         self.pixel_ignore_areas.append({"x": x, "y": y, "height": h, "width": w})
     
     def _convert_to_pixels(self, area: Dict, unit: str):
-        """Convert dimensions from cm, mm, or px to pixel units."""
-        x, y, w, h = int(area['x']), int(area['y']), int(area['width']), int(area['height'])
+        """Convert dimensions from cm, mm, pt, or px to pixel units.
+
+        Conversion is applied to the original (possibly fractional) values
+        and rounded only once at the end, so e.g. 25.4 mm at 200 DPI
+        resolves to exactly 200 px.
+        """
+        x, y, w, h = float(area['x']), float(area['y']), float(area['width']), float(area['height'])
         if unit == 'mm':
             constant = self.dpi / 25.4
-            x, y, w, h = int(x * constant), int(y * constant), int(w * constant), int(h * constant)
         elif unit == 'cm':
             constant = self.dpi / 2.54
-            x, y, w, h = int(x * constant), int(y * constant), int(w * constant), int(h * constant)
         elif unit == 'pt':
             constant = self.dpi / 72.0
-            x, y, w, h = int(x * constant), int(y * constant), int(w * constant), int(h * constant)
-        return x, y, w, h
+        else:
+            constant = 1.0
+        return (
+            int(round(x * constant)),
+            int(round(y * constant)),
+            int(round(w * constant)),
+            int(round(h * constant)),
+        )
         
     def _process_area_ignore_area(self, ignore_area: Dict):
         """Handle area-based ignore areas (e.g., 'top', 'bottom', 'left', 'right') as percentages."""

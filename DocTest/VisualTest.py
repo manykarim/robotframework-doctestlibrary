@@ -15,6 +15,8 @@ from robot.libraries.BuiltIn import BuiltIn
 
 from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import download_file_from_url, is_url
+from DocTest.ReferencePromotion import promote_candidate_to_reference
+from DocTest.ResultWriter import RESULT_LOG_PREFIX, ComparisonResultWriter
 from DocTest.config import DEFAULT_CONFIDENCE
 from DocTest.llm import LLMDependencyError, load_llm_settings
 from DocTest.TextNormalization import apply_character_replacements
@@ -109,6 +111,7 @@ class VisualTest:
         document_page_cache_size: int = 2,
         verbose_movement_logging: bool = False,
         character_replacements: Optional[Dict[str, str]] = None,
+        result_json: bool = False,
         **kwargs,
     ):
         """
@@ -135,6 +138,7 @@ class VisualTest:
         | ``document_page_cache_size`` | Maximum number of rendered pages to keep in memory per document when streaming. Default is ``2``. |
         | ``verbose_movement_logging`` | When ``True``, emit detailed warnings from movement detection helpers (template, ORB, SIFT). Disabled by default to reduce noise. |
         | ``character_replacements`` | Dict mapping characters to replacements, applied to text extraction results. Example: ``{'\u00A0': ' '}`` to normalize non-breaking spaces. |
+        | ``result_json`` | When ``True``, every comparison writes a machine-readable JSON sidecar to ``{OUTPUT_DIR}/doctest_results/`` and logs a ``DOCTEST_RESULT:`` message. Default is ``False``. |
         | ``**kwargs`` | Everything else. |
 
 
@@ -169,6 +173,7 @@ class VisualTest:
         self.document_page_cache_size = max(1, int(document_page_cache_size))
         self.verbose_movement_logging = bool(verbose_movement_logging)
         self.character_replacements = self._parse_character_replacements(character_replacements)
+        self.result_json = bool(result_json)
 
         output_dir, reference_run, pabot_index = self._read_robot_variables()
         self.output_directory = output_dir
@@ -346,11 +351,47 @@ class VisualTest:
             else bool(stream_documents_override)
         )
 
+        # Reference promotion only targets local reference paths, never URLs
+        reference_target = None if is_url(reference_image) else reference_image
+
         # Download files if URLs are provided
         if is_url(reference_image):
             reference_image = download_file_from_url(reference_image)
         if is_url(candidate_image):
             candidate_image = download_file_from_url(candidate_image)
+
+        result_writer = (
+            ComparisonResultWriter(
+                self.output_directory,
+                keyword="Compare Images",
+                library="DocTest.VisualTest",
+                pabot_index=self.PABOTQUEUEINDEX,
+            )
+            if self.result_json
+            else None
+        )
+
+        if (
+            self.reference_run
+            and reference_target is not None
+            and not os.path.isfile(reference_target)
+        ):
+            promote_candidate_to_reference(reference_target, candidate_image)
+            robot_logger.info(
+                f"Reference run: reference '{reference_target}' did not exist "
+                "and was created from the candidate."
+            )
+            if result_writer is not None:
+                promotion_dpi = DPI if DPI else self.dpi
+                rel_path = result_writer.write(
+                    status="PASS",
+                    reference={"path": str(reference_target), "dpi": promotion_dpi},
+                    candidate={"path": str(candidate_image), "dpi": promotion_dpi},
+                    settings={},
+                    notes=["Reference run: reference was created from the candidate."],
+                )
+                robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
+            return
 
         # Set DPI and threshold if provided
         dpi = DPI if DPI else self.dpi
@@ -410,6 +451,17 @@ class VisualTest:
                 page_notes: List[str] = []
                 diff_rectangles_cache: Optional[List[Dict[str, int]]] = None
                 combined_image_with_differences = None
+                page_images: Dict[str, str] = {}
+                if result_writer is not None:
+                    # Save clean renderings before any labelling mutates them
+                    page_images = {
+                        "reference": result_writer.save_page_image(
+                            ref_page.image, ref_page.page_number, "reference"
+                        ),
+                        "candidate": result_writer.save_page_image(
+                            cand_page.image, cand_page.page_number, "candidate"
+                        ),
+                    }
                 # Resize the candidate page if needed
                 if resize_candidate and ref_page.image.shape != cand_page.image.shape:
                     cand_page.image = cv2.resize(
@@ -437,6 +489,15 @@ class VisualTest:
                     self.add_screenshot_to_log(
                         combined_image, suffix="_combined", original_size=False
                     )
+                    if result_writer is not None:
+                        result_writer.add_page(
+                            page_number=ref_page.page_number,
+                            status="FAIL",
+                            threshold=threshold,
+                            images=page_images,
+                            notes=["Image dimensions are different."],
+                            resolved_masks=ref_page.pixel_ignore_areas,
+                        )
                     continue
 
                 similar, diff, thresh, absolute_diff, score = ref_page.compare_with(
@@ -843,6 +904,32 @@ class VisualTest:
                         if entry[0] == "print":
                             robot_logger.info(entry[1])
 
+                if result_writer is not None:
+                    images = dict(page_images)
+                    if not similar:
+                        diff_image_path = result_writer.save_page_image(
+                            absolute_diff, ref_page.page_number, "diff"
+                        )
+                        if diff_image_path:
+                            images["diff"] = diff_image_path
+                        combined_path = result_writer.save_page_image(
+                            combined_image_with_differences,
+                            ref_page.page_number,
+                            "combined_with_diff",
+                        )
+                        if combined_path:
+                            images["combined_with_diff"] = combined_path
+                    result_writer.add_page(
+                        page_number=ref_page.page_number,
+                        status="PASS" if similar else "FAIL",
+                        score=score,
+                        threshold=threshold,
+                        diff_regions=[] if similar else (diff_rectangles_cache or []),
+                        images=images,
+                        notes=page_notes[:],
+                        resolved_masks=ref_page.pixel_ignore_areas,
+                    )
+
             llm_decision = None
             llm_label_enum = None
             if detected_differences and llm_requested:
@@ -884,6 +971,61 @@ class VisualTest:
                         robot_logger.info("LLM returned FLAG - keeping original comparison result.")
                     elif not llm_decision.is_positive and llm_override_result:
                         robot_logger.info("LLM rejected differences. Baseline failure will be raised.")
+
+            if detected_differences and self.reference_run:
+                if reference_target is not None:
+                    promote_candidate_to_reference(reference_target, candidate_image)
+                    robot_logger.info(
+                        f"Reference run: candidate saved as new reference "
+                        f"'{reference_target}'. Detected differences were accepted."
+                    )
+                    detected_differences = []
+                else:
+                    robot_logger.warn(
+                        "Reference run requested but the reference is a URL; "
+                        "cannot save the candidate as reference."
+                    )
+
+            if result_writer is not None:
+                llm_info = None
+                if llm_decision:
+                    llm_info = {
+                        "decision": str(_coerce_label_value(llm_decision.decision)),
+                        "reason": llm_decision.reason,
+                    }
+                rel_path = result_writer.write(
+                    status="FAIL" if detected_differences else "PASS",
+                    reference={
+                        "path": str(reference_image),
+                        "pages": reference_doc.page_count,
+                        "dpi": dpi,
+                    },
+                    candidate={
+                        "path": str(candidate_image),
+                        "pages": candidate_doc.page_count,
+                        "dpi": dpi,
+                    },
+                    settings={
+                        "threshold": threshold,
+                        "move_tolerance": move_tolerance,
+                        "check_text_content": check_text_content,
+                        "watermark_file": watermark_file,
+                        "ignore_watermarks": bool(ignore_watermarks),
+                        "screenshot_format": self.screenshot_format,
+                        "ocr_engine": ocr_engine,
+                        "force_ocr": force_ocr,
+                        "blur": blur,
+                        "block_based_ssim": block_based_ssim,
+                        "resize_candidate": resize_candidate,
+                    },
+                    masks={
+                        "placeholder_file": placeholder_file,
+                        "mask": mask,
+                        "abstract": reference_doc.abstract_ignore_areas,
+                    },
+                    llm=llm_info,
+                )
+                robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
 
             for diff in detected_differences:
                 robot_logger.info(diff["message"])
@@ -1690,6 +1832,19 @@ class VisualTest:
 
         """
         self.character_replacements = self._parse_character_replacements(character_replacements)
+
+    @keyword
+    def set_result_json(self, result_json: bool):
+        """Set whether comparisons write machine-readable JSON sidecar results.
+
+        | =Arguments= | =Description= |
+        | ``result_json`` | When ``True``, every comparison writes a JSON sidecar to ``{OUTPUT_DIR}/doctest_results/`` and logs a ``DOCTEST_RESULT:`` message. |
+
+        Examples:
+        | `Set Result Json`    ${True}
+        | `Compare Images`    reference.png    candidate.png
+        """
+        self.result_json = bool(result_json)
 
     @keyword
     def get_barcodes(
