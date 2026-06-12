@@ -53,21 +53,6 @@ function formatSize(size: number | null): string {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-/** Keyboard-operable click target (a11y: clickable rows need key handlers). */
-function pressable(handler: () => void) {
-  return {
-    role: "button" as const,
-    tabIndex: 0,
-    onClick: handler,
-    onKeyDown: (event: React.KeyboardEvent) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        handler();
-      }
-    },
-  };
-}
-
 export function FileBrowser({
   title, mode, fileFilter, defaultFilename, onSelect, onClose,
 }: FileBrowserProps) {
@@ -112,8 +97,8 @@ export function FileBrowser({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose} data-testid="file-browser">
-      <div className="modal" onClick={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" role="presentation" onClick={onClose} data-testid="file-browser">
+      <div className="modal" role="presentation" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <strong>{title}</strong>
           <button data-testid="fb-close" onClick={onClose}>✕</button>
@@ -147,7 +132,15 @@ export function FileBrowser({
               key={root.path}
               className="fb-entry"
               data-testid={`fb-entry-${root.name}`}
-              {...pressable(() => navigate(root.path))}
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(root.path)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  navigate(root.path);
+                }
+              }}
             >
               <span className="fb-icon">🗄</span>
               <span>{root.path}</span>
@@ -159,7 +152,16 @@ export function FileBrowser({
                 key={entry.path}
                 className="fb-entry"
                 data-testid={`fb-entry-${entry.name}`}
-                {...pressable(() => (entry.type === "dir" ? navigate(entry.path) : pickFile(entry)))}
+                role="button"
+                tabIndex={0}
+                onClick={() => (entry.type === "dir" ? navigate(entry.path) : pickFile(entry))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    if (entry.type === "dir") navigate(entry.path);
+                    else pickFile(entry);
+                  }
+                }}
                 onDoubleClick={() => entry.type === "file" && mode === "save" && onSelect(entry.path)}
               >
                 <span className="fb-icon">{entry.type === "dir" ? "📁" : "📄"}</span>

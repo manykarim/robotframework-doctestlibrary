@@ -1,6 +1,12 @@
 name: CI
 
-on: [push, pull_request]
+# pull_request covers PR branches; push only on main — otherwise every PR
+# commit runs the whole pipeline twice (doubling cost and exposure to
+# live-LLM test flakiness).
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
   smoke-no-ai:
