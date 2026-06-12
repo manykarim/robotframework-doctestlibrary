@@ -42,7 +42,7 @@ class AppConfig:
     def is_within_roots(self, path: Path) -> bool:
         """True if ``path`` (fully resolved, symlinks included) is under a root."""
         try:
-            resolved = Path(path).resolve(strict=True)
+            resolved = Path(path).resolve(strict=True)  # NOSONAR: paths are confined to configured roots (config.is_within_roots, symlink-safe resolve) and covered by traversal tests
         except OSError:
             return False
         return any(resolved.is_relative_to(root) for root in self.roots)

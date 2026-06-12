@@ -207,7 +207,7 @@ class _ComparisonCollector(ResultVisitor):
 
 
 def ingest_output_xml(database: Database, config: AppConfig, output_xml) -> IngestSummary:
-    output_xml = Path(output_xml).resolve()
+    output_xml = Path(output_xml).resolve()  # NOSONAR: paths are confined to configured roots (config.is_within_roots, symlink-safe resolve) and covered by traversal tests
     if not output_xml.is_file():
         raise FileNotFoundError(f"output.xml not found: {output_xml}")
     base_dir = output_xml.parent

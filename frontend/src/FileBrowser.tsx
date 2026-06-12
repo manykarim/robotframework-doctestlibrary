@@ -53,6 +53,21 @@ function formatSize(size: number | null): string {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/** Keyboard-operable click target (a11y: clickable rows need key handlers). */
+function pressable(handler: () => void) {
+  return {
+    role: "button" as const,
+    tabIndex: 0,
+    onClick: handler,
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        handler();
+      }
+    },
+  };
+}
+
 export function FileBrowser({
   title, mode, fileFilter, defaultFilename, onSelect, onClose,
 }: FileBrowserProps) {
@@ -132,7 +147,7 @@ export function FileBrowser({
               key={root.path}
               className="fb-entry"
               data-testid={`fb-entry-${root.name}`}
-              onClick={() => navigate(root.path)}
+              {...pressable(() => navigate(root.path))}
             >
               <span className="fb-icon">🗄</span>
               <span>{root.path}</span>
@@ -144,7 +159,7 @@ export function FileBrowser({
                 key={entry.path}
                 className="fb-entry"
                 data-testid={`fb-entry-${entry.name}`}
-                onClick={() => (entry.type === "dir" ? navigate(entry.path) : pickFile(entry))}
+                {...pressable(() => (entry.type === "dir" ? navigate(entry.path) : pickFile(entry)))}
                 onDoubleClick={() => entry.type === "file" && mode === "save" && onSelect(entry.path)}
               >
                 <span className="fb-icon">{entry.type === "dir" ? "📁" : "📄"}</span>

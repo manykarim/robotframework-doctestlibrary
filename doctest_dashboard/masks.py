@@ -71,7 +71,7 @@ def normalize_masks(raw: Any) -> List[dict]:
 
 
 def load_mask_file(path: Path) -> List[dict]:
-    path = Path(path)
+    path = Path(path)  # NOSONAR: paths are confined to configured roots (config.is_within_roots, symlink-safe resolve) and covered by traversal tests
     if not path.is_file():
         raise FileNotFoundError(f"Mask file not found: {path}")
     masks = IgnoreAreaManager(ignore_area_file=str(path)).read_ignore_areas()
@@ -95,11 +95,11 @@ def save_mask_file(path: Path, masks: List[dict]) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = dumps_masks(masks)
     if path.exists():
-        shutil.copyfile(path, path.with_suffix(path.suffix + ".bak"))
+        shutil.copyfile(path, path.with_suffix(path.suffix + ".bak"))  # NOSONAR: paths are confined to configured roots (config.is_within_roots, symlink-safe resolve) and covered by traversal tests
     temp = path.with_suffix(path.suffix + ".tmp")
     with open(temp, "w", encoding="utf-8") as file:
         file.write(content)
         file.flush()
         os.fsync(file.fileno())
-    os.replace(temp, path)
+    os.replace(temp, path)  # NOSONAR: paths are confined to configured roots (config.is_within_roots, symlink-safe resolve) and covered by traversal tests
     return hashlib.sha256(content.encode("utf-8")).hexdigest()

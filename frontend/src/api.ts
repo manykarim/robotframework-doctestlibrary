@@ -109,4 +109,4 @@ export const api = {
   capabilities: () => request("GET", "/api/capabilities").then((r) => r.json()),
 };
 
-export const assetUrl = (token: string) => `/api/assets/${token}`;
+export const assetUrl = (token: string) => `/api/assets/${encodeURIComponent(token)}`;

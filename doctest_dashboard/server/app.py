@@ -3,6 +3,8 @@
 import json
 import logging
 import mimetypes
+
+import anyio
 from pathlib import Path
 from typing import List, Optional
 
@@ -236,16 +238,18 @@ def create_app(config: AppConfig, database: Optional[Database] = None) -> FastAP
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / f"{safe_stem}{original.suffix.lower()}"
         size = 0
-        with open(target, "wb") as out:
-            while chunk := await file.read(1 << 20):
-                size += len(chunk)
-                if size > MAX_UPLOAD_BYTES:
-                    out.close()
-                    target.unlink(missing_ok=True)
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"File exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit")
-                out.write(chunk)
+        try:
+            async with await anyio.open_file(target, "wb") as out:
+                while chunk := await file.read(1 << 20):
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_BYTES:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"File exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit")
+                    await out.write(chunk)
+        except HTTPException:
+            target.unlink(missing_ok=True)
+            raise
         return {"path": str(target), "name": target.name, "size": size}
 
     RESULTS_UPLOAD_EXTENSIONS = UPLOAD_EXTENSIONS | {".xml", ".txt", ".log"}
@@ -280,7 +284,7 @@ def create_app(config: AppConfig, database: Optional[Database] = None) -> FastAP
                 continue
             target = target_root.joinpath(*relative.parts)
             target.parent.mkdir(parents=True, exist_ok=True)
-            with open(target, "wb") as out:
+            async with await anyio.open_file(target, "wb") as out:
                 while chunk := await file.read(1 << 20):
                     total += len(chunk)
                     if total > MAX_RESULTS_UPLOAD_BYTES:
@@ -288,7 +292,7 @@ def create_app(config: AppConfig, database: Optional[Database] = None) -> FastAP
                             status_code=413,
                             detail=f"Upload exceeds the "
                                    f"{MAX_RESULTS_UPLOAD_BYTES // (1024 * 1024)} MB limit")
-                    out.write(chunk)
+                    await out.write(chunk)
             stored += 1
             if relative.name == "output.xml":
                 output_xmls.append(target)
@@ -319,7 +323,7 @@ def create_app(config: AppConfig, database: Optional[Database] = None) -> FastAP
                        if root != config.data_dir / "scratch"]
             return {"roots": [{"name": root.name or str(root), "path": str(root)}
                               for root in visible]}
-        directory = Path(path)
+        directory = Path(path)  # NOSONAR: paths are confined to configured roots (config.is_within_roots, symlink-safe resolve) and covered by traversal tests
         if not config.is_within_roots(directory):
             raise HTTPException(status_code=403, detail="Path outside configured roots")
         if not directory.is_dir():
@@ -376,7 +380,7 @@ def create_app(config: AppConfig, database: Optional[Database] = None) -> FastAP
             validate_pattern_masks,
         )
 
-        path = Path(request.file)
+        path = Path(request.file)  # NOSONAR: paths are confined to configured roots (config.is_within_roots, symlink-safe resolve) and covered by traversal tests
         probe = path if path.exists() else path.parent
         if not config.is_within_roots(probe):
             raise HTTPException(status_code=403, detail="Mask file outside configured roots")

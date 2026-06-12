@@ -464,7 +464,15 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
                   key={index}
                   className={`mask-row ${selected === index ? "selected" : ""}`}
                   data-testid={`mask-row-${index}`}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelected(index)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelected(index);
+                    }
+                  }}
                 >
                   <span className="badge degraded">{mask.type}</span>
                   <span>{mask.name || `#${index + 1}`}</span>

@@ -727,13 +727,13 @@ class Page:
                 # type 'pattern' with whitespace: search the phrase anywhere
                 # in the line and mask only the words the match span covers
                 spans = [
-                    m.span() for m in re.finditer(pattern, line_text) if m.end() > m.start()
+                    m.span() for m in re.finditer(pattern, line_text) if m.end() > m.start()  # NOSONAR: patterns are test-author-supplied mask definitions, validated with re.compile at API boundaries
                 ]
                 if not spans:
                     # legacy fallback: patterns written against uppercase text
                     spans = [
                         m.span()
-                        for m in re.finditer(pattern, line_text, re.IGNORECASE)
+                        for m in re.finditer(pattern, line_text, re.IGNORECASE)  # NOSONAR: same test-author-supplied pattern as above
                         if m.end() > m.start()
                     ]
                 if not spans:

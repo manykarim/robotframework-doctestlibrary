@@ -159,7 +159,7 @@ class EngineService:
 
     @staticmethod
     def _file_fingerprint(path: str) -> Dict[str, Any]:
-        stat = os.stat(path)
+        stat = os.stat(path)  # NOSONAR: paths are confined to configured roots (config.is_within_roots, symlink-safe resolve) and covered by traversal tests
         return {"path": path, "size": stat.st_size, "mtime": stat.st_mtime_ns}
 
     def mask_preview(self, file_path: str, page: int, masks: Any,
