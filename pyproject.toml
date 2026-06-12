@@ -6,25 +6,24 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Many Kasiriha", email = "many.kasiriha@dbschenker.com" }]
 maintainers = [{ name = "Many Kasiriha", email = "many.kasiriha@dbschenker.com" }]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
     "Framework :: Robot Framework",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Testing",
 ]
-# Version-conditional pins translate poetry's multi-constraint tables;
-# dead <3.9 branches were dropped (requires-python is >=3.9).
+# Version-conditional pins translate poetry's multi-constraint tables.
+# Python floor is 3.10: pydantic-ai (the [ai] extra) only supports >=3.10
+# in maintained versions, and 3.9 is past end of life.
 dependencies = [
     "PyMuPDF>=1.26.0",
     "imutils",
-    "numpy>=1.25,<2.0; python_version < '3.10'",
-    "numpy>=1.26; python_version >= '3.10' and python_version < '3.13'",
+    "numpy>=1.26; python_version < '3.13'",
     "numpy>=2.1.0; python_version >= '3.13'",
     "opencv-python-headless",
     "parsimonious",
@@ -50,7 +49,7 @@ Repository = "https://github.com/manykarim/robotframework-doctestlibrary"
 
 [project.optional-dependencies]
 ai = [
-    "pydantic-ai-slim[openai]",
+    "pydantic-ai-slim[openai]>=1",
     "python-dotenv",
 ]
 dashboard = [
@@ -70,8 +69,7 @@ doctest-dashboard = "doctest_dashboard.cli:main"
 dev = [
     "pytest",
     "invoke",
-    "coverage>=7.10.7,<7.11; python_version < '3.10'",
-    "coverage>=7.13.5; python_version >= '3.10'",
+    "coverage>=7.13.5",
     "robotframework-stacktrace",
     "httpx",
     "pytest-playwright",

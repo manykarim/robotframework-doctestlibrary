@@ -29,8 +29,17 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
 BASELINE_PATH = Path(__file__).parent / "wheel_baseline.json"
-SUPPORTED_PYTHONS = ["3.9", "3.10", "3.11", "3.12", "3.13"]
+SUPPORTED_PYTHONS = ["3.10", "3.11", "3.12", "3.13"]
 BASELINE_EXTRAS = ["ai"]
+
+# Documented intentional deviations from the baseline (tightenings only):
+# extra specifiers that may be ADDED for the named package without failing
+# the gate. Anything else still fails.
+INTENTIONAL_TIGHTENINGS = {
+    # 3.9 support drop: maintained pydantic-ai (>=1) requires Python 3.10+;
+    # the unpinned baseline resolved broken 0.8.x on EOL interpreters.
+    "pydantic-ai-slim": frozenset({">=1"}),
+}
 
 
 def _effective_requirements(requires_dist, python_version, extra):
@@ -130,6 +139,9 @@ def main():
                     errors.append(
                         f"py{python_version} extra={extra}: dependency dropped: {key[0]}")
                 elif actual[key] != specifiers:
+                    allowed = INTENTIONAL_TIGHTENINGS.get(key[0], frozenset())
+                    if actual[key] == specifiers | allowed:
+                        continue
                     errors.append(
                         f"py{python_version} extra={extra}: {key[0]} specifiers "
                         f"changed: {sorted(actual[key])} != {sorted(specifiers)}")

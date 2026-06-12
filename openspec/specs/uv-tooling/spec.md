@@ -21,18 +21,18 @@ The dashboard SHALL live as a peer package: `doctest_dashboard/` next to `DocTes
 - **THEN** they all pass with no skips introduced by the restructuring
 
 ### Requirement: Multi-Python validation
-The toolchain SHALL validate Python 3.9 through 3.13: per-interpreter `uv sync --all-extras` succeeds, an automated audit asserts the resolved versions of the marker-controlled packages match the expectation table, and the test suite runs per interpreter in CI. A local `invoke multipython` task SHALL run the sync + audit + import smoke for all supported interpreters.
+The toolchain SHALL validate Python 3.10 through 3.13: per-interpreter `uv sync --all-extras` succeeds, an automated audit asserts the resolved versions of the marker-controlled packages match the expectation table, and the test suite runs per interpreter in CI. A local `invoke multipython` task SHALL run the sync + audit + import smoke for all supported interpreters.
 
-#### Scenario: Dashboard code runs on Python 3.9
-- **WHEN** the dashboard unit tests run under Python 3.9 with the dashboard extra installed
-- **THEN** they pass (no 3.10+-only syntax in `doctest_dashboard`)
+#### Scenario: Dashboard code runs on the oldest supported Python
+- **WHEN** the dashboard unit tests run under Python 3.10 with the dashboard extra installed
+- **THEN** they pass
 
 #### Scenario: Local multi-Python task
 - **WHEN** `invoke multipython` runs on a development machine
 - **THEN** every supported interpreter is synced, audited against the expectation table, and import-smoked, with a per-version summary
 
 ### Requirement: CI, publish, and invoke tasks use uv
-`tasks.py` SHALL invoke all tooling through `uv run`; `ci.yml` SHALL install environments with uv across the 3.9–3.13 matrix (with extras) and run the dashboard/e2e job from the new paths; `python-publish.yml` SHALL build the frontend before `uv build` and run the artifact-parity comparison as a release gate.
+`tasks.py` SHALL invoke all tooling through `uv run`; `ci.yml` SHALL install environments with uv across the 3.10–3.13 matrix (with extras) and run the dashboard/e2e job from the new paths; `python-publish.yml` SHALL build the frontend before `uv build` and run the artifact-parity comparison as a release gate.
 
 #### Scenario: Publish path produces a complete wheel
 - **WHEN** the publish workflow runs

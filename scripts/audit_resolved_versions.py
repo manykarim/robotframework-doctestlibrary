@@ -20,22 +20,22 @@ PY = sys.version_info[:2]
 
 # package -> expected specifier for this interpreter ("" = any version)
 EXPECTATIONS = {
-    (3, 9):  {"numpy": ">=1.25,<2.0", "pymupdf": ">=1.26.0",
+    (3, 10): {"numpy": ">=1.26", "pymupdf": ">=1.26.0", "pydantic-ai-slim": ">=1",
               "scipy": "", "scikit-image": "", "deepdiff": ""},
-    (3, 10): {"numpy": ">=1.26", "pymupdf": ">=1.26.0",
-              "scipy": "", "scikit-image": "", "deepdiff": ""},
-    (3, 11): {"numpy": ">=1.26", "pymupdf": ">=1.26.0",
+    (3, 11): {"numpy": ">=1.26", "pymupdf": ">=1.26.0", "pydantic-ai-slim": ">=1",
               "scipy": "", "scikit-image": "", "deepdiff": ""},
     (3, 12): {"numpy": ">=1.26", "pymupdf": ">=1.26.0",
-              "scipy": ">=1.11", "scikit-image": ">=0.22.0", "deepdiff": ">=6.0"},
+              "scipy": ">=1.11", "scikit-image": ">=0.22.0", "deepdiff": ">=6.0",
+              "pydantic-ai-slim": ">=1"},
     (3, 13): {"numpy": ">=2.1.0", "pymupdf": ">=1.26.0",
-              "scipy": ">=1.11", "scikit-image": ">=0.25.0", "deepdiff": ">=6.0"},
+              "scipy": ">=1.11", "scikit-image": ">=0.25.0", "deepdiff": ">=6.0",
+              "pydantic-ai-slim": ">=1"},
 }
 
 # packages that must exist on this interpreter (beyond the table)
 PRESENCE = ["opencv-python-headless", "robotframework", "pytesseract", "wand"]
 PRESENCE_312_PLUS = ["setuptools"]
-EXTRA_PRESENCE = ["fastapi", "uvicorn", "python-multipart", "pydantic-ai-slim"]
+EXTRA_PRESENCE = ["fastapi", "uvicorn", "python-multipart"]
 
 
 def main() -> int:

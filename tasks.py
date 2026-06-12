@@ -11,7 +11,7 @@ if not hasattr(inspect, "getargspec"):
     inspect.getargspec = inspect.getfullargspec
 
 ROOT = pathlib.Path(__file__).parent.resolve().as_posix()
-SUPPORTED_PYTHONS = ["3.9", "3.10", "3.11", "3.12", "3.13"]
+SUPPORTED_PYTHONS = ["3.10", "3.11", "3.12", "3.13"]
 utests_completed_process = None
 atests_completed_process = None
 

@@ -61,7 +61,7 @@ The project is managed with [uv](https://docs.astral.sh/uv/) — one `pyproject.
 ```bash
 uv sync --all-extras        # full dev environment (library, dashboard, test tooling)
 uv run invoke tests         # unit + acceptance suites
-uv run invoke multipython   # validate dependency resolution on Python 3.9–3.13
+uv run invoke multipython   # validate dependency resolution on Python 3.10–3.13
 uv run pytest e2e --browser chromium   # dashboard end-to-end journeys
 cd frontend && npm install && npm run build   # build the dashboard web UI once
 ```
@@ -110,7 +110,7 @@ assertion result is preserved.
 Pass `llm_prompt=` (or the specialty variants `llm_visual_prompt=` / `llm_pdf_prompt=`) to
 customise the prompt sent to the model for a particular comparison.
 
-Only Python 3.X or newer is supported. Tested with Python 3.8/3.11/3.12
+Python 3.10 or newer is supported. Tested with Python 3.10/3.11/3.12/3.13
 
 ## Install robotframework-doctestlibrary
 

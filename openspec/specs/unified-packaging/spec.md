@@ -36,8 +36,8 @@ Built artifacts SHALL contain the identical `DocTest/**` file set as the poetry-
 - **THEN** it contains `doctest_dashboard/static/index.html` and hashed asset files
 
 ### Requirement: Version-conditional dependencies preserved as markers
-Poetry's Python-version-dependent constraints SHALL be translated to PEP 508 environment markers preserving the selection intent for Python 3.9–3.13 (numpy `<2.0` on 3.9 and `>=2.1` on 3.13+, scipy `>=1.11` on 3.12+, scikit-image `>=0.22` on 3.12 and `>=0.25` on 3.13+, deepdiff `>=6.0` on 3.12+, setuptools present on 3.12+, PyMuPDF `>=1.26`). Dead `<3.9` branches SHALL be dropped and `requires-python` SHALL be `>=3.9`.
+Poetry's Python-version-dependent constraints SHALL be translated to PEP 508 environment markers preserving the selection intent for Python 3.10–3.13 (numpy `>=2.1` on 3.13+, scipy `>=1.11` on 3.12+, scikit-image `>=0.22` on 3.12 and `>=0.25` on 3.13+, deepdiff `>=6.0` on 3.12+, setuptools present on 3.12+, PyMuPDF `>=1.26`). `requires-python` SHALL be `>=3.10` — Python 3.9 is past end of life and unsupported by maintained pydantic-ai (the `[ai]` extra).
 
 #### Scenario: Resolution matches the expectation table per interpreter
-- **WHEN** the environment is synced for each of Python 3.9, 3.10, 3.11, 3.12, and 3.13
+- **WHEN** the environment is synced for each of Python 3.10, 3.11, 3.12, and 3.13
 - **THEN** the resolved versions of numpy, scipy, scikit-image, deepdiff, and PyMuPDF satisfy the documented expectation table for that interpreter
