@@ -34,9 +34,9 @@ API_FEATURES = [
     "upload-results",
 ]
 
+# The built web UI lives inside the package (vite builds straight into it);
+# wheels ship it, dev builds land in the same place.
 STATIC_DIR = Path(__file__).parent.parent / "static"
-# Editable/dev installs serve the built frontend from the source tree instead
-DEV_DIST_DIR = Path(__file__).parents[2] / "frontend" / "dist"
 
 
 class IngestRequest(BaseModel):
@@ -540,8 +540,7 @@ def create_app(config: AppConfig, database: Optional[Database] = None) -> FastAP
             path, media_type=media_type,
             headers={"Cache-Control": "private, max-age=86400"})
 
-    static_root = STATIC_DIR if STATIC_DIR.is_dir() else DEV_DIST_DIR
-    if static_root.is_dir():
-        app.mount("/", StaticFiles(directory=str(static_root), html=True), name="static")
+    if STATIC_DIR.is_dir():
+        app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
     return app

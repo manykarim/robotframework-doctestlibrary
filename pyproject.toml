@@ -85,13 +85,12 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["DocTest", "doctest_dashboard"]
 exclude = ["DocTest/data/frozen_east_text_detection.pb"]
-# frontend/dist is gitignored but must ship inside the wheel
-artifacts = ["frontend/dist"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"frontend/dist" = "doctest_dashboard/static"
+# The built web UI (gitignored) lands inside the package via the vite
+# outDir; release builds run `npm run build` first. A missing static dir
+# is a valid state — fresh clones must `uv sync` without Node.
+artifacts = ["doctest_dashboard/static"]
 
 [tool.hatch.build.targets.sdist]
-include = ["DocTest", "doctest_dashboard", "frontend/dist", "README.md"]
+include = ["DocTest", "doctest_dashboard", "README.md"]
 exclude = ["DocTest/data/frozen_east_text_detection.pb"]
-artifacts = ["frontend/dist"]
+artifacts = ["doctest_dashboard/static"]

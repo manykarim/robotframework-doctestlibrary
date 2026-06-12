@@ -9,7 +9,11 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "dist",
+    // Build straight into the Python package: the wheel picks it up as an
+    // artifact, and `doctest-dashboard serve` finds it in dev and installs
+    // alike. No files exist here on a fresh clone — that must stay a valid
+    // state (uv sync works without Node).
+    outDir: "../doctest_dashboard/static",
     emptyOutDir: true,
   },
 });
