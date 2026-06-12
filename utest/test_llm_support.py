@@ -282,3 +282,64 @@ def test_assess_visual_diff_handles_empty_custom_prompt():
         assert "Additional criteria" not in captured_prompt["full"]
     finally:
         client_module._run_agent = original_run_agent
+
+
+def test_run_agent_retries_on_unexpected_model_behavior(monkeypatch):
+    """Remote models occasionally exhaust output retries with malformed
+    responses; _run_agent re-runs once before giving up."""
+    from DocTest.llm import client as client_module
+
+    class UnexpectedModelBehavior(Exception):
+        pass
+
+    calls = {"count": 0, "kwargs": None}
+
+    class FakeAgent:
+        def __init__(self, identifier, **kwargs):
+            calls["kwargs"] = kwargs
+
+        def run_sync(self, messages):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise UnexpectedModelBehavior("Exceeded maximum output retries (1)")
+            return "recovered"
+
+    monkeypatch.setattr(client_module, "_import_runtime", lambda: (FakeAgent, None))
+    monkeypatch.setattr(client_module, "_configure_environment", lambda settings: None)
+    monkeypatch.setattr(client_module, "_normalise_output", lambda raw, output_type: raw)
+
+    settings = _dummy_settings()
+    result = client_module._run_agent(settings, "text", ["prompt"], str)
+    assert result == "recovered"
+    assert calls["count"] == 2
+    assert calls["kwargs"]["output_retries"] == settings.output_retries >= 3
+
+
+def test_run_agent_gives_up_after_one_retry(monkeypatch):
+    from DocTest.llm import client as client_module
+
+    class UnexpectedModelBehavior(Exception):
+        pass
+
+    class AlwaysFailingAgent:
+        def __init__(self, identifier, **kwargs):
+            pass
+
+        def run_sync(self, messages):
+            raise UnexpectedModelBehavior("Exceeded maximum output retries (3)")
+
+    monkeypatch.setattr(client_module, "_import_runtime", lambda: (AlwaysFailingAgent, None))
+    monkeypatch.setattr(client_module, "_configure_environment", lambda settings: None)
+
+    with pytest.raises(UnexpectedModelBehavior):
+        client_module._run_agent(_dummy_settings(), "text", ["prompt"], str)
+
+
+def test_output_retries_setting_parses_from_env(monkeypatch):
+    from DocTest.llm.config import load_llm_settings
+
+    monkeypatch.setenv("DOCTEST_LLM_OUTPUT_RETRIES", "7")
+    assert load_llm_settings().output_retries == 7
+    monkeypatch.delenv("DOCTEST_LLM_OUTPUT_RETRIES")
+    assert load_llm_settings().output_retries == 3
+    assert load_llm_settings({"llm_output_retries": 2}).output_retries == 2

@@ -111,6 +111,9 @@ class LLMSettings:
     temperature: float = 0.2
     max_output_tokens: Optional[int] = None
     request_timeout: Optional[float] = 30.0
+    # structured-output validation retries per model call; remote models
+    # occasionally return malformed JSON, so 1 (pydantic-ai default) flakes
+    output_retries: int = 3
 
     azure_endpoint: Optional[str] = None
     azure_deployment: Optional[str] = None
@@ -176,6 +179,9 @@ def load_llm_settings(overrides: Optional[Dict[str, Optional[str]]] = None) -> L
     request_timeout = _as_float(
         overrides.get("llm_request_timeout") or env_get("DOCTEST_LLM_REQUEST_TIMEOUT"), 30.0
     )
+    output_retries = _as_int(
+        overrides.get("llm_output_retries") or env_get("DOCTEST_LLM_OUTPUT_RETRIES"), 3
+    )
 
     azure_endpoint = overrides.get("azure_openai_endpoint") or env_get("AZURE_OPENAI_ENDPOINT")
     azure_deployment = overrides.get("azure_openai_deployment") or env_get("AZURE_OPENAI_DEPLOYMENT")
@@ -197,6 +203,7 @@ def load_llm_settings(overrides: Optional[Dict[str, Optional[str]]] = None) -> L
             "llm_temperature",
             "llm_max_output_tokens",
             "llm_request_timeout",
+            "llm_output_retries",
             "azure_openai_endpoint",
             "azure_openai_deployment",
             "azure_openai_api_version",
@@ -216,6 +223,7 @@ def load_llm_settings(overrides: Optional[Dict[str, Optional[str]]] = None) -> L
         temperature=temperature if temperature is not None else 0.2,
         max_output_tokens=max_output_tokens,
         request_timeout=request_timeout,
+        output_retries=output_retries if output_retries is not None else 3,
         azure_endpoint=azure_endpoint,
         azure_deployment=azure_deployment,
         azure_api_version=azure_api_version,

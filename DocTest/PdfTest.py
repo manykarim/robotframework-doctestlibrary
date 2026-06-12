@@ -268,6 +268,7 @@ class PdfTest(object):
             "llm_temperature",
             "llm_max_output_tokens",
             "llm_request_timeout",
+            "llm_output_retries",
             "azure_openai_endpoint",
             "azure_openai_deployment",
             "azure_openai_api_version",
