@@ -1275,6 +1275,7 @@ class PdfTest(object):
             candidate={"path": str(candidate_document), "pages": candidate_pages, "dpi": dpi},
             settings={"compare": sorted(compare_set)},
             notes=all_notes,
+            facets=differences,
         )
         robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
 

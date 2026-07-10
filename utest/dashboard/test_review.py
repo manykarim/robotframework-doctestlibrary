@@ -54,7 +54,7 @@ def _ingest(client, config, output_xml, artifacts):
 
 
 def _failing_comparison(client, run_id):
-    rows = client.get(f"/api/runs/{run_id}/tests", params={"status": "fail"}).json()
+    rows = client.get(f"/api/runs/{run_id}/tests", params={"status": "fail"}).json()["rows"]
     assert rows
     return rows[0]["comparison_id"]
 
@@ -177,7 +177,7 @@ def test_newer_run_with_changed_candidate_resets_to_unresolved(client, config, t
     output_xml2, _, _, artifacts2 = _make_image_run(
         tmp_path / "v2", candidate_src=REF_IMAGE.parent / "birthday_1080_noise_001.png")
     run_id2 = _ingest(client, config, output_xml2, artifacts2)
-    rows2 = client.get(f"/api/runs/{run_id2}/tests", params={"status": "fail"}).json()
+    rows2 = client.get(f"/api/runs/{run_id2}/tests", params={"status": "fail"}).json()["rows"]
     detail2 = client.get(f"/api/comparisons/{rows2[0]['comparison_id']}").json()
     assert detail2["pages"][0]["review_state"] == "unresolved"
 
@@ -195,6 +195,56 @@ def test_newer_run_with_same_candidate_inherits_acceptance(client, config, tmp_p
 
     output_xml2, _, _, artifacts2 = _make_image_run(tmp_path / "v2")
     run_id2 = _ingest(client, config, output_xml2, artifacts2)
-    rows2 = client.get(f"/api/runs/{run_id2}/tests").json()
+    rows2 = client.get(f"/api/runs/{run_id2}/tests").json()["rows"]
     detail2 = client.get(f"/api/comparisons/{rows2[0]['comparison_id']}").json()
     assert detail2["pages"][0]["review_state"] == "accepted"
+
+
+def test_batch_accept_selection(client, config, tmp_path):
+    xml1, ref1, cand1, artifacts1 = _make_image_run(tmp_path / "a")
+    xml2, ref2, cand2, artifacts2 = _make_image_run(tmp_path / "b")
+    run1 = _ingest(client, config, xml1, artifacts1)
+    run2 = _ingest(client, config, xml2, artifacts2)
+    id1 = _failing_comparison(client, run1)
+    id2 = _failing_comparison(client, run2)
+
+    response = client.post("/api/comparisons/accept-batch",
+                           json={"ids": [id1, id2], "reason": "bulk"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body["accepted"]) == 2
+    assert body["skipped"] == []
+    assert ref1.read_bytes() == cand1.read_bytes()
+    assert ref2.read_bytes() == cand2.read_bytes()
+    decisions = client.get(f"/api/comparisons/{id1}/decisions").json()
+    assert decisions[0]["reason"] == "bulk"
+
+
+def test_run_level_accept_all_unresolved(client, config, tmp_path):
+    output_xml, reference, candidate, artifacts = _make_image_run(tmp_path)
+    run_id = _ingest(client, config, output_xml, artifacts)
+
+    response = client.post(f"/api/runs/{run_id}/accept", json={"reason": "release ok"})
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["accepted"]) == 1
+    assert reference.read_bytes() == candidate.read_bytes()
+
+    # second call: nothing unresolved remains
+    again = client.post(f"/api/runs/{run_id}/accept", json={}).json()
+    assert again["accepted"] == [] and again["skipped"] == []
+
+
+def test_batch_accept_skips_unpromotable_with_reason(client, config, tmp_path):
+    output_xml, reference, candidate, artifacts = _make_image_run(tmp_path)
+    # ingest WITHOUT registering the artifacts dir as a root -> promotion 403s
+    response = client.post("/api/ingest", json={"output_xml": str(output_xml)})
+    run_id = response.json()["run_id"]
+    comparison_id = _failing_comparison(client, run_id)
+
+    body = client.post("/api/comparisons/accept-batch",
+                       json={"ids": [comparison_id]}).json()
+    assert body["accepted"] == []
+    assert len(body["skipped"]) == 1
+    assert "roots" in body["skipped"][0]["reason"]
+    assert reference.read_bytes() != candidate.read_bytes()

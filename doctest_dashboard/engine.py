@@ -14,6 +14,7 @@ served from an in-memory cache.
 
 import hashlib
 import json
+from collections import OrderedDict
 import logging
 import multiprocessing
 import os
@@ -27,6 +28,7 @@ LOG = logging.getLogger(__name__)
 
 JOB_TIMEOUT_SECONDS = 120
 MAX_WORKERS = 2
+MAX_CACHE_ENTRIES = 256
 
 
 # --- worker functions (run in subprocesses, must stay module-level) ----------
@@ -85,6 +87,36 @@ def _page_image_job(file_path: str, page: int, dpi: Optional[int],
         document.close()
 
 
+def _region_text_job(reference: str, candidate: str, page_no: int,
+                     region: Dict[str, int], dpi: Optional[int],
+                     force_ocr: bool) -> Dict[str, Any]:
+    """Extract and compare the text inside one region of one page, using the
+    library's own region comparison (exact engine parity with
+    check_text_content). Region pixels are relative to the sidecar DPI."""
+    from DocTest.DocumentRepresentation import DocumentRepresentation
+
+    kwargs: Dict[str, Any] = {}
+    if dpi:
+        kwargs["dpi"] = dpi
+    ref_doc = DocumentRepresentation(reference, **kwargs)
+    cand_doc = DocumentRepresentation(candidate, **kwargs)
+    try:
+        if page_no < 1 or page_no > len(ref_doc.pages) or page_no > len(cand_doc.pages):
+            raise ValueError(f"Page {page_no} out of range")
+        ref_page = ref_doc.pages[page_no - 1]
+        cand_page = cand_doc.pages[page_no - 1]
+        same, ref_text, cand_text = ref_page._compare_text_content_in_area_with(
+            cand_page, region, force_ocr)
+        return {
+            "same": bool(same),
+            "reference_text": ref_text or "",
+            "candidate_text": cand_text or "",
+        }
+    finally:
+        ref_doc.close()
+        cand_doc.close()
+
+
 def _recompare_job(reference: str, candidate: str, masks: Any,
                    settings: Dict[str, Any], scratch_dir: str) -> Dict[str, Any]:
     os.chdir(scratch_dir)
@@ -119,7 +151,7 @@ class EngineService:
         self.scratch_root = Path(scratch_root)
         self.scratch_root.mkdir(parents=True, exist_ok=True)
         self._pool: Optional[ProcessPoolExecutor] = None
-        self._cache: Dict[str, Dict[str, Any]] = {}
+        self._cache: 'OrderedDict[str, Dict[str, Any]]' = OrderedDict()
         self.capabilities = self._check_capabilities()
 
     @staticmethod
@@ -150,6 +182,18 @@ class EngineService:
             self._pool.shutdown(wait=False, cancel_futures=True)
             self._pool = None
 
+    def _cache_get(self, key: str):
+        if key not in self._cache:
+            return None
+        self._cache.move_to_end(key)
+        return self._cache[key]
+
+    def _cache_put(self, key: str, value) -> None:
+        self._cache[key] = value
+        self._cache.move_to_end(key)
+        while len(self._cache) > MAX_CACHE_ENTRIES:
+            self._cache.popitem(last=False)
+
     @staticmethod
     def _cache_key(*parts: Any) -> str:
         digest = hashlib.sha256()
@@ -167,26 +211,43 @@ class EngineService:
                      force_ocr: bool = False) -> Dict[str, Any]:
         key = self._cache_key("preview", self._file_fingerprint(file_path),
                               page, masks, dpi, ocr_engine, force_ocr)
-        if key in self._cache:
-            return {**self._cache[key], "cached": True}
+        cached = self._cache_get(key)
+        if cached is not None:
+            return {**cached, "cached": True}
         future = self._ensure_pool().submit(
             _mask_preview_job, file_path, page, masks, dpi, ocr_engine, force_ocr)
         result = future.result(timeout=JOB_TIMEOUT_SECONDS)
-        self._cache[key] = result
+        self._cache_put(key, result)
         return {**result, "cached": False}
 
     def page_image(self, file_path: str, page: int, dpi: Optional[int] = None) -> Dict[str, Any]:
         """Render a document/image page to a PNG in the scratch area."""
         key = self._cache_key("page-image", self._file_fingerprint(file_path), page, dpi)
-        if key in self._cache:
-            return {**self._cache[key], "cached": True}
+        cached = self._cache_get(key)
+        if cached is not None:
+            return {**cached, "cached": True}
         scratch_dir = tempfile.mkdtemp(prefix="page_", dir=self.scratch_root)
         target_png = str(Path(scratch_dir) / f"page_{page}.png")
         future = self._ensure_pool().submit(
             _page_image_job, file_path, page, dpi, target_png)
         info = future.result(timeout=JOB_TIMEOUT_SECONDS)
         result = {**info, "png_path": target_png}
-        self._cache[key] = result
+        self._cache_put(key, result)
+        return {**result, "cached": False}
+
+    def region_text(self, reference: str, candidate: str, page_no: int,
+                    region: Dict[str, int], dpi: Optional[int] = None,
+                    force_ocr: bool = False) -> Dict[str, Any]:
+        key = self._cache_key("region-text", self._file_fingerprint(reference),
+                              self._file_fingerprint(candidate), page_no, region,
+                              dpi, force_ocr)
+        cached = self._cache_get(key)
+        if cached is not None:
+            return {**cached, "cached": True}
+        future = self._ensure_pool().submit(
+            _region_text_job, reference, candidate, page_no, region, dpi, force_ocr)
+        result = future.result(timeout=JOB_TIMEOUT_SECONDS)
+        self._cache_put(key, result)
         return {**result, "cached": False}
 
     def recompare(self, reference: str, candidate: str, masks: Any,
@@ -194,8 +255,9 @@ class EngineService:
         settings = settings or {}
         key = self._cache_key("recompare", self._file_fingerprint(reference),
                               self._file_fingerprint(candidate), masks, settings)
-        if key in self._cache:
-            return {**self._cache[key], "cached": True}
+        cached = self._cache_get(key)
+        if cached is not None:
+            return {**cached, "cached": True}
         scratch_dir = tempfile.mkdtemp(prefix="recompare_", dir=self.scratch_root)
         future = self._ensure_pool().submit(
             _recompare_job, reference, candidate, masks, settings, scratch_dir)
@@ -204,5 +266,5 @@ class EngineService:
         except FutureTimeoutError:
             raise TimeoutError(f"Recompare timed out after {JOB_TIMEOUT_SECONDS}s")
         result = {"scratch_dir": scratch_dir, "result": sidecar}
-        self._cache[key] = result
+        self._cache_put(key, result)
         return {**result, "cached": False}

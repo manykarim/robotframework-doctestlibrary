@@ -103,6 +103,7 @@ class ComparisonResultWriter:
         masks: Optional[Dict[str, Any]] = None,
         llm: Optional[Dict[str, Any]] = None,
         notes: Optional[List[str]] = None,
+        facets: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """Write the sidecar JSON and return its path relative to OUTPUT_DIR."""
         result = {
@@ -117,6 +118,7 @@ class ComparisonResultWriter:
             "pages": self.pages,
             "llm": llm,
             "notes": notes or [],
+            "facets": facets or [],
             "timing": {
                 "started": self.started,
                 "elapsed_ms": int((time.monotonic() - self._t0) * 1000),

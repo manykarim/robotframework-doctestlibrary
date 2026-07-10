@@ -38,6 +38,42 @@ class IngestSummary:
     degraded_comparisons: int
 
 
+def diff_dhash(image_path) -> Optional[str]:
+    """64-bit gradient (difference) hash of an image — deterministic and
+    robust to PNG encoder differences. Used for similarity grouping."""
+    import cv2
+
+    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        return None
+    small = cv2.resize(image, (9, 8), interpolation=cv2.INTER_AREA)
+    bits = 0
+    for row in range(8):
+        for col in range(8):
+            bits = (bits << 1) | int(small[row, col] > small[row, col + 1])
+    return f"{bits:016x}"
+
+
+def comparison_group_key(sidecar_data, base_dir) -> Optional[str]:
+    """Deterministic similarity key: per failing page, the sorted diff-region
+    sizes plus the diff image's dHash. Identical differences across documents
+    yield identical keys (Percy-style strict matching)."""
+    page_keys = []
+    for page in sidecar_data.pages:
+        if page.status != "FAIL":
+            continue
+        sizes = sorted((region.width, region.height) for region in page.diff_regions)
+        diff_rel = page.images.get("diff")
+        image_hash = diff_dhash(base_dir / diff_rel) if diff_rel else None
+        if image_hash is None:
+            return None  # without pixels the key would be too weak to batch on
+        page_keys.append(f"{sizes}|{image_hash}")
+    if not page_keys:
+        return None
+    digest = hashlib.sha256("\n".join(page_keys).encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
 def asset_token(path: str) -> str:
     return hashlib.sha256(path.encode("utf-8")).hexdigest()[:32]
 
@@ -133,6 +169,10 @@ class _ComparisonCollector(ResultVisitor):
                 sidecar_data = None
 
         if sidecar_data is not None:
+            group_key = (
+                comparison_group_key(sidecar_data, self.base_dir)
+                if status == "FAIL" else None
+            )
             comparison_id = self.database.insert_comparison(
                 test_id=test_id,
                 keyword=name,
@@ -144,6 +184,7 @@ class _ComparisonCollector(ResultVisitor):
                 sidecar_json=sidecar_data.model_dump(),
                 reference_path=sidecar_data.reference.path,
                 candidate_path=sidecar_data.candidate.path,
+                group_key=group_key,
             )
             self.sidecar_comparisons += 1
             for page in sidecar_data.pages:

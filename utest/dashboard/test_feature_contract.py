@@ -8,7 +8,7 @@ instead of as a 405 in a user's browser.
 import re
 from pathlib import Path
 
-from doctest_dashboard.server.app import API_FEATURES
+from doctest_dashboard.server.features import API_FEATURES
 
 APP_TSX = Path(__file__).resolve().parents[2] / "frontend" / "src" / "App.tsx"
 

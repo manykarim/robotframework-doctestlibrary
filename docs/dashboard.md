@@ -90,6 +90,8 @@ The ingester reads comparison status at **keyword level**, so failures wrapped i
 
 ## 5. Reviewing comparisons
 
+Housekeeping: runs can be **deleted** from the run list (dashboard records and asset registrations only — files on disk are never touched); engine scratch results older than 7 days and uploads older than 30 days are swept at server startup (configurable); runs are never auto-deleted.
+
 1. **Runs** page → click a run → test grid with diff thumbnails. Filter by status (`FAIL`/`PASS`) and review state (`unresolved`, `accepted`, `rejected`).
 2. Click a comparison to open the **diff viewer**:
 
@@ -101,13 +103,34 @@ The ingester reads comparison status at **keyword level**, so failures wrapped i
    | `4` | swipe |
    | `n` / `p` | next / previous diff region |
 
+   **Root cause**: with a diff region selected, *Explain region (text)* extracts and compares the text inside the region (reference vs candidate, via the library's own engine at the comparison's DPI) — showing *what* changed, not just where. Failing `Compare Pdf Documents` comparisons additionally render their differences as per-facet sections (text, metadata, structure, …).
+
+   Every mode supports **zoom** (mouse wheel, 0.25×–8×) and **pan** (drag), synchronized across side-by-side panes; double-click resets the view, and jumping to a diff region centers it at the current zoom.
+
 3. Decide:
    - **Accept page / Accept document** — copies the candidate file over the reference (identical layout to a `REFERENCE_RUN`), records actor, reason, and SHA-256 before/after in the audit table, and marks the comparison `accepted`. For **multi-page PDFs**, page-level accept is impossible at file level — the UI offers document-level accept or mask creation instead, and never silently writes partial files.
    - **Reject** — stores the reason, marks the comparison `rejected`, and **Download bug data** gives you a ZIP with reference, candidate, all failing diff images, the sidecar JSON, and decision metadata — ready to attach to a ticket.
 
+   **Review by similarity**: the *By similarity* view groups unresolved failures whose differences are identical (same diff-region geometry and pixel content — one layout change hitting 50 invoices becomes one card). *Accept group (n)* promotes every member with one confirmed action; strict matching keeps batch accepts safe, and unique failures stay listed individually.
+
+   **Batch review**: the grid offers multi-select checkboxes with *Accept selected (n)* and an *Accept all unresolved in run* action — both behind a confirmation stating how many baseline files will be written. Comparisons that cannot be promoted (degraded records, files outside the configured roots) are skipped with a reason instead of aborting the batch; every promotion keeps its own audit row.
+
 When a newer run of the same test is ingested, pages whose images changed return to `unresolved`; unchanged pages keep their accepted/rejected state, and all past decisions stay queryable.
 
-## 6. Mask editor
+## 6. CI gating
+
+`doctest-dashboard gate <run-id|latest>` turns review state into an exit code — 0 when the run has no unresolved failed comparisons, 1 with a listing of what still needs review, 2 for unknown runs. It reads the dashboard database directly, so it works on a **base install** (no `[dashboard]` extra needed on the CI runner):
+
+```yaml
+- run: doctest-dashboard ingest results/output.xml
+- run: doctest-dashboard gate latest    # fails the job until changes are reviewed
+```
+
+Accepting or rejecting in the dashboard immediately turns a red gate green — review, then re-run the gate.
+
+**History & flakiness**: the comparison view shows the same test's status/review timeline across all ingested runs, and the runs page lists *flaky comparisons* — identities whose status flipped across recent runs (informational, not gating).
+
+## 7. Mask editor
 
 Open it via **Mask Editor** in the top bar, or — the fastest path — step to a detected diff region in the viewer (`n`/`p` or the *next diff* button) and click **Add ignore mask**: the editor opens pre-seeded with a coordinate mask covering that region (plus padding).
 
@@ -131,7 +154,7 @@ The editor reads and writes the **exact mask schema** the library consumes (`Ign
 
 > The old tkinter tool `utilities/mask_editor.py` is deprecated in favor of this editor.
 
-## 7. Command and API reference (abridged)
+## 8. Command and API reference (abridged)
 
 ```bash
 doctest-dashboard serve [--host] [--port] [--token] [--root DIR ...] [--data-dir DIR]
@@ -150,10 +173,15 @@ doctest-dashboard ingest <output.xml>
 | `POST /api/recompare`, `POST /api/recompare-batch` | re-run comparisons with adjusted masks |
 | `GET /api/capabilities` | OCR/engine availability |
 | `GET /api/browse` | root-confined directory listing (file picker) |
+| `GET /api/runs/{id}/groups` | similarity groups of unresolved failures |
+| `POST /api/comparisons/{id}/region-text` | explain a diff region (reference vs candidate text) |
+| `GET /api/comparisons/{id}/history` | cross-run timeline for the comparison's identity |
+| `GET /api/flaky` | identities with status flips across recent runs |
+| `doctest-dashboard gate <run\|latest>` | CI exit-code gate on review state |
 | `POST /api/upload` | store a local file in the dashboard workspace (images/PDF/JSON, 100 MB limit) |
 | `POST /api/upload-results` | upload a whole results folder (relative paths preserved) and ingest its output.xml |
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 - **Yellow banner "server is older than this user interface" / 405 or "Not Found" on new buttons** — the UI files are re-read from disk on every request, but the Python server process keeps running the code it started with. After updating the dashboard, restart `doctest-dashboard serve`. The UI detects this skew at load time and tells you.
 

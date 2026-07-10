@@ -78,7 +78,7 @@ def test_upload_results_folder_ingests_run(client, config, sidecar_output_xml):
 
     # the uploaded copies are fully reviewable: page images serve as assets
     run_id = body["runs"][0]["run_id"]
-    rows = client.get(f"/api/runs/{run_id}/tests", params={"status": "fail"}).json()
+    rows = client.get(f"/api/runs/{run_id}/tests", params={"status": "fail"}).json()["rows"]
     detail = client.get(f"/api/comparisons/{rows[0]['comparison_id']}").json()
     diff_token = detail["pages"][0]["images"]["diff"]
     assert client.get(f"/api/assets/{diff_token}").status_code == 200

@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS comparisons (
     reference_path TEXT,
     candidate_path TEXT,
     identity TEXT NOT NULL,
-    images_json TEXT
+    images_json TEXT,
+    group_key TEXT
 );
 CREATE TABLE IF NOT EXISTS pages (
     id INTEGER PRIMARY KEY,
@@ -79,6 +80,9 @@ CREATE INDEX IF NOT EXISTS idx_tests_run ON tests(run_id);
 CREATE INDEX IF NOT EXISTS idx_comparisons_test ON comparisons(test_id);
 CREATE INDEX IF NOT EXISTS idx_comparisons_identity ON comparisons(identity);
 CREATE INDEX IF NOT EXISTS idx_pages_comparison ON pages(comparison_id);
+CREATE INDEX IF NOT EXISTS idx_comparisons_review ON comparisons(review_state);
+CREATE INDEX IF NOT EXISTS idx_comparisons_group ON comparisons(group_key);
+CREATE INDEX IF NOT EXISTS idx_pages_comp_status ON pages(comparison_id, status);
 """
 
 
@@ -99,6 +103,11 @@ class Database:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(SCHEMA)
+            # pre-existing dev databases (unreleased product): additive column
+            try:
+                self._conn.execute("ALTER TABLE comparisons ADD COLUMN group_key TEXT")
+            except sqlite3.OperationalError:
+                pass
             self._conn.commit()
 
     def close(self) -> None:
@@ -154,18 +163,57 @@ class Database:
                           sidecar_json: Optional[Dict[str, Any]] = None,
                           reference_path: Optional[str] = None,
                           candidate_path: Optional[str] = None,
-                          images: Optional[List[str]] = None) -> int:
+                          images: Optional[List[str]] = None,
+                          group_key: Optional[str] = None) -> int:
         cursor = self.execute(
             "INSERT INTO comparisons (test_id, keyword, library, status, degraded, "
             "review_state, sidecar_path, sidecar_json, reference_path, candidate_path, "
-            "identity, images_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "identity, images_json, group_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (test_id, keyword, library, status, int(degraded),
              "unresolved" if status == "FAIL" else "passed",
              sidecar_path,
              json.dumps(sidecar_json) if sidecar_json is not None else None,
              reference_path, candidate_path, identity,
-             json.dumps(images) if images is not None else None))
+             json.dumps(images) if images is not None else None,
+             group_key))
         return cursor.lastrowid
+
+    def list_groups(self, run_id: int):
+        """Similarity groups (size >= 2) of unresolved failures + ungrouped count."""
+        rows = self.query(
+            "SELECT c.id AS comparison_id, c.group_key, t.name, "
+            "(SELECT p.images_json FROM pages p "
+            " WHERE p.comparison_id = c.id AND p.status = 'FAIL' "
+            " ORDER BY p.page_no LIMIT 1) AS thumb_json "
+            "FROM comparisons c JOIN tests t ON c.test_id = t.id "
+            "WHERE t.run_id = ? AND c.status = 'FAIL' AND c.review_state = 'unresolved' "
+            "ORDER BY c.id", (run_id,))
+        by_key: Dict[str, list] = {}
+        ungrouped = 0
+        for row in rows:
+            images = json.loads(row["thumb_json"]) if row["thumb_json"] else {}
+            member = {
+                "comparison_id": row["comparison_id"],
+                "name": row["name"],
+                "thumbnail": images.get("diff") or images.get("candidate"),
+            }
+            if row["group_key"]:
+                by_key.setdefault(row["group_key"], []).append(member)
+            else:
+                ungrouped += 1
+        groups = []
+        for key, members in by_key.items():
+            if len(members) < 2:
+                ungrouped += 1
+                continue
+            groups.append({
+                "group_key": key,
+                "count": len(members),
+                "thumbnail": members[0]["thumbnail"],
+                "members": members,
+            })
+        groups.sort(key=lambda g: -g["count"])
+        return {"groups": groups, "ungrouped": ungrouped}
 
     def insert_page(self, comparison_id: int, page_no: int, status: str,
                     score: Optional[float], threshold: Optional[float],
@@ -198,6 +246,124 @@ class Database:
 
     def set_page_state(self, page_id: int, state: str) -> None:
         self.execute("UPDATE pages SET review_state = ? WHERE id = ?", (state, page_id))
+
+    # -- aggregate list queries ------------------------------------------------
+
+    def list_runs(self, limit: int = 50, offset: int = 0):
+        """Runs with review counts in a constant number of queries."""
+        rows = self.query(
+            "SELECT r.*, COALESCE(a.total, 0) AS comparisons, "
+            "COALESCE(a.unresolved, 0) AS unresolved, COALESCE(a.failed, 0) AS failed "
+            "FROM runs r LEFT JOIN ("
+            "  SELECT t.run_id AS run_id, COUNT(*) AS total, "
+            "    SUM(CASE WHEN c.review_state = 'unresolved' THEN 1 ELSE 0 END) AS unresolved, "
+            "    SUM(CASE WHEN c.status = 'FAIL' THEN 1 ELSE 0 END) AS failed "
+            "  FROM comparisons c JOIN tests t ON c.test_id = t.id GROUP BY t.run_id"
+            ") a ON a.run_id = r.id "
+            "ORDER BY r.imported_at DESC, r.id DESC LIMIT ? OFFSET ?",
+            (limit, offset))
+        total = self.query_one("SELECT COUNT(*) AS n FROM runs")["n"]
+        return rows, total
+
+    def list_grid(self, run_id: int, status: Optional[str] = None,
+                  review_state: Optional[str] = None,
+                  limit: int = 50, offset: int = 0):
+        """Grid rows with SQL-side filters and a subquery thumbnail."""
+        where = ["t.run_id = ?"]
+        params: list = [run_id]
+        if status:
+            where.append("c.status = ?")
+            params.append(status.upper())
+        if review_state:
+            where.append("c.review_state = ?")
+            params.append(review_state)
+        clause = " AND ".join(where)
+        total = self.query_one(
+            f"SELECT COUNT(*) AS n FROM tests t JOIN comparisons c ON c.test_id = t.id "
+            f"WHERE {clause}", tuple(params))["n"]
+        rows = self.query(
+            "SELECT t.id AS test_id, t.suite, t.name, t.status AS test_status, "
+            "c.id AS comparison_id, c.keyword, c.library, c.status, c.degraded, "
+            "c.review_state, c.identity, "
+            "(SELECT p.images_json FROM pages p "
+            " WHERE p.comparison_id = c.id AND p.status = 'FAIL' "
+            " ORDER BY p.page_no LIMIT 1) AS thumb_json "
+            "FROM tests t JOIN comparisons c ON c.test_id = t.id "
+            f"WHERE {clause} ORDER BY t.id, c.id LIMIT ? OFFSET ?",
+            tuple(params) + (limit, offset))
+        for row in rows:
+            images = json.loads(row["thumb_json"]) if row["thumb_json"] else {}
+            row["thumbnail"] = images.get("diff") or images.get("candidate")
+            del row["thumb_json"]
+        return rows, total
+
+    def delete_run(self, run_id: int) -> int:
+        """Delete a run (children cascade) and prune its asset registrations.
+
+        Decision rows survive with nulled references (audit history).
+        Returns the number of pruned assets.
+        """
+        tokens: set = set()
+        for row in self.query(
+                "SELECT p.images_json FROM pages p "
+                "JOIN comparisons c ON p.comparison_id = c.id "
+                "JOIN tests t ON c.test_id = t.id WHERE t.run_id = ?", (run_id,)):
+            if row["images_json"]:
+                tokens.update(json.loads(row["images_json"]).values())
+        for row in self.query(
+                "SELECT c.images_json FROM comparisons c "
+                "JOIN tests t ON c.test_id = t.id WHERE t.run_id = ?", (run_id,)):
+            if row["images_json"]:
+                tokens.update(json.loads(row["images_json"]))
+        pruned = 0
+        for token in tokens:
+            self.execute("DELETE FROM assets WHERE token = ?", (token,))
+            pruned += 1
+        self.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+        return pruned
+
+    def comparison_history(self, comparison_id: int):
+        """Timeline of a comparison's identity across all ingested runs."""
+        comparison = self.query_one(
+            "SELECT identity FROM comparisons WHERE id = ?", (comparison_id,))
+        if not comparison:
+            return None
+        return self.query(
+            "SELECT c.id AS comparison_id, c.status, c.review_state, "
+            "r.id AS run_id, r.name AS run_name, r.imported_at, "
+            "(SELECT p.score FROM pages p WHERE p.comparison_id = c.id "
+            " AND p.status = 'FAIL' ORDER BY p.page_no LIMIT 1) AS score "
+            "FROM comparisons c JOIN tests t ON c.test_id = t.id "
+            "JOIN runs r ON t.run_id = r.id "
+            "WHERE c.identity = ? ORDER BY r.imported_at DESC, r.id DESC",
+            (comparison["identity"],))
+
+    def flaky_identities(self, window: int = 10, min_flips: int = 1):
+        """Identities whose status flipped across their recent occurrences."""
+        rows = self.query(
+            "SELECT c.identity, c.status, t.name, r.imported_at "
+            "FROM comparisons c JOIN tests t ON c.test_id = t.id "
+            "JOIN runs r ON t.run_id = r.id "
+            "ORDER BY c.identity, r.imported_at DESC, r.id DESC")
+        results = []
+        current: Dict[str, Any] = {}
+        for row in rows:
+            if row["identity"] != current.get("identity"):
+                if current and current["flips"] >= min_flips:
+                    results.append(current)
+                current = {"identity": row["identity"], "name": row["name"],
+                           "statuses": [], "flips": 0}
+            if len(current["statuses"]) < window:
+                if current["statuses"] and current["statuses"][-1] != row["status"]:
+                    current["flips"] += 1
+                current["statuses"].append(row["status"])
+        if current and current["flips"] >= min_flips:
+            results.append(current)
+        for item in results:
+            item["occurrences"] = len(item["statuses"])
+            item["last_status"] = item["statuses"][0] if item["statuses"] else None
+        results.sort(key=lambda item: -item["flips"])
+        return results
 
     # -- assets ---------------------------------------------------------------
 

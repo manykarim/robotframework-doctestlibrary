@@ -105,6 +105,26 @@ def accept_comparison(
     }
 
 
+def accept_many(
+    database: Database,
+    config: AppConfig,
+    comparison_ids,
+    actor: Optional[str] = None,
+    reason: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Batch accept: promote each comparison, skipping the impossible ones
+    (degraded, outside roots, missing candidate) with a reason instead of
+    aborting the batch. Every promotion keeps its own audit row."""
+    accepted, skipped = [], []
+    for comparison_id in comparison_ids:
+        try:
+            accepted.append(
+                accept_comparison(database, config, comparison_id, actor, reason))
+        except ReviewError as error:
+            skipped.append({"comparison_id": comparison_id, "reason": str(error)})
+    return {"accepted": accepted, "skipped": skipped}
+
+
 def accept_page(
     database: Database,
     config: AppConfig,

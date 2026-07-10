@@ -24,6 +24,9 @@ class AppConfig:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     token: Optional[str] = None
+    # storage GC windows (days); runs are never auto-deleted
+    scratch_ttl_days: float = 7.0
+    uploads_ttl_days: float = 30.0
 
     def __post_init__(self) -> None:
         self.data_dir = Path(self.data_dir).resolve()

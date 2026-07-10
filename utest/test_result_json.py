@@ -165,3 +165,20 @@ def test_pdftest_passing_sidecar(tmp_path, monkeypatch, testdata_dir):
         str(testdata_dir / 'sample_1_page.pdf'), str(testdata_dir / 'sample_1_page.pdf'))
     result = _load(_sidecars(tmp_path)[0])
     assert result["status"] == "PASS"
+
+
+def test_pdftest_sidecar_carries_structured_facets(tmp_path, monkeypatch, testdata_dir):
+    monkeypatch.chdir(tmp_path)
+    pdf_tester = PdfTest(result_json=True)
+    with pytest.raises(AssertionError):
+        pdf_tester.compare_pdf_documents(
+            str(testdata_dir / 'sample_1_page.pdf'),
+            str(testdata_dir / 'sample_1_page_different_text.pdf'))
+    result = _load(_sidecars(tmp_path)[0])
+    facets = result["facets"]
+    assert facets, "failing PdfTest comparison must expose structured facets"
+    facet_names = {facet["facet"] for facet in facets}
+    assert "text" in facet_names
+    text_facet = next(facet for facet in facets if facet["facet"] == "text")
+    assert text_facet["description"]
+    assert text_facet["details"]

@@ -33,7 +33,7 @@ def test_stale_backend_shows_restart_banner(page: Page, server_url):
     expect(banner).to_be_visible()
     expect(banner).to_contain_text("older than this user interface")
     expect(banner).to_contain_text("Restart")
-    expect(banner).to_contain_text("browse, upload, recompare, upload-results")
+    expect(banner).to_contain_text("browse, upload, recompare, upload-results, batch-accept, lifecycle")
 
 
 def test_unreachable_backend_shows_warning(page: Page, server_url):

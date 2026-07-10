@@ -82,10 +82,52 @@ async function request(method: string, url: string, body?: any) {
   return response;
 }
 
+export interface RunsPage {
+  runs: Run[];
+  total: number;
+}
+
+export interface GridPage {
+  rows: TestRow[];
+  total: number;
+}
+
+export interface GroupMember {
+  comparison_id: number;
+  name: string;
+  thumbnail: string | null;
+}
+
+export interface DiffGroup {
+  group_key: string;
+  count: number;
+  thumbnail: string | null;
+  members: GroupMember[];
+}
+
+export interface GroupsResponse {
+  groups: DiffGroup[];
+  ungrouped: number;
+}
+
+export interface BatchResult {
+  accepted: { comparison_id: number }[];
+  skipped: { comparison_id: number; reason: string }[];
+}
+
 export const api = {
-  runs: (): Promise<Run[]> => request("GET", "/api/runs").then((r) => r.json()),
-  tests: (runId: number, params = ""): Promise<TestRow[]> =>
+  runs: (limit = 100, offset = 0): Promise<RunsPage> =>
+    request("GET", `/api/runs?limit=${limit}&offset=${offset}`).then((r) => r.json()),
+  deleteRun: (runId: number) =>
+    request("DELETE", `/api/runs/${runId}`).then((r) => r.json()),
+  tests: (runId: number, params = ""): Promise<GridPage> =>
     request("GET", `/api/runs/${runId}/tests${params}`).then((r) => r.json()),
+  groups: (runId: number): Promise<GroupsResponse> =>
+    request("GET", `/api/runs/${runId}/groups`).then((r) => r.json()),
+  acceptRun: (runId: number, reason?: string): Promise<BatchResult> =>
+    request("POST", `/api/runs/${runId}/accept`, { reason }).then((r) => r.json()),
+  acceptBatch: (ids: number[], reason?: string): Promise<BatchResult> =>
+    request("POST", "/api/comparisons/accept-batch", { ids, reason }).then((r) => r.json()),
   comparison: (id: number): Promise<ComparisonDetail> =>
     request("GET", `/api/comparisons/${id}`).then((r) => r.json()),
   ingest: (outputXml: string) =>
@@ -106,6 +148,14 @@ export const api = {
     request("POST", "/api/recompare", { comparison_id: comparisonId, masks, settings }).then((r) =>
       r.json(),
     ),
+  regionText: (comparisonId: number, pageNo: number, region: Region) =>
+    request("POST", `/api/comparisons/${comparisonId}/region-text`, {
+      page_no: pageNo,
+      region,
+    }).then((r) => r.json()),
+  history: (comparisonId: number) =>
+    request("GET", `/api/comparisons/${comparisonId}/history`).then((r) => r.json()),
+  flaky: () => request("GET", "/api/flaky").then((r) => r.json()),
   capabilities: () => request("GET", "/api/capabilities").then((r) => r.json()),
 };
 

@@ -24,7 +24,9 @@ def test_health(client):
 def test_ingest_endpoint_and_run_listing(client, sidecar_output_xml):
     summary = _ingest_via_api(client, sidecar_output_xml)
     assert summary["comparisons"] == 3
-    runs = client.get("/api/runs").json()
+    body = client.get("/api/runs").json()
+    runs = body["runs"]
+    assert body["total"] == 1
     assert len(runs) == 1
     assert runs[0]["comparisons"] == 3
     assert runs[0]["failed"] == 2
@@ -38,19 +40,24 @@ def test_ingest_missing_file_404(client, tmp_path):
 
 def test_test_listing_with_filters(client, sidecar_output_xml):
     run_id = _ingest_via_api(client, sidecar_output_xml)["run_id"]
-    rows = client.get(f"/api/runs/{run_id}/tests").json()
-    assert len(rows) == 3
+    body = client.get(f"/api/runs/{run_id}/tests").json()
+    assert len(body["rows"]) == 3
+    assert body["total"] == 3
     failed = client.get(f"/api/runs/{run_id}/tests", params={"status": "fail"}).json()
-    assert len(failed) == 2
-    assert all(row["thumbnail"] for row in failed)
+    assert len(failed["rows"]) == 2
+    assert failed["total"] == 2
+    assert all(row["thumbnail"] for row in failed["rows"])
     unresolved = client.get(
         f"/api/runs/{run_id}/tests", params={"review_state": "unresolved"}).json()
-    assert len(unresolved) == 2
+    assert len(unresolved["rows"]) == 2
+    paged = client.get(f"/api/runs/{run_id}/tests", params={"limit": 2, "offset": 2}).json()
+    assert len(paged["rows"]) == 1
+    assert paged["total"] == 3
 
 
 def test_comparison_detail(client, sidecar_output_xml):
     run_id = _ingest_via_api(client, sidecar_output_xml)["run_id"]
-    rows = client.get(f"/api/runs/{run_id}/tests", params={"status": "fail"}).json()
+    rows = client.get(f"/api/runs/{run_id}/tests", params={"status": "fail"}).json()["rows"]
     detail = client.get(f"/api/comparisons/{rows[0]['comparison_id']}").json()
     assert detail["sidecar_json"]["schema_version"] == 1
     assert len(detail["pages"]) >= 1
@@ -61,7 +68,7 @@ def test_comparison_detail(client, sidecar_output_xml):
 
 def test_asset_served_with_cache_headers(client, sidecar_output_xml):
     run_id = _ingest_via_api(client, sidecar_output_xml)["run_id"]
-    rows = client.get(f"/api/runs/{run_id}/tests", params={"status": "fail"}).json()
+    rows = client.get(f"/api/runs/{run_id}/tests", params={"status": "fail"}).json()["rows"]
     detail = client.get(f"/api/comparisons/{rows[0]['comparison_id']}").json()
     token = detail["pages"][0]["images"]["diff"]
     response = client.get(f"/api/assets/{token}")

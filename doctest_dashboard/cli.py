@@ -39,6 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
     ingest = subparsers.add_parser("ingest", help="Ingest a Robot Framework output.xml")
     ingest.add_argument("output_xml", type=Path)
 
+    gate = subparsers.add_parser(
+        "gate",
+        help="CI gate: exit 0 when a run has no unresolved failed comparisons")
+    gate.add_argument(
+        "run", help="Run id, or 'latest' for the most recently imported run")
+
     return parser
 
 
@@ -63,6 +69,10 @@ def _require_dashboard_dependencies() -> bool:
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     data_dir = args.data_dir or Path.cwd() / ".doctest_dashboard"
+
+    if args.command == "gate":
+        # database-only: works on a base install without the [dashboard] extra
+        return _gate(data_dir, args.run)
 
     if not _require_dashboard_dependencies():
         return 3
@@ -103,6 +113,47 @@ def main(argv=None) -> int:
         return 0
 
     return 1
+
+
+def _gate(data_dir: Path, run_spec: str) -> int:
+    """Exit 0 when the run has no unresolved failed comparisons, 1 when it
+    does, 2 when the run cannot be found. Reads the database directly."""
+    from doctest_dashboard.db import Database
+
+    db_path = data_dir / "dashboard.db"
+    if not db_path.exists():
+        print(f"error: no dashboard database at {db_path}", file=sys.stderr)
+        return 2
+    database = Database(db_path)
+    try:
+        if run_spec == "latest":
+            row = database.query_one(
+                "SELECT id, name FROM runs ORDER BY imported_at DESC, id DESC LIMIT 1")
+        else:
+            try:
+                row = database.query_one(
+                    "SELECT id, name FROM runs WHERE id = ?", (int(run_spec),))
+            except ValueError:
+                row = None
+        if not row:
+            print(f"error: run '{run_spec}' not found", file=sys.stderr)
+            return 2
+        unresolved = database.query(
+            "SELECT c.id, t.name FROM comparisons c JOIN tests t ON c.test_id = t.id "
+            "WHERE t.run_id = ? AND c.status = 'FAIL' AND c.review_state = 'unresolved' "
+            "ORDER BY c.id", (row["id"],))
+        if unresolved:
+            print(f"GATE FAILED: run {row['id']} ({row['name']}) has "
+                  f"{len(unresolved)} unreviewed failed comparison(s):")
+            for item in unresolved:
+                print(f"  - #{item['id']} {item['name']}")
+            print("Review them in the dashboard (accept or reject), then re-run the gate.")
+            return 1
+        print(f"GATE PASSED: run {row['id']} ({row['name']}) has no "
+              "unresolved failed comparisons.")
+        return 0
+    finally:
+        database.close()
 
 
 if __name__ == "__main__":

@@ -100,7 +100,7 @@ def test_mask_preview_outside_roots_403(client, tmp_path):
 
 def test_mask_preview_pattern_degrades_without_ocr(client, config, monkeypatch):
     config.add_root(UTESTDATA)
-    app_engine = client.app.state.engine
+    app_engine = client.app.state.ctx.engine
     monkeypatch.setattr(type(app_engine), "ocr_available", property(lambda self: False))
     response = client.post("/api/mask-preview", json={
         "file": str(BEACH_IMAGE),

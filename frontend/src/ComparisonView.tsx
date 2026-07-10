@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, assetUrl, ComparisonDetail, Page, Region } from "./api";
+import { useViewTransform, ZoomPane } from "./ZoomPane";
 
 type Mode = "side-by-side" | "overlay" | "blink" | "swipe";
 const MODES: Mode[] = ["side-by-side", "overlay", "blink", "swipe"];
@@ -11,6 +12,10 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
   const [regionIndex, setRegionIndex] = useState(-1);
   const [message, setMessage] = useState<{ kind: string; text: string } | null>(null);
   const [reason, setReason] = useState("");
+  const [regionText, setRegionText] = useState<
+    { same: boolean; reference_text: string; candidate_text: string } | null | "loading"
+  >(null);
+  const [history, setHistory] = useState<any[]>([]);
 
   const load = () =>
     api.comparison(comparisonId).then(setDetail).catch((e) =>
@@ -18,6 +23,7 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
     );
   useEffect(() => {
     load();
+    api.history(comparisonId).then((body) => setHistory(body.history)).catch(() => setHistory([]));
   }, [comparisonId]);
 
   const page: Page | undefined = detail?.pages[pageIndex];
@@ -37,7 +43,20 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
 
   const nextRegion = (step: number) => {
     if (!regions.length) return;
+    setRegionText(null);
     setRegionIndex((current) => (current + step + regions.length) % regions.length);
+  };
+
+  const explainRegion = async () => {
+    if (!detail || !page || regionIndex < 0) return;
+    setRegionText("loading");
+    try {
+      const result = await api.regionText(detail.id, page.page_no, regions[regionIndex]);
+      setRegionText(result);
+    } catch (e: any) {
+      setRegionText(null);
+      setMessage({ kind: "error", text: e.message });
+    }
   };
 
   const act = async (action: () => Promise<any>, successText: string) => {
@@ -128,11 +147,88 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
                 >
                   <button>Add ignore mask</button>
                 </a>
+                <button data-testid="explain-region" onClick={explainRegion}>
+                  Explain region (text)
+                </button>
               </>
             )}
+            <span className="note">wheel = zoom · drag = pan · double-click = reset</span>
           </div>
-          {page && <PageViewer page={page} mode={mode} highlight={regionIndex >= 0 ? regions[regionIndex] : null} />}
+          {page && (
+            <PageViewer
+              page={page}
+              mode={mode}
+              highlight={regionIndex >= 0 ? regions[regionIndex] : null}
+            />
+          )}
         </>
+      )}
+
+      {regionText === "loading" && <p className="note">Extracting region text…</p>}
+      {regionText && regionText !== "loading" && (
+        <div className="pane" data-testid="region-text-panel">
+          <div className="toolbar">
+            <strong>Text in region</strong>
+            <span
+              className={`badge ${regionText.same ? "PASS" : "FAIL"}`}
+              data-testid="region-text-verdict"
+            >
+              {regionText.same ? "same text" : "text differs"}
+            </span>
+          </div>
+          <div className="region-text-columns">
+            <div>
+              <p className="note">Reference</p>
+              <pre data-testid="region-text-reference">{regionText.reference_text || "(no text found)"}</pre>
+            </div>
+            <div>
+              <p className="note">Candidate</p>
+              <pre data-testid="region-text-candidate">{regionText.candidate_text || "(no text found)"}</pre>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(detail.sidecar_json?.facets?.length ?? 0) > 0 && (
+        <div className="pane" data-testid="facets-panel">
+          <strong>Differences by facet</strong>
+          {detail.sidecar_json.facets.map((facet: any, index: number) => (
+            <details key={index} className="facet" data-testid={`facet-${facet.facet}`}>
+              <summary>
+                <span className="badge FAIL">{facet.facet}</span> {facet.description}
+              </summary>
+              <pre className="facet-details">{facet.details}</pre>
+            </details>
+          ))}
+        </div>
+      )}
+
+      {history.length > 1 && (
+        <div className="pane" data-testid="history-panel">
+          <strong>History (same test across runs)</strong>
+          <table className="grid history-table">
+            <thead>
+              <tr><th>Run</th><th>Imported</th><th>Status</th><th>Review</th><th>Score</th></tr>
+            </thead>
+            <tbody>
+              {history.map((entry) => (
+                <tr key={entry.comparison_id}
+                    className={entry.comparison_id === comparisonId ? "history-current" : ""}
+                    data-testid={`history-row-${entry.comparison_id}`}>
+                  <td>
+                    <a href={`#/comparisons/${entry.comparison_id}`}>
+                      {entry.run_name} #{entry.run_id}
+                    </a>
+                  </td>
+                  <td>{entry.imported_at}</td>
+                  <td><span className={`badge ${entry.status}`}>{entry.status}</span></td>
+                  <td><span className={`badge ${entry.review_state}`}>{entry.review_state}</span></td>
+                  <td>{entry.score != null ? Number(entry.score).toFixed(4) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <div className="pane">
@@ -149,7 +245,9 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
               className="primary"
               data-testid="accept-page"
               disabled={isDegraded}
-              onClick={() => act(() => api.acceptPage(page.id, reason || undefined), "Page accepted — baseline promoted")}
+              onClick={() =>
+                act(() => api.acceptPage(page.id, reason || undefined), "Page accepted — baseline promoted")
+              }
             >
               Accept page
             </button>
@@ -200,6 +298,8 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
   const [blinkOn, setBlinkOn] = useState(false);
   const [swipe, setSwipe] = useState(50);
   const [overlayOpacity, setOverlayOpacity] = useState(50);
+  const view = useViewTransform();
+  const paneAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (mode !== "blink") return;
@@ -207,18 +307,38 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
     return () => clearInterval(interval);
   }, [mode]);
 
-  const highlightStyle = useMemo(() => {
-    if (!highlight) return null;
-    return {
-      position: "absolute" as const,
-      left: highlight.x,
-      top: highlight.y,
-      width: highlight.width,
-      height: highlight.height,
-      outline: "3px solid #ff9800",
-      pointerEvents: "none" as const,
-    };
+  // Region navigation centers the viewport at the current zoom level
+  useEffect(() => {
+    if (!highlight || !paneAreaRef.current) return;
+    const pane = paneAreaRef.current.querySelector(".zoom-pane");
+    if (!pane) return;
+    const rect = pane.getBoundingClientRect();
+    view.centerOn(
+      highlight.x + highlight.width / 2,
+      highlight.y + highlight.height / 2,
+      rect.width,
+      rect.height,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlight]);
+
+  const highlightBox = useMemo(() => {
+    if (!highlight) return null;
+    return (
+      <div
+        data-testid="region-highlight"
+        style={{
+          position: "absolute",
+          left: highlight.x,
+          top: highlight.y,
+          width: highlight.width,
+          height: highlight.height,
+          outline: `${3 / view.transform.scale}px solid #ff9800`,
+          pointerEvents: "none",
+        }}
+      />
+    );
+  }, [highlight, view.transform.scale]);
 
   if (!ref || !cand) {
     return (
@@ -234,27 +354,33 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
   }
 
   return (
-    <div className="viewer" data-testid={`viewer-${mode}`}>
+    <div className="viewer" data-testid={`viewer-${mode}`} ref={paneAreaRef}>
       {mode === "side-by-side" && (
         <div className="images">
-          <div>
+          <div className="viewer-col">
             <p className="note">Reference</p>
-            <div className="overlay-wrap">
-              <img src={assetUrl(ref)} />
-              {highlightStyle && <div style={highlightStyle} data-testid="region-highlight" />}
-            </div>
+            <ZoomPane view={view} testid="pane-reference">
+              <div className="overlay-wrap">
+                <img src={assetUrl(ref)} />
+                {highlightBox}
+              </div>
+            </ZoomPane>
           </div>
-          <div>
+          <div className="viewer-col">
             <p className="note">Candidate</p>
-            <div className="overlay-wrap">
-              <img src={assetUrl(cand)} />
-              {highlightStyle && <div style={highlightStyle} />}
-            </div>
+            <ZoomPane view={view} testid="pane-candidate">
+              <div className="overlay-wrap">
+                <img src={assetUrl(cand)} />
+                {highlightBox}
+              </div>
+            </ZoomPane>
           </div>
           {diff && (
-            <div>
+            <div className="viewer-col">
               <p className="note">Diff</p>
-              <img src={assetUrl(diff)} />
+              <ZoomPane view={view} testid="pane-diff">
+                <img src={assetUrl(diff)} />
+              </ZoomPane>
             </div>
           )}
         </div>
@@ -271,19 +397,23 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
               onChange={(e) => setOverlayOpacity(parseInt(e.target.value, 10))}
             />
           </div>
-          <div className="overlay-wrap">
-            <img src={assetUrl(ref)} />
-            <img className="cand" src={assetUrl(cand)} style={{ opacity: overlayOpacity / 100 }} />
-            {highlightStyle && <div style={highlightStyle} data-testid="region-highlight" />}
-          </div>
+          <ZoomPane view={view} testid="pane-overlay">
+            <div className="overlay-wrap">
+              <img src={assetUrl(ref)} />
+              <img className="cand" src={assetUrl(cand)} style={{ opacity: overlayOpacity / 100 }} />
+              {highlightBox}
+            </div>
+          </ZoomPane>
         </div>
       )}
       {mode === "blink" && (
-        <div className="overlay-wrap">
-          <img src={assetUrl(ref)} style={{ visibility: blinkOn ? "hidden" : "visible" }} />
-          <img className="cand" src={assetUrl(cand)} style={{ visibility: blinkOn ? "visible" : "hidden" }} />
-          {highlightStyle && <div style={highlightStyle} />}
-        </div>
+        <ZoomPane view={view} testid="pane-blink">
+          <div className="overlay-wrap">
+            <img src={assetUrl(ref)} style={{ visibility: blinkOn ? "hidden" : "visible" }} />
+            <img className="cand" src={assetUrl(cand)} style={{ visibility: blinkOn ? "visible" : "hidden" }} />
+            {highlightBox}
+          </div>
+        </ZoomPane>
       )}
       {mode === "swipe" && (
         <div>
@@ -297,18 +427,21 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
               onChange={(e) => setSwipe(parseInt(e.target.value, 10))}
             />
           </div>
-          <div className="swipe-wrap">
-            <img src={assetUrl(ref)} />
-            <div className="clip" style={{ clipPath: `inset(0 ${100 - swipe}% 0 0)` }}>
-              <img src={assetUrl(cand)} />
+          <ZoomPane view={view} testid="pane-swipe">
+            <div className="swipe-wrap">
+              <img src={assetUrl(ref)} />
+              <div className="clip" style={{ clipPath: `inset(0 ${100 - swipe}% 0 0)` }}>
+                <img src={assetUrl(cand)} />
+              </div>
+              {highlightBox}
             </div>
-            {highlightStyle && <div style={highlightStyle} />}
-          </div>
+          </ZoomPane>
         </div>
       )}
       <p className="note">
         SSIM: {page.score?.toFixed(6) ?? "n/a"} | threshold: {page.threshold ?? "n/a"} | regions:{" "}
-        {page.regions.length}
+        {page.regions.length} | zoom:{" "}
+        <span data-testid="zoom-level">{view.transform.scale.toFixed(2)}×</span>
       </p>
     </div>
   );
