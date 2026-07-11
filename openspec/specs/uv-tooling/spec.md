@@ -1,5 +1,8 @@
 # Spec: uv-tooling
 
+## Purpose
+uv-managed dependency, environment and build tooling for the repository.
+
 ## Requirements
 
 ### Requirement: uv is the single environment and dependency manager

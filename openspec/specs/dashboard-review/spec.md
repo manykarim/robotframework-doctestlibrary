@@ -1,7 +1,8 @@
 # Spec: dashboard-review
 
+## Purpose
+Reviewing visual comparison results in a web dashboard: viewers, decisions, batch review, identification and visual identity.
 ## Requirements
-
 ### Requirement: Run and test browsing
 The dashboard SHALL present a run list with pass/fail/unresolved counts and a test grid per run with status filters and diff thumbnails (first failing page's diff). Failed comparisons SHALL enter review state `unresolved`.
 
@@ -55,3 +56,64 @@ The full journey — ingest a real run, browse, view diffs, accept one compariso
 #### Scenario: Journey test passes
 - **WHEN** the Playwright suite runs the ingest→review→accept→reject journey against real robot output
 - **THEN** all steps pass, the accepted reference file changed on disk, and the audit rows exist
+
+### Requirement: Reviewable thumbnails
+Grid and group thumbnails SHALL use the highlighted candidate renderings when the sidecar provides them, never the raw absolute-diff image.
+
+#### Scenario: v1.1 sidecar thumbnails
+- **WHEN** a run produced with the current library is ingested
+- **THEN** grid thumbnails reference the sidecar's `thumb` images
+
+### Requirement: Viewer fit and highlight mode
+The viewer SHALL fit the page into the pane on load (Fit and 100% controls provided, double-click refits) and SHALL offer a `highlight` mode rendering the highlighted candidate when available.
+
+#### Scenario: Page visible on open
+- **WHEN** a comparison larger than the pane opens
+- **THEN** the whole page is visible without manual zooming
+
+### Requirement: Region visibility
+All detected diff regions SHALL be outlined in the viewer by default (toggleable), with the selected region visually distinct.
+
+#### Scenario: Regions visible without stepping
+- **WHEN** a failing page with three regions opens
+- **THEN** three outlines are visible before any keyboard interaction
+
+### Requirement: Identification
+Runs SHALL display distinguishable names (suite + source folder, user-editable label, relative timestamps); the comparison header SHALL show the test name or sidecar label, and labeled comparisons SHALL keep their identity across test renames.
+
+#### Scenario: Editable run label
+- **WHEN** a reviewer renames a run
+- **THEN** the list shows the label and the original name remains as fallback metadata
+
+#### Scenario: Label-stable identity
+- **WHEN** two runs contain comparisons labeled `name=Invoice header` under different test names
+- **THEN** they share one identity (history joins them)
+
+### Requirement: Focused chrome and state
+Grid selection SHALL reset when switching between flat and similarity views; page-less comparisons SHALL NOT render image-viewer controls; decision actions SHALL remain visible while scrolling.
+
+#### Scenario: No stale selection in groups view
+- **WHEN** rows are selected in the flat view and the reviewer switches to the similarity view
+- **THEN** no selection-dependent actions are offered there
+
+### Requirement: Design token layer
+All dashboard chrome colors, radii and shadows SHALL be defined as CSS custom properties in a single token layer; component styles SHALL reference tokens only.
+
+#### Scenario: One place to restyle
+- **WHEN** a token value changes
+- **THEN** every component using that semantic role follows without per-component edits
+
+### Requirement: Dark mode
+The dashboard SHALL support a dark theme: initial value from the OS preference, a persistent user toggle in the top bar, and document renderings kept on neutral-light surfaces in both themes.
+
+#### Scenario: Toggle persists
+- **WHEN** a reviewer switches to dark mode and reloads the page
+- **THEN** the dashboard renders dark without flashing light first
+
+### Requirement: Empty states
+A dashboard without ingested runs SHALL show an onboarding empty state naming the ingestion paths, and the mask editor without a loaded document SHALL point to Browse/Upload instead of rendering non-functional controls.
+
+#### Scenario: Fresh install
+- **WHEN** the runs page loads with zero runs
+- **THEN** an onboarding card explains how to ingest results instead of an empty table
+

@@ -14,6 +14,18 @@ const REQUIRED_FEATURES = ["browse", "upload", "recompare", "upload-results", "b
 const RESULT_FILE_EXTENSIONS = [".xml", ".png", ".jpg", ".jpeg", ".json", ".pdf"];
 const PAGE_SIZE = 50;
 
+/** "12m ago" style rendering; the exact stamp stays in the title attribute. */
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+  const minutes = Math.round((Date.now() - then) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h ago`;
+  if (minutes < 60 * 24 * 7) return `${Math.round(minutes / (60 * 24))}d ago`;
+  return iso.split("T")[0];
+}
+
 /** Tiny hash router: #/ | #/runs/:id | #/comparisons/:id | #/editor?... */
 function useHashRoute(): [string, (hash: string) => void] {
   const [route, setRoute] = useState(window.location.hash || "#/");
@@ -23,6 +35,20 @@ function useHashRoute(): [string, (hash: string) => void] {
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
   return [route, (hash) => (window.location.hash = hash)];
+}
+
+/** Theme: localStorage wins, OS preference is the default. The attribute
+ *  lives on <html> so the token override applies before any component. */
+function useTheme(): [string, () => void] {
+  const [theme, setTheme] = useState(() =>
+    localStorage.getItem("doctest-theme") ||
+    (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light"),
+  );
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("doctest-theme", theme);
+  }, [theme]);
+  return [theme, () => setTheme((t) => (t === "dark" ? "light" : "dark"))];
 }
 
 function useBackendCheck(): string | null {
@@ -49,6 +75,7 @@ function useBackendCheck(): string | null {
 
 export function App() {
   const [route] = useHashRoute();
+  const [theme, toggleTheme] = useTheme();
   const backendWarning = useBackendCheck();
   let view: React.ReactNode;
   if (route.startsWith("#/runs/")) {
@@ -72,6 +99,14 @@ export function App() {
         </h1>
         <a href="#/" data-testid="nav-runs">Runs</a>
         <a href="#/editor" data-testid="nav-editor">Mask Editor</a>
+        <button
+          className="theme-toggle"
+          data-testid="theme-toggle"
+          title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          onClick={toggleTheme}
+        >
+          {theme === "dark" ? "☀" : "🌙"}
+        </button>
       </header>
       {backendWarning && (
         <div className="server-warning" data-testid="server-warning">
@@ -88,6 +123,8 @@ function RunList() {
   const [ingestPath, setIngestPath] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [renaming, setRenaming] = useState<number | null>(null);
+  const [labelDraft, setLabelDraft] = useState("");
   const [flaky, setFlaky] = useState<any[]>([]);
   const folderInputRef = React.useRef<HTMLInputElement>(null);
   const load = () => {
@@ -102,6 +139,15 @@ function RunList() {
     try {
       const summary = await api.ingest(ingestPath);
       setMessage(`Ingested run ${summary.run_id}: ${summary.comparisons} comparisons`);
+      load();
+    } catch (e: any) {
+      setMessage(e.message);
+    }
+  };
+  const saveLabel = async (runId: number) => {
+    setRenaming(null);
+    try {
+      await api.renameRun(runId, labelDraft.trim());
       load();
     } catch (e: any) {
       setMessage(e.message);
@@ -182,6 +228,22 @@ function RunList() {
         />
       </div>
       {message && <p className="note" data-testid="ingest-message">{message}</p>}
+      {runs.length === 0 && (
+        <div className="empty-state" data-testid="empty-runs">
+          <span className="empty-icon">📥</span>
+          <h2>No runs yet</h2>
+          <p className="note">
+            Run your Robot Framework suite with <code>result_json=true</code>, then bring the
+            results in:
+          </p>
+          <ol>
+            <li>Paste the <code>output.xml</code> path above and click <strong>Ingest output.xml</strong>, or</li>
+            <li>Click <strong>Upload results folder…</strong> and pick the output directory, or</li>
+            <li>Run <code>doctest-dashboard ingest results/output.xml</code> on the server.</li>
+          </ol>
+        </div>
+      )}
+      {runs.length > 0 && (
       <table className="grid" data-testid="run-list">
         <thead>
           <tr>
@@ -201,8 +263,34 @@ function RunList() {
               data-testid={`run-row-${run.id}`}
               onClick={() => (window.location.hash = `#/runs/${run.id}`)}
             >
-              <td>{run.name}</td>
-              <td>{run.imported_at}</td>
+              <td onClick={(e) => renaming === run.id && e.stopPropagation()}>
+                {renaming === run.id ? (
+                  <span className="confirm-inline">
+                    <input
+                      data-testid={`rename-input-${run.id}`}
+                      value={labelDraft}
+                      autoFocus
+                      onChange={(e) => setLabelDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveLabel(run.id);
+                        if (e.key === "Escape") setRenaming(null);
+                      }}
+                    />
+                    <button
+                      className="primary"
+                      data-testid={`rename-save-${run.id}`}
+                      onClick={() => saveLabel(run.id)}
+                    >
+                      Save
+                    </button>
+                  </span>
+                ) : (
+                  <span data-testid={`run-name-${run.id}`} title={run.name}>
+                    {run.label || run.name}
+                  </span>
+                )}
+              </td>
+              <td title={run.imported_at}>{relativeTime(run.imported_at)}</td>
               <td>{run.comparisons}</td>
               <td>{run.failed}</td>
               <td>
@@ -224,20 +312,32 @@ function RunList() {
                     <button onClick={() => setConfirmDelete(null)}>No</button>
                   </span>
                 ) : (
-                  <button
-                    data-testid={`delete-run-${run.id}`}
-                    title="Delete this run from the dashboard (files on disk are not touched)"
-                    onClick={() => setConfirmDelete(run.id)}
-                  >
-                    🗑
-                  </button>
+                  <>
+                    <button
+                      data-testid={`rename-run-${run.id}`}
+                      title="Rename this run (the original name stays as a tooltip)"
+                      onClick={() => {
+                        setLabelDraft(run.label || "");
+                        setRenaming(run.id);
+                      }}
+                    >
+                      ✏
+                    </button>{" "}
+                    <button
+                      data-testid={`delete-run-${run.id}`}
+                      title="Delete this run from the dashboard (files on disk are not touched)"
+                      onClick={() => setConfirmDelete(run.id)}
+                    >
+                      🗑
+                    </button>
+                  </>
                 )}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      {runs.length === 0 && <p className="note">No runs ingested yet.</p>}
+      )}
       {flaky.length > 0 && (
         <details className="pane" data-testid="flaky-panel">
           <summary>
@@ -304,6 +404,7 @@ function RunDetail({ runId }: { runId: number }) {
       })
       .catch(() => setGroups([]));
   useEffect(() => {
+    setSelected(new Set()); // selection belongs to the flat grid only
     if (viewMode === "groups") loadGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, runId]);
@@ -394,7 +495,7 @@ function RunDetail({ runId }: { runId: number }) {
         >
           Accept all unresolved in run
         </button>
-        {selected.size > 0 && (
+        {viewMode === "flat" && selected.size > 0 && (
           <button
             className="primary"
             data-testid="accept-selected"
@@ -518,7 +619,7 @@ function RunDetail({ runId }: { runId: number }) {
                 />
               </td>
               <td>{row.thumbnail ? <img className="thumb" src={assetUrl(row.thumbnail)} /> : "—"}</td>
-              <td>{row.name}</td>
+              <td title={row.name}>{row.label || row.name}</td>
               <td>{row.keyword}</td>
               <td>
                 <span className={`badge ${row.status}`}>{row.status}</span>{" "}

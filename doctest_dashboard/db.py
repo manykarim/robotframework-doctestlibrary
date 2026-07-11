@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS runs (
     id INTEGER PRIMARY KEY,
     output_xml_path TEXT NOT NULL UNIQUE,
     name TEXT,
+    label TEXT,
     started TEXT,
     imported_at TEXT NOT NULL,
     rf_version TEXT
@@ -42,7 +43,8 @@ CREATE TABLE IF NOT EXISTS comparisons (
     candidate_path TEXT,
     identity TEXT NOT NULL,
     images_json TEXT,
-    group_key TEXT
+    group_key TEXT,
+    label TEXT
 );
 CREATE TABLE IF NOT EXISTS pages (
     id INTEGER PRIMARY KEY,
@@ -103,11 +105,16 @@ class Database:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.executescript(SCHEMA)
-            # pre-existing dev databases (unreleased product): additive column
-            try:
-                self._conn.execute("ALTER TABLE comparisons ADD COLUMN group_key TEXT")
-            except sqlite3.OperationalError:
-                pass
+            # pre-existing dev databases (unreleased product): additive columns
+            for statement in (
+                "ALTER TABLE comparisons ADD COLUMN group_key TEXT",
+                "ALTER TABLE comparisons ADD COLUMN label TEXT",
+                "ALTER TABLE runs ADD COLUMN label TEXT",
+            ):
+                try:
+                    self._conn.execute(statement)
+                except sqlite3.OperationalError:
+                    pass
             self._conn.commit()
 
     def close(self) -> None:
@@ -164,24 +171,29 @@ class Database:
                           reference_path: Optional[str] = None,
                           candidate_path: Optional[str] = None,
                           images: Optional[List[str]] = None,
-                          group_key: Optional[str] = None) -> int:
+                          group_key: Optional[str] = None,
+                          label: Optional[str] = None) -> int:
         cursor = self.execute(
             "INSERT INTO comparisons (test_id, keyword, library, status, degraded, "
             "review_state, sidecar_path, sidecar_json, reference_path, candidate_path, "
-            "identity, images_json, group_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "identity, images_json, group_key, label) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (test_id, keyword, library, status, int(degraded),
              "unresolved" if status == "FAIL" else "passed",
              sidecar_path,
              json.dumps(sidecar_json) if sidecar_json is not None else None,
              reference_path, candidate_path, identity,
              json.dumps(images) if images is not None else None,
-             group_key))
+             group_key, label))
         return cursor.lastrowid
+
+    def set_run_label(self, run_id: int, label: Optional[str]) -> None:
+        self.execute("UPDATE runs SET label = ? WHERE id = ?", (label, run_id))
 
     def list_groups(self, run_id: int):
         """Similarity groups (size >= 2) of unresolved failures + ungrouped count."""
         rows = self.query(
-            "SELECT c.id AS comparison_id, c.group_key, t.name, "
+            "SELECT c.id AS comparison_id, c.group_key, c.label, t.name, "
             "(SELECT p.images_json FROM pages p "
             " WHERE p.comparison_id = c.id AND p.status = 'FAIL' "
             " ORDER BY p.page_no LIMIT 1) AS thumb_json "
@@ -194,8 +206,9 @@ class Database:
             images = json.loads(row["thumb_json"]) if row["thumb_json"] else {}
             member = {
                 "comparison_id": row["comparison_id"],
-                "name": row["name"],
-                "thumbnail": images.get("diff") or images.get("candidate"),
+                "name": row["label"] or row["name"],
+                "thumbnail": (images.get("thumb") or images.get("candidate_with_diff")
+                              or images.get("diff") or images.get("candidate")),
             }
             if row["group_key"]:
                 by_key.setdefault(row["group_key"], []).append(member)
@@ -284,7 +297,7 @@ class Database:
         rows = self.query(
             "SELECT t.id AS test_id, t.suite, t.name, t.status AS test_status, "
             "c.id AS comparison_id, c.keyword, c.library, c.status, c.degraded, "
-            "c.review_state, c.identity, "
+            "c.review_state, c.identity, c.label, "
             "(SELECT p.images_json FROM pages p "
             " WHERE p.comparison_id = c.id AND p.status = 'FAIL' "
             " ORDER BY p.page_no LIMIT 1) AS thumb_json "
@@ -293,7 +306,8 @@ class Database:
             tuple(params) + (limit, offset))
         for row in rows:
             images = json.loads(row["thumb_json"]) if row["thumb_json"] else {}
-            row["thumbnail"] = images.get("diff") or images.get("candidate")
+            row["thumbnail"] = (images.get("thumb") or images.get("candidate_with_diff")
+                                or images.get("diff") or images.get("candidate"))
             del row["thumb_json"]
         return rows, total
 

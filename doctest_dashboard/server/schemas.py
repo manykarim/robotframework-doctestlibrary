@@ -9,6 +9,10 @@ class IngestRequest(BaseModel):
     output_xml: str
 
 
+class RunLabelRequest(BaseModel):
+    label: Optional[str] = None
+
+
 class DecisionRequest(BaseModel):
     actor: Optional[str] = None
     reason: Optional[str] = None

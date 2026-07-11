@@ -48,7 +48,7 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
     if (query.get("x") !== null) {
       return [{
         page: "all",
-        name: "From diff region",
+        name: "Mask 1 (from diff region)",
         type: "coordinates",
         x: parseInt(query.get("x")!, 10),
         y: parseInt(query.get("y")!, 10),
@@ -147,7 +147,8 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
     return () => clearTimeout(timer);
   }, [patternKey, docFile, pageNo]);
 
-  const scale = Math.min(1, 900 / imageSize.width);
+  // fit both dimensions so tall pages do not overflow the viewport
+  const scale = Math.min(1, 900 / imageSize.width, 640 / imageSize.height);
 
   const updateMask = (index: number, patch: Partial<MaskEntry>) => {
     setMasks((current) => current.map((mask, i) => (i === index ? { ...mask, ...patch } : mask)));
@@ -373,8 +374,10 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
         <button data-testid="browse-mask" onClick={() => setBrowser("mask")}>
           Browse…
         </button>
-        <button data-testid="load-masks" onClick={loadMasks} disabled={!maskFile}>Load</button>
-        <button className="primary" data-testid="save-masks" onClick={saveMasks} disabled={!maskFile}>
+        <button data-testid="load-masks" onClick={loadMasks} disabled={!maskFile}
+          title={maskFile ? "Load masks from this file" : "Choose a mask file first"}>Load</button>
+        <button className="primary" data-testid="save-masks" onClick={saveMasks} disabled={!maskFile}
+          title={maskFile ? "Save masks to this file" : "Choose a mask file first"}>
           Save
         </button>
         {comparisonId && (
@@ -403,6 +406,17 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
       )}
 
       <div className="editor-layout">
+        {!docFile ? (
+          <div className="empty-state" data-testid="empty-editor" style={{ flex: 1 }}>
+            <span className="empty-icon">🖼</span>
+            <h2>No document loaded</h2>
+            <p className="note">
+              Open the image or PDF you want to mask: <strong>Browse…</strong> picks a file the
+              server can see, <strong>Upload…</strong> sends one from this machine. Coming from a
+              comparison? Use its <em>Add ignore mask</em> button to arrive pre-seeded.
+            </p>
+          </div>
+        ) : (
         <Stage
           width={imageSize.width * scale}
           height={imageSize.height * scale}
@@ -454,6 +468,7 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
             )}
           </Layer>
         </Stage>
+        )}
 
         <div className="editor-side">
           <div className="pane">
@@ -507,7 +522,7 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
               <button
                 data-testid="add-area-mask"
                 onClick={() => {
-                  setMasks((current) => [...current, { page: "all", type: "area", location: "top", percent: 10 }]);
+                  setMasks((current) => [...current, { page: "all", name: `Mask ${masks.length + 1}`, type: "area", location: "top", percent: 10 }]);
                   setSelected(masks.length);
                 }}
               >
@@ -516,7 +531,7 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
               <button
                 data-testid="add-pattern-mask"
                 onClick={() => {
-                  setMasks((current) => [...current, { page: "all", type: "pattern", pattern: "", xoffset: 0, yoffset: 0 }]);
+                  setMasks((current) => [...current, { page: "all", name: `Mask ${masks.length + 1}`, type: "pattern", pattern: "", xoffset: 0, yoffset: 0 }]);
                   setSelected(masks.length);
                 }}
               >

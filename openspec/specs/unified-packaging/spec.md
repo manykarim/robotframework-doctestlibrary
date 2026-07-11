@@ -1,5 +1,8 @@
 # Spec: unified-packaging
 
+## Purpose
+One installable package with optional extras covering AI and dashboard features.
+
 ## Requirements
 
 ### Requirement: Single distribution with extras

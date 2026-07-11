@@ -135,7 +135,9 @@ def _recompare_job(reference: str, candidate: str, masks: Any,
         visual_tester.compare_images(reference, candidate, **kwargs)
     except AssertionError:
         status = "FAIL"
-    sidecars = sorted(Path(scratch_dir).glob("doctest_results/*.json"))
+    sidecars = sorted(
+        f for f in Path(scratch_dir).glob("doctest_results/*.json")
+        if f.name != "run.json")
     if not sidecars:
         raise RuntimeError("Comparison produced no sidecar")
     with open(sidecars[-1], encoding="utf-8") as file:

@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, assetUrl, ComparisonDetail, Page, Region } from "./api";
 import { useViewTransform, ZoomPane } from "./ZoomPane";
 
-type Mode = "side-by-side" | "overlay" | "blink" | "swipe";
-const MODES: Mode[] = ["side-by-side", "overlay", "blink", "swipe"];
+type Mode = "side-by-side" | "overlay" | "blink" | "swipe" | "highlight";
+const MODES: Mode[] = ["side-by-side", "overlay", "blink", "swipe", "highlight"];
 
 export function ComparisonView({ comparisonId }: { comparisonId: number }) {
   const [detail, setDetail] = useState<ComparisonDetail | null>(null);
@@ -28,12 +28,19 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
 
   const page: Page | undefined = detail?.pages[pageIndex];
   const regions: Region[] = page?.regions ?? [];
+  const highlightImage = page?.images["candidate_with_diff"];
+  // "highlight" is only offered when the sidecar shipped the rendering (v1.1+)
+  const availableModes: Mode[] = highlightImage ? MODES : MODES.slice(0, 4) as Mode[];
+
+  useEffect(() => {
+    if (mode === "highlight" && !highlightImage) setMode("overlay");
+  }, [mode, highlightImage]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (["INPUT", "TEXTAREA", "SELECT"].includes((event.target as HTMLElement).tagName)) return;
       const num = parseInt(event.key, 10);
-      if (num >= 1 && num <= MODES.length) setMode(MODES[num - 1]);
+      if (num >= 1 && num <= availableModes.length) setMode(availableModes[num - 1]);
       if (event.key === "n") nextRegion(1);
       if (event.key === "p") nextRegion(-1);
     };
@@ -78,12 +85,16 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
 
   const isDegraded = !!detail.degraded;
   const dpi = detail.sidecar_json?.reference?.dpi;
+  const title = detail.label || detail.test_name || detail.keyword;
+  const hasPages = detail.pages.length > 0;
 
   return (
     <div>
       <div className="toolbar">
         <a href="javascript:history.back()">← Back</a>
-        <strong data-testid="comparison-keyword">{detail.keyword}</strong>
+        <strong data-testid="comparison-title">{title}</strong>
+        <span className="chip" data-testid="comparison-keyword">{detail.keyword}</span>
+        {detail.suite && <span className="note" data-testid="comparison-suite">{detail.suite}</span>}
         <span className={`badge ${detail.status}`} data-testid="comparison-status">
           {detail.status}
         </span>
@@ -102,7 +113,7 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
 
       {isDegraded ? (
         <DegradedView detail={detail} />
-      ) : (
+      ) : hasPages ? (
         <>
           <div className="toolbar">
             {detail.pages.map((p, index) => (
@@ -120,7 +131,7 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
             ))}
           </div>
           <div className="toolbar">
-            {MODES.map((m, index) => (
+            {availableModes.map((m, index) => (
               <button
                 key={m}
                 className={mode === m ? "active" : ""}
@@ -152,7 +163,7 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
                 </button>
               </>
             )}
-            <span className="note">wheel = zoom · drag = pan · double-click = reset</span>
+            <span className="note">wheel = zoom · drag = pan · double-click = fit</span>
           </div>
           {page && (
             <PageViewer
@@ -162,6 +173,10 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
             />
           )}
         </>
+      ) : (
+        <p className="note" data-testid="no-pages-note">
+          This comparison has no page renderings — review the facet and history data below.
+        </p>
       )}
 
       {regionText === "loading" && <p className="note">Extracting region text…</p>}
@@ -231,7 +246,7 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
         </div>
       )}
 
-      <div className="pane">
+      <div className="pane decision-bar">
         <div className="toolbar">
           <input
             data-testid="decision-reason"
@@ -295,11 +310,30 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
   const ref = page.images["reference"];
   const cand = page.images["candidate"];
   const diff = page.images["diff"];
+  const highlighted = page.images["candidate_with_diff"];
   const [blinkOn, setBlinkOn] = useState(false);
   const [swipe, setSwipe] = useState(50);
   const [overlayOpacity, setOverlayOpacity] = useState(50);
+  const [showRegions, setShowRegions] = useState(true);
   const view = useViewTransform();
   const paneAreaRef = useRef<HTMLDivElement>(null);
+  const fittedFor = useRef<number | null>(null);
+
+  // Fit the page into the pane once per page — on first image load (or
+  // immediately when the browser already has it cached).
+  const fitToImage = (img: HTMLImageElement | null) => {
+    if (!img || !img.complete || !img.naturalWidth) return;
+    if (fittedFor.current === page.id) return;
+    const pane = paneAreaRef.current?.querySelector(".zoom-pane");
+    if (!pane) return;
+    const rect = pane.getBoundingClientRect();
+    view.fitTo(img.naturalWidth, img.naturalHeight, rect.width, rect.height);
+    fittedFor.current = page.id;
+  };
+  const fitProps = {
+    ref: fitToImage,
+    onLoad: (e: React.SyntheticEvent<HTMLImageElement>) => fitToImage(e.currentTarget),
+  };
 
   useEffect(() => {
     if (mode !== "blink") return;
@@ -322,23 +356,43 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlight]);
 
-  const highlightBox = useMemo(() => {
-    if (!highlight) return null;
+  const overlays = useMemo(() => {
+    const scale = view.transform.scale;
     return (
-      <div
-        data-testid="region-highlight"
-        style={{
-          position: "absolute",
-          left: highlight.x,
-          top: highlight.y,
-          width: highlight.width,
-          height: highlight.height,
-          outline: `${3 / view.transform.scale}px solid #ff9800`,
-          pointerEvents: "none",
-        }}
-      />
+      <>
+        {showRegions &&
+          page.regions.map((region, index) => (
+            <div
+              key={index}
+              data-testid={`region-outline-${index}`}
+              style={{
+                position: "absolute",
+                left: region.x,
+                top: region.y,
+                width: region.width,
+                height: region.height,
+                outline: `${1.5 / scale}px dashed #ff5722`,
+                pointerEvents: "none",
+              }}
+            />
+          ))}
+        {highlight && (
+          <div
+            data-testid="region-highlight"
+            style={{
+              position: "absolute",
+              left: highlight.x,
+              top: highlight.y,
+              width: highlight.width,
+              height: highlight.height,
+              outline: `${3 / scale}px solid #ff9800`,
+              pointerEvents: "none",
+            }}
+          />
+        )}
+      </>
     );
-  }, [highlight, view.transform.scale]);
+  }, [highlight, showRegions, page.regions, view.transform.scale]);
 
   if (!ref || !cand) {
     return (
@@ -355,14 +409,27 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
 
   return (
     <div className="viewer" data-testid={`viewer-${mode}`} ref={paneAreaRef}>
+      <div className="toolbar viewer-controls">
+        <button data-testid="fit-button" onClick={() => view.reset()}>Fit</button>
+        <button data-testid="actual-size-button" onClick={() => view.actualSize()}>100%</button>
+        <label className="note">
+          <input
+            type="checkbox"
+            data-testid="toggle-regions"
+            checked={showRegions}
+            onChange={(e) => setShowRegions(e.target.checked)}
+          />{" "}
+          diff regions ({page.regions.length})
+        </label>
+      </div>
       {mode === "side-by-side" && (
         <div className="images">
           <div className="viewer-col">
             <p className="note">Reference</p>
             <ZoomPane view={view} testid="pane-reference">
               <div className="overlay-wrap">
-                <img src={assetUrl(ref)} />
-                {highlightBox}
+                <img src={assetUrl(ref)} {...fitProps} />
+                {overlays}
               </div>
             </ZoomPane>
           </div>
@@ -371,7 +438,7 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
             <ZoomPane view={view} testid="pane-candidate">
               <div className="overlay-wrap">
                 <img src={assetUrl(cand)} />
-                {highlightBox}
+                {overlays}
               </div>
             </ZoomPane>
           </div>
@@ -399,9 +466,9 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
           </div>
           <ZoomPane view={view} testid="pane-overlay">
             <div className="overlay-wrap">
-              <img src={assetUrl(ref)} />
+              <img src={assetUrl(ref)} {...fitProps} />
               <img className="cand" src={assetUrl(cand)} style={{ opacity: overlayOpacity / 100 }} />
-              {highlightBox}
+              {overlays}
             </div>
           </ZoomPane>
         </div>
@@ -409,9 +476,9 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
       {mode === "blink" && (
         <ZoomPane view={view} testid="pane-blink">
           <div className="overlay-wrap">
-            <img src={assetUrl(ref)} style={{ visibility: blinkOn ? "hidden" : "visible" }} />
+            <img src={assetUrl(ref)} {...fitProps} style={{ visibility: blinkOn ? "hidden" : "visible" }} />
             <img className="cand" src={assetUrl(cand)} style={{ visibility: blinkOn ? "visible" : "hidden" }} />
-            {highlightBox}
+            {overlays}
           </div>
         </ZoomPane>
       )}
@@ -429,14 +496,22 @@ function PageViewer({ page, mode, highlight }: { page: Page; mode: Mode; highlig
           </div>
           <ZoomPane view={view} testid="pane-swipe">
             <div className="swipe-wrap">
-              <img src={assetUrl(ref)} />
+              <img src={assetUrl(ref)} {...fitProps} />
               <div className="clip" style={{ clipPath: `inset(0 ${100 - swipe}% 0 0)` }}>
                 <img src={assetUrl(cand)} />
               </div>
-              {highlightBox}
+              {overlays}
             </div>
           </ZoomPane>
         </div>
+      )}
+      {mode === "highlight" && highlighted && (
+        <ZoomPane view={view} testid="pane-highlight">
+          <div className="overlay-wrap">
+            <img src={assetUrl(highlighted)} {...fitProps} />
+            {overlays}
+          </div>
+        </ZoomPane>
       )}
       <p className="note">
         SSIM: {page.score?.toFixed(6) ?? "n/a"} | threshold: {page.threshold ?? "n/a"} | regions:{" "}

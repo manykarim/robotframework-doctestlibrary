@@ -173,6 +173,10 @@ class _ComparisonCollector(ResultVisitor):
                 comparison_group_key(sidecar_data, self.base_dir)
                 if status == "FAIL" else None
             )
+            label = getattr(sidecar_data, "name", None)
+            if label:
+                # user-assigned comparison labels survive test renames
+                identity = f"name::{label}"
             comparison_id = self.database.insert_comparison(
                 test_id=test_id,
                 keyword=name,
@@ -185,6 +189,7 @@ class _ComparisonCollector(ResultVisitor):
                 reference_path=sidecar_data.reference.path,
                 candidate_path=sidecar_data.candidate.path,
                 group_key=group_key,
+                label=label,
             )
             self.sidecar_comparisons += 1
             for page in sidecar_data.pages:
@@ -257,7 +262,7 @@ def ingest_output_xml(database: Database, config: AppConfig, output_xml) -> Inge
     result = ExecutionResult(str(output_xml))
     run_id = database.upsert_run(
         output_xml_path=str(output_xml),
-        name=result.suite.name,
+        name=f"{result.suite.name} · {base_dir.name}",
         started=getattr(result.suite, "starttime", None) or None,
         rf_version=getattr(result, "generator", None),
     )

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 
 from doctest_dashboard.ingest import ingest_output_xml
-from doctest_dashboard.server.schemas import IngestRequest
+from doctest_dashboard.server.schemas import IngestRequest, RunLabelRequest
 from doctest_dashboard.server.state import AppState, get_state, require_token
 
 router = APIRouter(dependencies=[Depends(require_token)])
@@ -48,6 +48,15 @@ def list_groups(run_id: int, state: AppState = Depends(get_state)):
     return state.db.list_groups(run_id)
 
 
+@router.patch("/api/runs/{run_id}")
+def rename_run(run_id: int, request: RunLabelRequest, state: AppState = Depends(get_state)):
+    if not state.db.query_one("SELECT id FROM runs WHERE id = ?", (run_id,)):
+        raise HTTPException(status_code=404, detail="Run not found")
+    label = (request.label or "").strip() or None
+    state.db.set_run_label(run_id, label)
+    return {"id": run_id, "label": label}
+
+
 @router.delete("/api/runs/{run_id}")
 def delete_run(run_id: int, state: AppState = Depends(get_state)):
     if not state.db.query_one("SELECT id FROM runs WHERE id = ?", (run_id,)):
@@ -73,7 +82,10 @@ def comparison_history(comparison_id: int, state: AppState = Depends(get_state))
 @router.get("/api/comparisons/{comparison_id}")
 def get_comparison(comparison_id: int, state: AppState = Depends(get_state)):
     db = state.db
-    comparison = db.query_one("SELECT * FROM comparisons WHERE id = ?", (comparison_id,))
+    comparison = db.query_one(
+        "SELECT c.*, t.name AS test_name, t.suite AS suite "
+        "FROM comparisons c JOIN tests t ON c.test_id = t.id WHERE c.id = ?",
+        (comparison_id,))
     if not comparison:
         raise HTTPException(status_code=404, detail="Comparison not found")
     comparison["sidecar_json"] = (

@@ -1,5 +1,8 @@
 # Spec: mask-editor
 
+## Purpose
+Creating and editing ignore masks visually against real document renderings.
+
 ## Requirements
 
 ### Requirement: Schema-exact masks.json round-trip

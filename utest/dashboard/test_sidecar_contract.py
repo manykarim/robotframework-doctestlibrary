@@ -29,7 +29,9 @@ def sidecars_from_real_library(tmp_path, monkeypatch):
         visual_tester.compare_images(
             str(PDF_REF), str(PDF_REF).replace("sample_1_page", "sample_1_page_moved"),
             placeholder_file=str(PDF_MASK))
-    return sorted((tmp_path / "doctest_results").glob("*.json"))
+    return sorted(
+        path for path in (tmp_path / "doctest_results").glob("*.json")
+        if path.name != "run.json")
 
 
 def test_real_sidecars_validate(sidecars_from_real_library, tmp_path):

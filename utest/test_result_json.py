@@ -10,7 +10,9 @@ ROOT_TESTDATA = Path(__file__).parent.parent.resolve() / "testdata"
 
 
 def _sidecars(directory):
-    return sorted((Path(directory) / "doctest_results").glob("*.json"))
+    return sorted(
+        path for path in (Path(directory) / "doctest_results").glob("*.json")
+        if path.name != "run.json")
 
 
 def _load(path):
@@ -182,3 +184,74 @@ def test_pdftest_sidecar_carries_structured_facets(tmp_path, monkeypatch, testda
     text_facet = next(facet for facet in facets if facet["facet"] == "text")
     assert text_facet["description"]
     assert text_facet["details"]
+
+
+def test_failing_page_carries_highlighted_candidate_and_thumb(visual_tester, tmp_path, testdata_dir):
+    with pytest.raises(AssertionError):
+        visual_tester.compare_images(
+            str(testdata_dir / 'birthday_1080.png'),
+            str(testdata_dir / 'birthday_1080_date_id.png'))
+    page = _load(_sidecars(tmp_path)[0])["pages"][0]
+    for kind in ("candidate_with_diff", "thumb"):
+        assert kind in page["images"], kind
+        assert (tmp_path / page["images"][kind]).is_file()
+    clean = (tmp_path / page["images"]["candidate"]).read_bytes()
+    highlighted = (tmp_path / page["images"]["candidate_with_diff"]).read_bytes()
+    assert clean != highlighted, "highlight outlines must alter the candidate"
+    import cv2
+    thumb = cv2.imread(str(tmp_path / page["images"]["thumb"]))
+    assert thumb.shape[1] <= 240
+
+
+def test_run_manifest_written_once_with_versions(visual_tester, tmp_path, testdata_dir):
+    reference = str(testdata_dir / 'birthday_1080.png')
+    visual_tester.compare_images(reference, reference)
+    visual_tester.compare_images(reference, reference)
+    manifests = list((tmp_path / "doctest_results").glob("run.json"))
+    assert len(manifests) == 1
+    manifest = _load(manifests[0])
+    assert manifest["doctest_version"]
+    assert manifest["robotframework_version"]
+    assert manifest["python_version"]
+    assert manifest["started"]
+
+
+def test_pdf_failure_carries_region_text(visual_tester, tmp_path, testdata_dir):
+    with pytest.raises(AssertionError):
+        visual_tester.compare_images(
+            str(testdata_dir / 'sample_1_page.pdf'),
+            str(testdata_dir / 'sample_1_page_moved.pdf'))
+    page = _load(_sidecars(tmp_path)[0])["pages"][0]
+    assert page["regions_text"], "PDF pages must pre-extract region text"
+    entry = page["regions_text"][0]
+    assert set(entry) >= {"region", "same", "reference_text", "candidate_text"}
+
+
+def test_image_failure_has_no_region_text(visual_tester, tmp_path, testdata_dir):
+    with pytest.raises(AssertionError):
+        visual_tester.compare_images(
+            str(testdata_dir / 'birthday_1080.png'),
+            str(testdata_dir / 'birthday_1080_date_id.png'))
+    page = _load(_sidecars(tmp_path)[0])["pages"][0]
+    assert page["regions_text"] == []  # OCR-only path stays lazy
+
+
+def test_comparison_name_label_in_sidecar(visual_tester, tmp_path, testdata_dir):
+    reference = str(testdata_dir / 'birthday_1080.png')
+    visual_tester.compare_images(reference, reference, name="Invoice header")
+    assert _load(_sidecars(tmp_path)[0])["name"] == "Invoice header"
+
+
+def test_pdftest_name_label_and_facet_data(tmp_path, monkeypatch, testdata_dir):
+    monkeypatch.chdir(tmp_path)
+    pdf_tester = PdfTest(result_json=True)
+    with pytest.raises(AssertionError):
+        pdf_tester.compare_pdf_documents(
+            str(testdata_dir / 'sample_1_page.pdf'),
+            str(testdata_dir / 'sample_1_page_different_text.pdf'),
+            name="Contract check")
+    result = _load(_sidecars(tmp_path)[0])
+    assert result["name"] == "Contract check"
+    metadata_facet = next(f for f in result["facets"] if f["facet"] == "metadata")
+    assert isinstance(metadata_facet["data"], dict), "facet data must be structured"
+    assert metadata_facet["details"]

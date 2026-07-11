@@ -247,6 +247,7 @@ class PdfTest(object):
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=structure|metadata    structure_position_tolerance=5.0
 
         """
+        comparison_label = kwargs.pop("name", None)
         llm_requested = bool(
             kwargs.pop("llm", False)
             or kwargs.pop("llm_enabled", False)
@@ -412,6 +413,7 @@ class PdfTest(object):
                 dpi=structure_dpi,
                 differences=[],
                 notes=["Reference run: reference was created from the candidate."],
+                name=comparison_label,
             )
             return
 
@@ -456,6 +458,7 @@ class PdfTest(object):
                         "facet": "pages",
                         "description": "Documents have different number of pages.",
                     }],
+                    name=comparison_label,
                 )
                 if promoted:
                     return
@@ -477,6 +480,10 @@ class PdfTest(object):
                         "facet": facet,
                         "description": description,
                         "details": pformat(diff_payload, width=200),
+                        # machine-readable payload for structured rendering;
+                        # the sidecar writer stringifies anything non-JSON-safe
+                        "data": dict(diff_payload) if isinstance(diff_payload, dict)
+                        else diff_payload,
                     }
                 )
 
@@ -643,6 +650,7 @@ class PdfTest(object):
                 notes=(
                     ["Reference run: candidate saved as new reference."] if promoted else None
                 ),
+                name=comparison_label,
             )
             if differences_detected and not promoted:
                 raise AssertionError('The compared PDF Document Data is different.')
@@ -1254,6 +1262,7 @@ class PdfTest(object):
         reference_pages: Optional[int] = None,
         candidate_pages: Optional[int] = None,
         notes: Optional[List[str]] = None,
+        name: Optional[str] = None,
     ) -> None:
         """Write the comparison sidecar for a PDF comparison, if enabled.
 
@@ -1276,6 +1285,7 @@ class PdfTest(object):
             settings={"compare": sorted(compare_set)},
             notes=all_notes,
             facets=differences,
+            name=name,
         )
         robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
 

@@ -13,6 +13,7 @@ const MAX_SCALE = 8;
  *  keep their viewports synchronized (side-by-side review). */
 export function useViewTransform() {
   const [transform, setTransform] = useState<ViewTransform>({ scale: 1, tx: 0, ty: 0 });
+  const fitRef = useRef<ViewTransform | null>(null);
 
   const zoomAt = (cx: number, cy: number, factor: number) =>
     setTransform((prev) => {
@@ -24,7 +25,22 @@ export function useViewTransform() {
   const panBy = (dx: number, dy: number) =>
     setTransform((prev) => ({ ...prev, tx: prev.tx + dx, ty: prev.ty + dy }));
 
-  const reset = () => setTransform({ scale: 1, tx: 0, ty: 0 });
+  /** Fit content of natural size (w,h) into a pane, centered. Also becomes
+   *  the reset target (double-click refits — the useful default). */
+  const fitTo = (width: number, height: number, paneWidth: number, paneHeight: number) => {
+    const scale = Math.min(paneWidth / width, paneHeight / height, 1);
+    const fitted = {
+      scale,
+      tx: (paneWidth - width * scale) / 2,
+      ty: (paneHeight - height * scale) / 2,
+    };
+    fitRef.current = fitted;
+    setTransform(fitted);
+  };
+
+  const actualSize = () => setTransform({ scale: 1, tx: 0, ty: 0 });
+
+  const reset = () => setTransform(fitRef.current ?? { scale: 1, tx: 0, ty: 0 });
 
   /** Center the viewport on a point given in image coordinates. */
   const centerOn = (x: number, y: number, viewportWidth: number, viewportHeight: number) =>
@@ -34,7 +50,7 @@ export function useViewTransform() {
       ty: viewportHeight / 2 - y * prev.scale,
     }));
 
-  return { transform, zoomAt, panBy, reset, centerOn };
+  return { transform, zoomAt, panBy, reset, centerOn, fitTo, actualSize };
 }
 
 export type ViewTransformApi = ReturnType<typeof useViewTransform>;

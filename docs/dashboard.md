@@ -88,12 +88,14 @@ Re-ingesting the same `output.xml` path updates the run instead of duplicating i
 
 The ingester reads comparison status at **keyword level**, so failures wrapped in `Run Keyword And Expect Error` are still recorded as failing comparisons.
 
+The UI follows your OS light/dark preference; the 🌙/☀ toggle in the top bar overrides it (persisted per browser). A fresh dashboard shows an onboarding card with these ingestion options until the first run arrives.
+
 ## 5. Reviewing comparisons
 
 Housekeeping: runs can be **deleted** from the run list (dashboard records and asset registrations only — files on disk are never touched); engine scratch results older than 7 days and uploads older than 30 days are swept at server startup (configurable); runs are never auto-deleted.
 
-1. **Runs** page → click a run → test grid with diff thumbnails. Filter by status (`FAIL`/`PASS`) and review state (`unresolved`, `accepted`, `rejected`).
-2. Click a comparison to open the **diff viewer**:
+1. **Runs** page → click a run → test grid with diff thumbnails (runs produced by the current library render highlighted candidates — differences outlined on the real page — instead of raw diff images). Runs are named `<suite> · <output folder>`; click ✏ to give a run your own label, and import times display relatively (exact stamp in the tooltip).
+2. Click a comparison to open the **diff viewer** (the header names the test — or the keyword's `name=` label — with the keyword as a chip):
 
    | Key | Mode |
    |-----|------|
@@ -101,11 +103,12 @@ Housekeeping: runs can be **deleted** from the run list (dashboard records and a
    | `2` | overlay (default, with opacity slider) |
    | `3` | blink |
    | `4` | swipe |
+   | `5` | highlight — the library's rendering with all differences outlined (sidecars from current library versions) |
    | `n` / `p` | next / previous diff region |
 
    **Root cause**: with a diff region selected, *Explain region (text)* extracts and compares the text inside the region (reference vs candidate, via the library's own engine at the comparison's DPI) — showing *what* changed, not just where. Failing `Compare Pdf Documents` comparisons additionally render their differences as per-facet sections (text, metadata, structure, …).
 
-   Every mode supports **zoom** (mouse wheel, 0.25×–8×) and **pan** (drag), synchronized across side-by-side panes; double-click resets the view, and jumping to a diff region centers it at the current zoom.
+   Every mode supports **zoom** (mouse wheel, 0.25×–8×) and **pan** (drag), synchronized across side-by-side panes. Pages auto-fit the pane when opened; **Fit** / **100%** buttons and double-click (refit) switch between fitted and actual size, and jumping to a diff region centers it at the current zoom. All detected diff regions are outlined by default (toggleable via the *diff regions* checkbox); the selected region gets the solid highlight.
 
 3. Decide:
    - **Accept page / Accept document** — copies the candidate file over the reference (identical layout to a `REFERENCE_RUN`), records actor, reason, and SHA-256 before/after in the audit table, and marks the comparison `accepted`. For **multi-page PDFs**, page-level accept is impossible at file level — the UI offers document-level accept or mask creation instead, and never silently writes partial files.
@@ -165,6 +168,7 @@ doctest-dashboard ingest <output.xml>
 |---|---|
 | `POST /api/ingest` | ingest an output.xml |
 | `GET /api/runs`, `GET /api/runs/{id}/tests` | browse |
+| `PATCH /api/runs/{id}` | set/clear a user label for a run |
 | `GET /api/comparisons/{id}` | full detail incl. pages and sidecar |
 | `POST /api/pages/{id}/accept`, `POST /api/comparisons/{id}/accept` | baseline promotion |
 | `POST /api/comparisons/{id}/reject`, `GET .../bugdata` | reject + bug bundle |

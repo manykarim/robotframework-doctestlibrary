@@ -41,6 +41,7 @@ class PageResult(BaseModel):
     images: Dict[str, str] = Field(default_factory=dict)
     notes: List[str] = Field(default_factory=list)
     resolved_masks: List[DiffRegion] = Field(default_factory=list)
+    regions_text: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class Timing(BaseModel):
@@ -58,6 +59,7 @@ class ComparisonResult(BaseModel):
     schema_version: int
     keyword: str
     library: str
+    name: Optional[str] = None
     status: Literal["PASS", "FAIL"]
     reference: DocumentRef
     candidate: DocumentRef

@@ -1,5 +1,8 @@
 # Spec: live-recompare
 
+## Purpose
+Re-running past comparisons with adjusted masks through the embedded comparison engine.
+
 ## Requirements
 
 ### Requirement: Embedded comparison engine

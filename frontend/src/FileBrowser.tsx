@@ -143,7 +143,10 @@ export function FileBrowser({
               }}
             >
               <span className="fb-icon">🗄</span>
-              <span>{root.path}</span>
+              <span className="fb-root">
+                <strong>{root.name}</strong>
+                <span className="note fb-root-path">{root.path}</span>
+              </span>
             </div>
           ))}
           {listing?.path &&

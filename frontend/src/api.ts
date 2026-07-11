@@ -1,6 +1,7 @@
 export interface Run {
   id: number;
   name: string;
+  label?: string | null;
   output_xml_path: string;
   imported_at: string;
   comparisons: number;
@@ -12,6 +13,7 @@ export interface TestRow {
   test_id: number;
   suite: string;
   name: string;
+  label?: string | null;
   test_status: string;
   comparison_id: number;
   keyword: string;
@@ -42,6 +44,9 @@ export interface Page {
 export interface ComparisonDetail {
   id: number;
   keyword: string;
+  test_name?: string;
+  suite?: string;
+  label?: string | null;
   status: string;
   degraded: number;
   review_state: string;
@@ -118,6 +123,8 @@ export interface BatchResult {
 export const api = {
   runs: (limit = 100, offset = 0): Promise<RunsPage> =>
     request("GET", `/api/runs?limit=${limit}&offset=${offset}`).then((r) => r.json()),
+  renameRun: (runId: number, label: string) =>
+    request("PATCH", `/api/runs/${runId}`, { label }).then((r) => r.json()),
   deleteRun: (runId: number) =>
     request("DELETE", `/api/runs/${runId}`).then((r) => r.json()),
   tests: (runId: number, params = ""): Promise<GridPage> =>

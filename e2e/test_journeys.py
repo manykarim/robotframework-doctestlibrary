@@ -343,10 +343,13 @@ def test_j9_batch_accept_and_run_lifecycle(page: Page, server_url, workspace, ap
     for reference, candidate in pairs:
         assert reference.read_bytes() == candidate.read_bytes()
 
-    # zoom is present in the viewer
+    # zoom is present in the viewer; the page auto-fits on load and the
+    # 100% control returns to actual size
     page.locator('[data-testid="test-grid"] tr.clickable').first.click()
-    expect(page.get_by_test_id("zoom-level")).to_have_text("1.00×")
     expect(page.get_by_test_id("pane-overlay")).to_be_visible()
+    expect(page.get_by_test_id("zoom-level")).not_to_have_text("1.00×")
+    page.click('[data-testid="actual-size-button"]')
+    expect(page.get_by_test_id("zoom-level")).to_have_text("1.00×")
 
     # delete the run from the dashboard
     page.goto(f"{server_url}/#/")
@@ -478,6 +481,96 @@ Pdf Comparison
     expect(page.get_by_test_id("facets-panel")).to_be_visible()
     facet = page.locator('[data-testid="facet-text"]').first
     expect(facet).to_contain_text("text")
+
+
+def test_j13_visual_polish(page: Page, server_url, workspace, api):
+    """Visual-polish journey: reviewable thumbnails, header that names the
+    test, fit-on-open, always-visible region outlines, highlight mode, and
+    run renaming."""
+    output_xml, reference, candidate = make_image_run(workspace / "j13")
+    ingest_via_ui(page, server_url, output_xml)
+
+    # run list: derived name "<suite> · <folder>", relative import time
+    run_row = page.locator('[data-testid="run-list"] tr.clickable').first
+    expect(run_row).to_contain_text(" · ")
+    expect(run_row).to_contain_text("just now")
+
+    # rename the run inline; the original name stays as the tooltip
+    rename_button = page.locator('[data-testid^="rename-run-"]').first
+    run_id = rename_button.get_attribute("data-testid").rsplit("-", 1)[-1]
+    rename_button.click()
+    page.fill(f'[data-testid="rename-input-{run_id}"]', "Nightly smoke")
+    page.click(f'[data-testid="rename-save-{run_id}"]')
+    name = page.get_by_test_id(f"run-name-{run_id}")
+    expect(name).to_have_text("Nightly smoke")
+    assert " · " in name.get_attribute("title")
+
+    open_first_failing_comparison(page)
+
+    # header names the test; the keyword is demoted to a chip
+    expect(page.get_by_test_id("comparison-title")).to_have_text("Comparison To Review")
+    expect(page.get_by_test_id("comparison-keyword")).to_have_text("Compare Images")
+
+    # fit-on-open: the whole page is visible (zoom < 1 for this 1080px image),
+    # Fit/100% round-trip, double-click refits
+    zoom = page.get_by_test_id("zoom-level")
+    expect(zoom).not_to_have_text("1.00×")
+    fitted = zoom.inner_text()
+    page.click('[data-testid="actual-size-button"]')
+    expect(zoom).to_have_text("1.00×")
+    page.click('[data-testid="fit-button"]')
+    expect(zoom).to_have_text(fitted)
+
+    # all diff regions are outlined before any keyboard interaction
+    assert page.locator('[data-testid^="region-outline-"]').count() >= 1
+    page.click('[data-testid="toggle-regions"]')
+    assert page.locator('[data-testid^="region-outline-"]').count() == 0
+    page.click('[data-testid="toggle-regions"]')
+
+    # highlight mode renders the library's highlighted candidate
+    page.click('[data-testid="mode-highlight"]')
+    expect(page.get_by_test_id("viewer-highlight")).to_be_visible()
+    expect(page.get_by_test_id("pane-highlight")).to_be_visible()
+
+    # the decision bar is sticky — visible without scrolling to the bottom
+    expect(page.get_by_test_id("accept-comparison")).to_be_in_viewport()
+
+
+def test_j14_visual_identity(page: Page, fresh_server_url):
+    """First-run experience and theme: a fresh dashboard onboards instead of
+    showing an empty table, the editor explains itself without a document,
+    and dark mode toggles + persists across reloads."""
+    page.goto(f"{fresh_server_url}/#/")
+
+    # onboarding empty state instead of a bare table
+    empty = page.get_by_test_id("empty-runs")
+    expect(empty).to_be_visible()
+    expect(empty).to_contain_text("doctest-dashboard ingest")
+    expect(page.get_by_test_id("run-list")).to_have_count(0)
+
+    # editor without a document points at Browse/Upload
+    page.click('[data-testid="nav-editor"]')
+    expect(page.get_by_test_id("empty-editor")).to_be_visible()
+    expect(page.get_by_test_id("empty-editor")).to_contain_text("Browse")
+
+    # dark mode: toggle flips the html attribute and the chrome colors
+    html = page.locator("html")
+    initial = html.get_attribute("data-theme")
+    assert initial in ("light", "dark")
+    other = "dark" if initial == "light" else "light"
+    body_before = page.evaluate("getComputedStyle(document.body).backgroundColor")
+    page.click('[data-testid="theme-toggle"]')
+    expect(html).to_have_attribute("data-theme", other)
+    body_after = page.evaluate("getComputedStyle(document.body).backgroundColor")
+    assert body_before != body_after
+
+    # ...and persists across a reload without flashing back
+    page.reload()
+    expect(html).to_have_attribute("data-theme", other)
+
+    # leave the shared browser context in the default theme for other journeys
+    page.click('[data-testid="theme-toggle"]')
+    expect(html).to_have_attribute("data-theme", initial)
 
 
 def test_j12_history_across_runs(page: Page, server_url, workspace, api):

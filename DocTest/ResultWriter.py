@@ -8,6 +8,9 @@ by external tooling such as the doctest-dashboard.
 """
 
 import json
+import os
+import platform
+import sys
 import time
 import uuid
 from datetime import datetime
@@ -19,6 +22,41 @@ import cv2
 SCHEMA_VERSION = 1
 RESULTS_DIR_NAME = "doctest_results"
 RESULT_LOG_PREFIX = "DOCTEST_RESULT:"
+RUN_MANIFEST_NAME = "run.json"
+THUMB_WIDTH = 240
+
+
+def ensure_run_manifest(output_directory) -> None:
+    """Write ``doctest_results/run.json`` once per run: environment metadata
+    for run naming and OCR-parity display in external tooling."""
+    results_dir = Path(output_directory) / RESULTS_DIR_NAME
+    manifest_path = results_dir / RUN_MANIFEST_NAME
+    if manifest_path.exists():
+        return
+    results_dir.mkdir(parents=True, exist_ok=True)
+
+    def _version_of(getter):
+        try:
+            return str(getter())
+        except Exception:
+            return None
+
+    manifest = {
+        "schema_version": SCHEMA_VERSION,
+        "started": datetime.now().isoformat(timespec="seconds"),
+        "doctest_version": _version_of(
+            lambda: __import__("DocTest").__version__),
+        "robotframework_version": _version_of(
+            lambda: __import__("robot").version.VERSION),
+        "python_version": sys.version.split()[0],
+        "platform": platform.platform(),
+        "tesseract_version": _version_of(
+            lambda: __import__("pytesseract").get_tesseract_version()),
+    }
+    temp = manifest_path.with_suffix(".tmp")
+    with open(temp, "w", encoding="utf-8") as file:
+        json.dump(manifest, file, indent=2, default=_json_safe)
+    os.replace(temp, manifest_path)
 
 
 def _json_safe(value: Any) -> Any:
@@ -70,6 +108,39 @@ class ComparisonResultWriter:
             return rel.as_posix()
         return None
 
+    def save_candidate_with_diff(self, clean_candidate, rectangles, page_number):
+        """Draw diff-region outlines on the clean candidate and save it plus
+        a small thumbnail. Returns {kind: relative path} for both."""
+        if clean_candidate is None:
+            return {}
+        highlighted = clean_candidate.copy()
+        for rect in rectangles or []:
+            cv2.rectangle(
+                highlighted,
+                (int(rect["x"]), int(rect["y"])),
+                (int(rect["x"]) + int(rect["width"]),
+                 int(rect["y"]) + int(rect["height"])),
+                (0, 0, 255),
+                2,
+            )
+        images = {}
+        rel = self.save_page_image(highlighted, page_number, "candidate_with_diff")
+        if rel:
+            images["candidate_with_diff"] = rel
+        height, width = highlighted.shape[:2]
+        if width > THUMB_WIDTH:
+            thumb = cv2.resize(
+                highlighted,
+                (THUMB_WIDTH, max(1, int(height * THUMB_WIDTH / width))),
+                interpolation=cv2.INTER_AREA,
+            )
+        else:
+            thumb = highlighted
+        rel = self.save_page_image(thumb, page_number, "thumb")
+        if rel:
+            images["thumb"] = rel
+        return images
+
     def add_page(
         self,
         page_number,
@@ -80,6 +151,7 @@ class ComparisonResultWriter:
         images: Optional[Dict[str, str]] = None,
         notes: Optional[List[str]] = None,
         resolved_masks: Optional[List[Dict[str, int]]] = None,
+        regions_text: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         self.pages.append(
             {
@@ -91,6 +163,7 @@ class ComparisonResultWriter:
                 "images": images or {},
                 "notes": notes or [],
                 "resolved_masks": resolved_masks or [],
+                "regions_text": regions_text or [],
             }
         )
 
@@ -104,12 +177,15 @@ class ComparisonResultWriter:
         llm: Optional[Dict[str, Any]] = None,
         notes: Optional[List[str]] = None,
         facets: Optional[List[Dict[str, Any]]] = None,
+        name: Optional[str] = None,
     ) -> str:
         """Write the sidecar JSON and return its path relative to OUTPUT_DIR."""
+        ensure_run_manifest(self.output_directory)
         result = {
             "schema_version": SCHEMA_VERSION,
             "keyword": self.keyword,
             "library": self.library,
+            "name": name,
             "status": status,
             "reference": reference,
             "candidate": candidate,

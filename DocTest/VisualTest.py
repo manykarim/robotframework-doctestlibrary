@@ -340,6 +340,7 @@ class VisualTest:
                 if value is not None:
                     llm_overrides[key] = value
 
+        comparison_label = kwargs.pop("name", None)
         stream_documents_override = kwargs.pop("stream_documents", None)
         page_cache_size_override = kwargs.pop("page_cache_size", None)
         if page_cache_size_override is None:
@@ -453,8 +454,11 @@ class VisualTest:
                 diff_rectangles_cache: Optional[List[Dict[str, int]]] = None
                 combined_image_with_differences = None
                 page_images: Dict[str, str] = {}
+                clean_candidate = None
                 if result_writer is not None:
-                    # Save clean renderings before any labelling mutates them
+                    # Save clean renderings before any labelling mutates them;
+                    # keep the candidate in memory for highlighted derivatives
+                    clean_candidate = cand_page.image.copy()
                     page_images = {
                         "reference": result_writer.save_page_image(
                             ref_page.image, ref_page.page_number, "reference"
@@ -907,6 +911,7 @@ class VisualTest:
 
                 if result_writer is not None:
                     images = dict(page_images)
+                    regions_text: List[Dict[str, Any]] = []
                     if not similar:
                         diff_image_path = result_writer.save_page_image(
                             absolute_diff, ref_page.page_number, "diff"
@@ -920,6 +925,25 @@ class VisualTest:
                         )
                         if combined_path:
                             images["combined_with_diff"] = combined_path
+                        rectangles = diff_rectangles_cache or []
+                        images.update(result_writer.save_candidate_with_diff(
+                            clean_candidate, rectangles, ref_page.page_number))
+                        # Region text is free when PDF text is embedded; OCR-only
+                        # pages skip it (the dashboard extracts on demand instead)
+                        if ref_page.pdf_text_words and cand_page.pdf_text_words:
+                            for rect in rectangles:
+                                try:
+                                    same_text, ref_text, cand_text = (
+                                        ref_page._compare_text_content_in_area_with(
+                                            cand_page, rect, False))
+                                    regions_text.append({
+                                        "region": rect,
+                                        "same": bool(same_text),
+                                        "reference_text": ref_text or "",
+                                        "candidate_text": cand_text or "",
+                                    })
+                                except Exception:  # defensive: never break compares
+                                    continue
                     result_writer.add_page(
                         page_number=ref_page.page_number,
                         status="PASS" if similar else "FAIL",
@@ -929,6 +953,7 @@ class VisualTest:
                         images=images,
                         notes=page_notes[:],
                         resolved_masks=ref_page.pixel_ignore_areas,
+                        regions_text=regions_text,
                     )
 
             llm_decision = None
@@ -1025,6 +1050,7 @@ class VisualTest:
                         "abstract": reference_doc.abstract_ignore_areas,
                     },
                     llm=llm_info,
+                    name=comparison_label,
                 )
                 robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
 

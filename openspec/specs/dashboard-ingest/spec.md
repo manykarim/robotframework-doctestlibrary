@@ -1,5 +1,8 @@
 # Spec: dashboard-ingest
 
+## Purpose
+Ingesting Robot Framework output.xml runs and their sidecars into the dashboard database.
+
 ## Requirements
 
 ### Requirement: Ingest output.xml via CLI and API

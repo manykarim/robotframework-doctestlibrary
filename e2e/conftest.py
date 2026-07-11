@@ -27,8 +27,7 @@ def workspace(tmp_path_factory) -> Path:
     return tmp_path_factory.mktemp("e2e_workspace")
 
 
-@pytest.fixture(scope="session")
-def server_url(workspace):
+def _start_server(workspace: Path):
     port = _free_port()
     process = subprocess.Popen(
         [sys.executable, "-m", "doctest_dashboard.cli",
@@ -37,16 +36,31 @@ def server_url(workspace):
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
     url = f"http://127.0.0.1:{port}"
+    for _ in range(100):
+        try:
+            if httpx.get(f"{url}/api/health", timeout=1).status_code == 200:
+                return process, url
+        except httpx.HTTPError:
+            time.sleep(0.2)
+    output = process.stdout.read().decode(errors="replace") if process.stdout else ""
+    raise RuntimeError(f"Server did not start:\n{output}")
+
+
+@pytest.fixture(scope="session")
+def server_url(workspace):
+    process, url = _start_server(workspace)
     try:
-        for _ in range(100):
-            try:
-                if httpx.get(f"{url}/api/health", timeout=1).status_code == 200:
-                    break
-            except httpx.HTTPError:
-                time.sleep(0.2)
-        else:
-            output = process.stdout.read().decode(errors="replace") if process.stdout else ""
-            raise RuntimeError(f"Server did not start:\n{output}")
+        yield url
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+
+
+@pytest.fixture
+def fresh_server_url(tmp_path):
+    """A server with an empty database — for first-run/onboarding journeys."""
+    process, url = _start_server(tmp_path)
+    try:
         yield url
     finally:
         process.terminate()
