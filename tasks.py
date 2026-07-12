@@ -128,6 +128,7 @@ def libdoc(context):
         ("VisualTest", "DocTest/VisualTest.py"),
         ("PdfTest", "DocTest/PdfTest.py"),
         ("PrintJobTest", "DocTest/PrintJobTests.py"),
+        ("WebVisualTest", "DocTest/WebVisualTest.py"),
         ("Ai", "DocTest/Ai/__init__.py"),
     ]
 

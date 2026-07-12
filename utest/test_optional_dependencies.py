@@ -9,6 +9,14 @@ def _purge_modules(monkeypatch, *prefixes):
     for prefix in prefixes:
         for name in list(sys.modules):
             if name == prefix or name.startswith(prefix + "."):
+                # the parent package's attribute must be restored too — the
+                # re-import below rebinds e.g. DocTest.VisualTest to the
+                # throwaway module, and `import DocTest.VisualTest as x`
+                # resolves through that attribute, not sys.modules
+                parent_name, _, child = name.rpartition(".")
+                parent = sys.modules.get(parent_name)
+                if parent is not None and hasattr(parent, child):
+                    monkeypatch.setattr(parent, child, getattr(parent, child))
                 monkeypatch.delitem(sys.modules, name, raising=False)
 
 

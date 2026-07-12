@@ -51,3 +51,18 @@ def test_real_sidecars_validate(sidecars_from_real_library, tmp_path):
 def test_unknown_schema_version_rejected():
     with pytest.raises(ValueError, match="schema_version"):
         parse_sidecar({"schema_version": 99})
+
+
+def test_model_accepts_additive_capture_context():
+    from doctest_dashboard.models.sidecar import ComparisonResult
+
+    base = {
+        "schema_version": 1, "keyword": "Compare Images", "library": "VisualTest",
+        "status": "PASS",
+        "reference": {"path": "r.png"}, "candidate": {"path": "c.png"},
+        "timing": {"started": "2026-07-12T00:00:00", "elapsed_ms": 1},
+    }
+    assert ComparisonResult.model_validate(base).context is None
+    enriched = dict(base, context={"library": "Browser", "browser": "chromium",
+                                   "viewport": "1280x720", "device_pixel_ratio": 2})
+    assert ComparisonResult.model_validate(enriched).context["browser"] == "chromium"

@@ -60,6 +60,7 @@ class ComparisonResult(BaseModel):
     keyword: str
     library: str
     name: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
     status: Literal["PASS", "FAIL"]
     reference: DocumentRef
     candidate: DocumentRef

@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Article</title><style>
+* { animation: none !important; transition: none !important; }
+body { margin: 0 auto; font-family: Georgia, serif; max-width: 680px; padding: 40px 20px; line-height: 1.7; background: #fff; color: #222; }
+h1 { font-size: 40px; } h2 { margin-top: 40px; }
+blockquote { border-left: 4px solid #2563eb; margin: 24px 0; padding: 8px 20px; background: #f0f4ff; }
+code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; font-size: 15px; }
+</style></head><body>
+<h1>On the Reliability of Visual Tests</h1>
+<p><em>A long typographic page: full-page capture, dense font rendering, sub-pixel anti-aliasing.</em></p>
+<h2>The problem</h2>
+<p>Rendering the same glyphs twice rarely produces identical pixels across engines. Hinting, kerning and gamma differ; humans see the same page, pixel comparison sees thousands of changes.</p>
+<blockquote>A reliable visual test distinguishes what changed for the user from what changed for the rasterizer.</blockquote>
+<h2>The approach</h2>
+<p>Compare structure with structure and pixels with budgets: semantic DOM snapshots answer <code>did content change?</code>, edge classification answers <code>is this just anti-aliasing?</code>, and everything else deserves a human—or a well-prompted model—in the review loop.</p>
+<h2>Coda</h2>
+<p>Ship baselines with the code, review diffs like code, and let the noise pass through the filters built for it.</p>
+</body></html>

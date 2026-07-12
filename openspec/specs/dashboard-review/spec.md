@@ -11,7 +11,15 @@ The dashboard SHALL present a run list with pass/fail/unresolved counts and a te
 - **THEN** only comparisons with failed pages lacking a decision are listed, each with a diff thumbnail
 
 ### Requirement: Diff viewer modes
-The detail view SHALL offer side-by-side (synced zoom/pan), overlay, blink, and swipe modes, plus diff-region navigation (next/previous difference) when region data is available from the sidecar. Mode switching SHALL be keyboard-accessible.
+The detail view SHALL offer side-by-side (synced zoom/pan), overlay, blink, and swipe modes, plus diff-region navigation (next/previous difference) when region data is available from the sidecar. Mode switching SHALL be keyboard-accessible. Zoom (mouse wheel, 0.25×–8×) and pan (drag) SHALL be available in every mode, synchronized across side-by-side panes, with double-click reset; navigating to a diff region SHALL center it at the current zoom.
+
+#### Scenario: Synced zoom in side-by-side
+- **WHEN** a reviewer zooms and pans in one side-by-side pane
+- **THEN** the other pane shows the same viewport
+
+#### Scenario: Region centering under zoom
+- **WHEN** a reviewer at 4× zoom presses "next difference"
+- **THEN** the viewport centers on that region without changing the zoom level
 
 #### Scenario: Navigate diff regions
 - **WHEN** a reviewer presses "next difference" on a page with three diff regions
@@ -116,4 +124,27 @@ A dashboard without ingested runs SHALL show an onboarding empty state naming th
 #### Scenario: Fresh install
 - **WHEN** the runs page loads with zero runs
 - **THEN** an onboarding card explains how to ingest results instead of an empty table
+
+### Requirement: Batch accept
+Reviewers SHALL be able to accept multiple comparisons at once: all unresolved failures of a run, or an explicit selection from the grid. Each promotion SHALL produce its own audit row; comparisons that cannot be promoted (degraded, outside roots, missing candidate) SHALL be skipped with a reason without aborting the batch. The UI SHALL require a confirmation that states how many files will be written.
+
+#### Scenario: Accept whole run
+- **WHEN** a reviewer confirms "accept all" on a run with unresolved failures
+- **THEN** every eligible candidate is promoted with its own decision row and the response lists accepted and skipped items with reasons
+
+#### Scenario: Accept selection
+- **WHEN** a reviewer selects specific comparisons and confirms
+- **THEN** exactly those comparisons are promoted
+
+#### Scenario: Degraded rows skipped honestly
+- **WHEN** a batch contains a degraded comparison
+- **THEN** it is skipped with a reason and the rest of the batch proceeds
+
+### Requirement: Capture context display
+The comparison view SHALL display capture context (browser, viewport, device
+pixel ratio, URL) when the sidecar provides it.
+
+#### Scenario: Web comparison shows its configuration
+- **WHEN** a comparison with sidecar context is opened
+- **THEN** browser and viewport chips are visible in the header area
 

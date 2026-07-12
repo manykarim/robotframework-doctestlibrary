@@ -97,3 +97,11 @@ PdfTest facet entries SHALL carry a JSON-safe `data` payload alongside the human
 - **WHEN** `Compare Images    ref    cand    name=Invoice header`
 - **THEN** the sidecar's `name` is "Invoice header"
 
+### Requirement: Capture context field
+The sidecar schema SHALL carry an optional additive `context` object describing
+how the candidate was captured; absent for non-web comparisons.
+
+#### Scenario: Additive compatibility
+- **WHEN** a consumer reads a sidecar without `context`
+- **THEN** parsing succeeds exactly as before
+

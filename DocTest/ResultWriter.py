@@ -178,6 +178,7 @@ class ComparisonResultWriter:
         notes: Optional[List[str]] = None,
         facets: Optional[List[Dict[str, Any]]] = None,
         name: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Write the sidecar JSON and return its path relative to OUTPUT_DIR."""
         ensure_run_manifest(self.output_directory)
@@ -186,6 +187,7 @@ class ComparisonResultWriter:
             "keyword": self.keyword,
             "library": self.library,
             "name": name,
+            "context": context,
             "status": status,
             "reference": reference,
             "candidate": candidate,

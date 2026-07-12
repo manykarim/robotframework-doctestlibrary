@@ -61,11 +61,24 @@ dashboard = [
 all = [
     "robotframework-doctestlibrary[ai,dashboard]",
 ]
+# convenience extras: pull one web automation library for DocTest.WebVisualTest
+# (which itself needs no extra dependencies — it drives whichever is installed)
+browser = [
+    "robotframework-browser",
+]
+selenium = [
+    "robotframework-seleniumlibrary",
+]
 
 [project.scripts]
 doctest-dashboard = "doctest_dashboard.cli:main"
 
 [dependency-groups]
+# real web libraries for atest/web — test-only, never a package dependency
+web-test = [
+    "robotframework-browser",
+    "robotframework-seleniumlibrary",
+]
 dev = [
     "pytest",
     "invoke",

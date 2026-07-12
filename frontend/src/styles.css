@@ -268,3 +268,6 @@ input, select, textarea {
   background: var(--code-bg); border: 1px solid var(--border);
   border-radius: 4px; padding: 1px 6px; font-size: 12.5px;
 }
+
+/* web-context-metadata */
+.context-chips { display: inline-flex; gap: 6px; align-items: center; }

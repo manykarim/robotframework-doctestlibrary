@@ -6,6 +6,7 @@ Simple Automated Visual Document Testing.
 See **keyword documentation** for
 
 - [Visual Document Tests](https://manykarim.github.io/robotframework-doctestlibrary/VisualTest.html)
+- [Web Visual Tests (Browser/Selenium)](https://manykarim.github.io/robotframework-doctestlibrary/WebVisualTest.html)
 - [Print Job Tests](https://manykarim.github.io/robotframework-doctestlibrary/PrintJobTest.html)
 - [Pdf Tests (very basic)](https://manykarim.github.io/robotframework-doctestlibrary/PdfTest.html)
 - [Ai Keywords (optional)](https://manykarim.github.io/robotframework-doctestlibrary/Ai.html)
@@ -51,8 +52,19 @@ Count Items With LLM
 pip install --upgrade robotframework-doctestlibrary              # core library
 pip install --upgrade robotframework-doctestlibrary[ai]          # + LLM-assisted comparisons
 pip install --upgrade robotframework-doctestlibrary[dashboard]   # + visual review dashboard & mask editor
-pip install --upgrade robotframework-doctestlibrary[all]         # everything
+pip install --upgrade robotframework-doctestlibrary[all]         # ai + dashboard
 ```
+
+What each install brings:
+
+| Install | Adds | Notes |
+|---|---|---|
+| *(base)* | `VisualTest`, `PdfTest`, `PrintJobTests`, **`WebVisualTest`** | Web visual testing needs **no extra dependencies** — it drives the Browser Library or SeleniumLibrary you already use. |
+| `[ai]` | LLM-assisted comparison keywords | Configure via `DOCTEST_LLM_*`. |
+| `[dashboard]` | `doctest-dashboard` web app (review, baselines, mask editor) | The CLI stub is always present; the extra brings its server dependencies. |
+| `[browser]` | `robotframework-browser` | Convenience: one-liner for web testing with Playwright (run `rfbrowser init` afterwards). |
+| `[selenium]` | `robotframework-seleniumlibrary` | Convenience: one-liner for web testing with Selenium. |
+| `[all]` | ai + dashboard | Web drivers stay an explicit choice. |
 
 ## Development setup (contributors)
 
@@ -202,6 +214,37 @@ Afterwards you can, e.g., start the container and run the povided examples like 
 ## Gitpod.io
 [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)  
 Try out the library using [Gitpod](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)
+
+# Web-App Visual Testing (Browser Library & SeleniumLibrary)
+
+`DocTest.WebVisualTest` adds baseline-driven visual regression testing for web
+apps on top of the comparison engine. It captures pages and elements through the
+**Browser Library** or **SeleniumLibrary** session your suite already runs — no
+extra dependency, the library you imported is auto-detected:
+
+```robotframework
+*** Settings ***
+Library    Browser
+Library    DocTest.WebVisualTest    result_json=true
+
+*** Test Cases ***
+Checkout Page Looks Right
+    New Page    https://shop.example.com/checkout
+    Compare Page To Baseline       checkout
+    Compare Element To Baseline    id=price-table    checkout-prices
+```
+
+- **Baselines managed for you**: first run stores the capture as
+  `visual_baselines/checkout.png` (passes with a warning); later runs compare
+  against it. Update via `--variable REFERENCE_RUN:True` or by accepting in the
+  review dashboard.
+- **Flake resistance**: failing comparisons recapture and recompare until
+  `retry_timeout` (default 3s) expires; Browser captures disable animations and
+  normalize device pixel ratio (`scale=css`).
+- **Full engine available**: every `Compare Images` option works — masks,
+  thresholds, move tolerance, OCR pattern masks.
+
+See [docs/web-visual-testing.md](./docs/web-visual-testing.md) for the full guide.
 
 # Visual Review Dashboard & Mask Editor
 

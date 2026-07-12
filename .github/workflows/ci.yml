@@ -161,3 +161,38 @@ jobs:
         run: uv run playwright install chromium --with-deps
       - name: End-to-end journeys
         run: uv run pytest e2e -v --browser chromium
+
+  web:
+    needs: smoke-no-ai
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Packages and Binaries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
+          sudo cp policy.xml /etc/ImageMagick-6/
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Sync environment (web test group)
+        run: uv sync --group web-test
+      - name: Initialize Browser library
+        run: uv run rfbrowser init chromium firefox
+      - name: Web capture unit tests
+        run: uv run pytest utest/test_web_visual.py -v
+      - name: Web visual acceptance (Browser + SeleniumLibrary)
+        run: uv run robot -d results-web atest/web/
+      - name: Store Web Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-results
+          path: |
+            results-web/*.html
+            results-web/output.xml

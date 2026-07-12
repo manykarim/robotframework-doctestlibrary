@@ -103,6 +103,7 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
         </span>
         {isDegraded && <span className="badge degraded">degraded</span>}
         {dpi && <span className="dpi-banner" data-testid="dpi-banner">DPI {dpi}</span>}
+        <ContextChips context={detail.sidecar_json?.context} />
       </div>
 
       {message && (
@@ -290,6 +291,31 @@ export function ComparisonView({ comparisonId }: { comparisonId: number }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Capture configuration of web comparisons (sidecar `context`, additive). */
+function ContextChips({ context }: { context?: Record<string, any> | null }) {
+  if (!context) return null;
+  const dprValue = Number(context.device_pixel_ratio);
+  const chips: [string, string][] = [];
+  if (context.browser) chips.push(["browser", String(context.browser)]);
+  if (context.viewport) chips.push(["viewport", String(context.viewport)]);
+  if (dprValue > 1) chips.push(["dpr", `@${dprValue}x`]);
+  if (!chips.length && !context.url) return null;
+  return (
+    <span className="context-chips" data-testid="context-chips">
+      {chips.map(([key, value]) => (
+        <span key={key} className="chip" data-testid={`context-${key}`}>
+          {value}
+        </span>
+      ))}{" "}
+      {context.url && (
+        <span className="note" data-testid="context-url" title={String(context.url)}>
+          {String(context.url).replace(/^https?:\/\//, "").slice(0, 60)}
+        </span>
+      )}
+    </span>
   );
 }
 

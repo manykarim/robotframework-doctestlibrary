@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Demo Dashboard</title><style>
+* { animation: none !important; transition: none !important; }
+body { margin: 0; font-family: Arial, sans-serif; width: 1000px; background: #f5f6f8; }
+header { background: #1c2330; color: #fff; padding: 16px 24px; display: flex; gap: 16px; align-items: center; }
+#clock { margin-left: auto; background: #2563eb; padding: 6px 12px; border-radius: 6px; }
+#avatar { width: 32px; height: 32px; border-radius: 50%; background: #7c3aed; text-align: center; line-height: 32px; }
+.ad-banner { background: #fbbf24; padding: 10px 24px; font-weight: bold; }
+main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 24px; }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+.card h3 { margin-top: 0; }
+.metric { font-size: 32px; font-weight: bold; color: #2563eb; }
+</style></head><body>
+<header><h1>Acme Analytics</h1><div id="avatar" aria-label="user avatar">A</div><div id="clock">12:00:00</div></header>
+<div class="ad-banner" id="ad">★ Fixed promotional message ★</div>
+<main>
+<div class="card"><h3>Revenue</h3><div class="metric" id="revenue">$12,340</div></div>
+<div class="card"><h3>Users</h3><div class="metric">1,234</div></div>
+<div class="card"><h3>Uptime</h3><div class="metric">99.9%</div></div>
+</main>
+<script>
+window.demo = {
+  tickClock: () => document.getElementById('clock').textContent = new Date().toISOString().slice(11, 19),
+  rotateAd: () => document.getElementById('ad').textContent = '★ Limited offer #' + Math.floor(Math.random() * 1000) + ' ★',
+  changeRevenue: (v) => document.getElementById('revenue').textContent = v,
+  restyleHeader: (c) => document.querySelector('header').style.background = c,
+};
+</script>
+</body></html>

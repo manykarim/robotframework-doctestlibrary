@@ -62,6 +62,31 @@ def _load_visual_llm_runtime() -> Tuple[Any, Any, Any]:
     return _VISUAL_LLM_RUNTIME
 
 
+def count_real_difference_pixels(
+    gray_reference, gray_candidate, intensity_threshold: int, edge_range: int = 60
+):
+    """Split differing pixels into anti-aliasing vs real content changes.
+
+    A differing pixel counts as anti-aliasing when it sits on a local 3x3
+    intensity edge (dilate-erode range > ``edge_range``) in BOTH images —
+    the pixelmatch-inspired heuristic validated against real cross-browser
+    captures (chromium vs firefox: 5065/5070 differing pixels classified AA).
+    Returns (differing, antialiased, real).
+    """
+    diff = cv2.absdiff(gray_reference, gray_candidate)
+    differing = diff > intensity_threshold
+    kernel = np.ones((3, 3), np.uint8)
+
+    def local_range(gray):
+        return cv2.dilate(gray, kernel).astype(int) - cv2.erode(gray, kernel).astype(int)
+
+    on_edge = (local_range(gray_reference) > edge_range) & (
+        local_range(gray_candidate) > edge_range
+    )
+    antialiased = differing & on_edge
+    return int(differing.sum()), int(antialiased.sum()), int((differing & ~on_edge).sum())
+
+
 @library
 class VisualTest:
     ROBOT_LIBRARY_VERSION = 1.0
@@ -71,6 +96,7 @@ class VisualTest:
     MOVEMENT_DETECTION_METHODS = {"template", "orb", "sift", "text"}
     MOVEMENT_DETECTION_ALIASES = {"classic": "template"}
     PARTIAL_IMAGE_THRESHOLD_DEFAULT = 0.1
+    PIXEL_INTENSITY_THRESHOLD_DEFAULT = 20
     SIFT_RATIO_THRESHOLD_DEFAULT = 0.75
     SIFT_MIN_MATCHES_DEFAULT = 2
     ORB_MAX_MATCHES_DEFAULT = 10
@@ -271,6 +297,10 @@ class VisualTest:
         | ``blur`` | Blur the image before comparison to reduce visual difference caused by noise |
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
         | ``block_based_ssim`` | Uses additional block based block-based comparison, to catch differences in smaller areas. Makes only sense, for ``threshold`` > 0 . Default is `False` |
+        | ``max_diff_pixels`` | Pass even if structural comparison fails, as long as at most this many pixels differ (see ``pixel_intensity_threshold``). Tolerates cross-OS anti-aliasing noise without raising ``threshold``. |
+        | ``max_diff_ratio`` | Like ``max_diff_pixels`` but as a fraction of all pixels (e.g. ``0.001`` = 0.1%). When both are given, both must hold. |
+        | ``pixel_intensity_threshold`` | Minimum grayscale difference (0-255) for a pixel to count towards the budget. Default ``20``. |
+        | ``ignore_antialiasing`` | Exclude differing pixels that lie on a rendering edge in both images (cross-browser/cross-OS anti-aliasing noise) from failure decisions and pixel budgets. Without an explicit budget, all remaining pixels must be anti-aliasing. |
         | ``block_size`` | Size of the blocks for block-based comparison. Default is 32. Only relevant for ``block_based_ssim`` |
         | ``llm`` / ``llm_enabled`` | When ``${True}``, summarise differences and forward them to the configured LLM. Default ``${False}``. |
         | ``llm_override`` | Allow an approving LLM verdict to override SSIM/structural failures. Default ``${False}``. |
@@ -341,6 +371,17 @@ class VisualTest:
                     llm_overrides[key] = value
 
         comparison_label = kwargs.pop("name", None)
+        capture_context = kwargs.pop("context", None)
+        max_diff_pixels = kwargs.pop("max_diff_pixels", None)
+        max_diff_ratio = kwargs.pop("max_diff_ratio", None)
+        pixel_intensity_threshold = int(
+            kwargs.pop("pixel_intensity_threshold", self.PIXEL_INTENSITY_THRESHOLD_DEFAULT)
+        )
+        max_diff_pixels = int(max_diff_pixels) if max_diff_pixels is not None else None
+        max_diff_ratio = float(max_diff_ratio) if max_diff_ratio is not None else None
+        ignore_antialiasing = str(kwargs.pop("ignore_antialiasing", False)).lower() in (
+            "true", "1", "yes",
+        )
         stream_documents_override = kwargs.pop("stream_documents", None)
         page_cache_size_override = kwargs.pop("page_cache_size", None)
         if page_cache_size_override is None:
@@ -391,6 +432,7 @@ class VisualTest:
                     candidate={"path": str(candidate_image), "dpi": promotion_dpi},
                     settings={},
                     notes=["Reference run: reference was created from the candidate."],
+                    context=capture_context,
                 )
                 robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
             return
@@ -512,6 +554,44 @@ class VisualTest:
                     block_based_ssim=block_based_ssim,
                     block_size=block_size,
                 )
+
+                if (
+                    not similar
+                    and absolute_diff is not None
+                    and (
+                        max_diff_pixels is not None
+                        or max_diff_ratio is not None
+                        or ignore_antialiasing
+                    )
+                ):
+                    total = int(absolute_diff.size)
+                    antialiased = 0
+                    if ignore_antialiasing:
+                        _, antialiased, changed = count_real_difference_pixels(
+                            cv2.cvtColor(ref_page.image, cv2.COLOR_BGR2GRAY),
+                            cv2.cvtColor(cand_page.image, cv2.COLOR_BGR2GRAY),
+                            pixel_intensity_threshold,
+                        )
+                    else:
+                        changed = int(
+                            np.count_nonzero(absolute_diff > pixel_intensity_threshold)
+                        )
+                    # ignore_antialiasing alone implies a zero budget for real pixels
+                    effective_max_pixels = max_diff_pixels
+                    if effective_max_pixels is None and max_diff_ratio is None:
+                        effective_max_pixels = 0
+                    within_pixels = (
+                        effective_max_pixels is None or changed <= effective_max_pixels
+                    )
+                    within_ratio = max_diff_ratio is None or changed / total <= max_diff_ratio
+                    if within_pixels and within_ratio:
+                        similar = True
+                        robot_logger.info(
+                            f"Page {ref_page.page_number}: {changed} of {total} pixels differ "
+                            f"meaningfully (+{antialiased} anti-aliasing, ignored="
+                            f"{ignore_antialiasing}) — within the accepted pixel budget "
+                            f"(max_diff_pixels={max_diff_pixels}, max_diff_ratio={max_diff_ratio})."
+                        )
 
                 if self.take_screenshots:
                     # Save original images to the screenshot directory and add them to the Robot Framework log
@@ -960,6 +1040,12 @@ class VisualTest:
             llm_label_enum = None
             if detected_differences and llm_requested:
                 llm_runtime_notes.append(f"Threshold: {threshold}")
+                if capture_context:
+                    # web comparisons: give the model the browser/viewport/URL
+                    # and the DOM-analysis verdict next to the visual evidence
+                    llm_runtime_notes.append(
+                        f"Capture context: {json.dumps(capture_context, default=str)}"
+                    )
                 if check_text_content:
                     llm_runtime_notes.append("Text content verification was enabled.")
                 if move_tolerance:
@@ -1051,6 +1137,7 @@ class VisualTest:
                     },
                     llm=llm_info,
                     name=comparison_label,
+                    context=capture_context,
                 )
                 robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
 

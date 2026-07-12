@@ -1,0 +1,25 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Demo Form</title><style>
+* { animation: none !important; transition: none !important; caret-color: transparent; }
+body { margin: 0; font-family: Arial, sans-serif; width: 700px; padding: 24px; background: #fff; }
+label { display: block; margin: 12px 0 4px; font-weight: 600; }
+input, select { width: 100%; padding: 8px; border: 1px solid #bbb; border-radius: 4px; font-size: 14px; }
+.error { display: none; color: #b91c1c; background: #fee2e2; padding: 8px; margin-top: 12px; border-radius: 4px; }
+.error.visible { display: block; }
+button { margin-top: 16px; padding: 10px 24px; background: #2563eb; color: #fff; border: 0; border-radius: 6px; }
+</style></head><body>
+<h1>Checkout</h1>
+<form id="checkout">
+<label for="name">Full name</label><input id="name" value="">
+<label for="country">Country</label>
+<select id="country"><option>Germany</option><option>Finland</option></select>
+<div class="error" id="error">Please fill in all required fields.</div>
+<button type="button">Place order</button>
+</form>
+<script>
+window.demo = {
+  fillName: (v) => document.getElementById('name').value = v,
+  showError: () => document.getElementById('error').classList.add('visible'),
+  hideError: () => document.getElementById('error').classList.remove('visible'),
+};
+</script>
+</body></html>
