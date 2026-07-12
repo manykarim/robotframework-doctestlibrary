@@ -2,9 +2,7 @@
 
 ## Purpose
 One installable package with optional extras covering AI and dashboard features.
-
 ## Requirements
-
 ### Requirement: Single distribution with extras
 The project SHALL build exactly one distribution, `robotframework-doctestlibrary`, containing the `DocTest` and `doctest_dashboard` packages, with optional dependencies exposed as extras: `ai` (LLM keywords), `dashboard` (web dashboard server), and `all` (both). A base install SHALL NOT pull fastapi/uvicorn/pydantic-ai.
 
@@ -44,3 +42,17 @@ Poetry's Python-version-dependent constraints SHALL be translated to PEP 508 env
 #### Scenario: Resolution matches the expectation table per interpreter
 - **WHEN** the environment is synced for each of Python 3.10, 3.11, 3.12, and 3.13
 - **THEN** the resolved versions of numpy, scipy, scikit-image, deepdiff, and PyMuPDF satisfy the documented expectation table for that interpreter
+
+### Requirement: Web convenience extras and base purity
+The package SHALL provide `browser` and `selenium` convenience extras installing
+the respective web automation library, and the base installation SHALL contain
+no dashboard, AI or web-automation dependencies.
+
+#### Scenario: Base install stays lean
+- **WHEN** the wheel metadata is inspected
+- **THEN** no dashboard/AI/web packages appear as unconditional dependencies
+
+#### Scenario: One-liner web setup
+- **WHEN** a user installs `robotframework-doctestlibrary[browser]`
+- **THEN** robotframework-browser is installed alongside the library
+

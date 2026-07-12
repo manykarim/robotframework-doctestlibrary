@@ -177,3 +177,17 @@ retries) before being used as baseline or candidate.
 - **WHEN** the first capture of a page differs from an immediate re-capture
 - **THEN** the settled capture is used and subsequent comparisons in the same session pass
 
+### Requirement: Documentation completeness
+Every public WebVisualTest keyword SHALL carry libdoc documentation with an
+example; the library SHALL be part of the keyword-documentation build and the
+README's documentation index; the example gallery SHALL include run
+instructions.
+
+#### Scenario: Keyword docs published
+- **WHEN** `invoke libdoc` runs
+- **THEN** WebVisualTest.html is generated alongside the other libraries
+
+#### Scenario: Documentation cannot rot silently
+- **WHEN** a public keyword loses its documentation or example
+- **THEN** the test suite fails
+
