@@ -6,6 +6,7 @@ Simple Automated Visual Document Testing.
 See **keyword documentation** for
 
 - [Visual Document Tests](https://manykarim.github.io/robotframework-doctestlibrary/VisualTest.html)
+- [Web Visual Tests (Browser/Selenium)](https://manykarim.github.io/robotframework-doctestlibrary/WebVisualTest.html)
 - [Print Job Tests](https://manykarim.github.io/robotframework-doctestlibrary/PrintJobTest.html)
 - [Pdf Tests (very basic)](https://manykarim.github.io/robotframework-doctestlibrary/PdfTest.html)
 - [Ai Keywords (optional)](https://manykarim.github.io/robotframework-doctestlibrary/Ai.html)
@@ -47,7 +48,35 @@ Count Items With LLM
 
 # Installation instructions
 
-`pip install --upgrade robotframework-doctestlibrary`
+```bash
+pip install --upgrade robotframework-doctestlibrary              # core library
+pip install --upgrade robotframework-doctestlibrary[ai]          # + LLM-assisted comparisons
+pip install --upgrade robotframework-doctestlibrary[dashboard]   # + visual review dashboard & mask editor
+pip install --upgrade robotframework-doctestlibrary[all]         # ai + dashboard
+```
+
+What each install brings:
+
+| Install | Adds | Notes |
+|---|---|---|
+| *(base)* | `VisualTest`, `PdfTest`, `PrintJobTests`, **`WebVisualTest`** | Web visual testing needs **no extra dependencies** — it drives the Browser Library or SeleniumLibrary you already use. |
+| `[ai]` | LLM-assisted comparison keywords | Configure via `DOCTEST_LLM_*`. |
+| `[dashboard]` | `doctest-dashboard` web app (review, baselines, mask editor) | The CLI stub is always present; the extra brings its server dependencies. |
+| `[browser]` | `robotframework-browser` | Convenience: one-liner for web testing with Playwright (run `rfbrowser init` afterwards). |
+| `[selenium]` | `robotframework-seleniumlibrary` | Convenience: one-liner for web testing with Selenium. |
+| `[all]` | ai + dashboard | Web drivers stay an explicit choice. |
+
+## Development setup (contributors)
+
+The project is managed with [uv](https://docs.astral.sh/uv/) — one `pyproject.toml`, one lockfile:
+
+```bash
+uv sync --all-extras        # full dev environment (library, dashboard, test tooling)
+uv run invoke tests         # unit + acceptance suites
+uv run invoke multipython   # validate dependency resolution on Python 3.10–3.13
+uv run pytest e2e --browser chromium   # dashboard end-to-end journeys
+cd frontend && npm install && npm run build   # build the dashboard web UI once
+```
 
 ## Optional LLM-Assisted Comparisons
 
@@ -93,7 +122,7 @@ assertion result is preserved.
 Pass `llm_prompt=` (or the specialty variants `llm_visual_prompt=` / `llm_pdf_prompt=`) to
 customise the prompt sent to the model for a particular comparison.
 
-Only Python 3.X or newer is supported. Tested with Python 3.8/3.11/3.12
+Python 3.10 or newer is supported. Tested with Python 3.10/3.11/3.12/3.13
 
 ## Install robotframework-doctestlibrary
 
@@ -186,6 +215,64 @@ Afterwards you can, e.g., start the container and run the povided examples like 
 [![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)  
 Try out the library using [Gitpod](https://gitpod.io/#https://github.com/manykarim/robotframework-doctestlibrary)
 
+# Web-App Visual Testing (Browser Library & SeleniumLibrary)
+
+`DocTest.WebVisualTest` adds baseline-driven visual regression testing for web
+apps on top of the comparison engine. It captures pages and elements through the
+**Browser Library** or **SeleniumLibrary** session your suite already runs — no
+extra dependency, the library you imported is auto-detected:
+
+```robotframework
+*** Settings ***
+Library    Browser
+Library    DocTest.WebVisualTest    result_json=true
+
+*** Test Cases ***
+Checkout Page Looks Right
+    New Page    https://shop.example.com/checkout
+    Compare Page To Baseline       checkout
+    Compare Element To Baseline    id=price-table    checkout-prices
+```
+
+- **Baselines managed for you**: first run stores the capture as
+  `visual_baselines/checkout.png` (passes with a warning); later runs compare
+  against it. Update via `--variable REFERENCE_RUN:True` or by accepting in the
+  review dashboard.
+- **Flake resistance**: failing comparisons recapture and recompare until
+  `retry_timeout` (default 3s) expires; Browser captures disable animations and
+  normalize device pixel ratio (`scale=css`).
+- **Full engine available**: every `Compare Images` option works — masks,
+  thresholds, move tolerance, OCR pattern masks.
+
+See [docs/web-visual-testing.md](./docs/web-visual-testing.md) for the full guide.
+
+# Visual Review Dashboard & Mask Editor
+
+The **doctest-dashboard** (shipped with the `[dashboard]` extra) is a locally runnable web app to review comparison results outside of `log.html`:
+
+- browse runs and failing comparisons with diff thumbnails
+- diff viewer with side-by-side / overlay / blink / swipe modes and next/previous-difference navigation
+- **accept** a difference → the candidate is promoted to the new reference (plain file copy, git-diffable, SHA-256 audit trail)
+- **reject** a difference → export a bug-data ZIP (reference + candidate + diffs + metadata)
+- **visual mask editor** for coordinate, area, and text-pattern masks with live preview — including one-click *create mask from diff region* and instant re-comparison of past runs with the adjusted masks
+
+Quick start:
+
+```bash
+pip install robotframework-doctestlibrary[dashboard]   # wheels include the web UI
+doctest-dashboard serve                                 # open http://127.0.0.1:8008
+doctest-dashboard ingest results/output.xml
+```
+
+Run your suites with the machine-readable sidecar enabled so the dashboard gets per-page data:
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest    result_json=true    take_screenshots=true    screenshot_format=png
+```
+
+See the full guide in [docs/dashboard.md](./docs/dashboard.md) for the review workflow, mask editor usage, team mode, and the API.
+
 # Examples
 
 Have a look at  
@@ -235,6 +322,8 @@ Compare two Farm images with area mask as string
 ```
 #### Different Mask Types to Ignore Parts When Comparing
 ##### Areas, Coordinates, Text Patterns
+
+Text pattern matching levels: `word_pattern` matches single words; `line_pattern` matches whole text lines (anchored, use `.*…​.*` to match anywhere); `pattern` matches single words — and when the regex contains whitespace it is searched anywhere within each line, masking **exactly the words the match span covers**. So `Robot Framework` masks just that phrase wherever it occurs, while `.*Robot Framework.*` extends the match over the whole line and masks all of it. Matching is case-sensitive; add `(?i)` for case-insensitive.
 ```python
 [
     {
@@ -269,6 +358,22 @@ Compare two Farm images with area mask as string
     }
 ]
 ```
+
+##### Creating and editing masks visually
+
+The companion **doctest-dashboard** ships a visual mask editor with live preview of coordinate, area, and pattern masks — including one-click mask creation from detected diff regions and instant re-comparison of past runs with the adjusted masks. It reads and writes the exact JSON schema shown above. See [docs/dashboard.md](./docs/dashboard.md) for the full guide.
+
+> **Deprecation note:** the tkinter tool `utilities/mask_editor.py` is superseded by the dashboard's mask editor and will be removed in a future release. It only supports pixel-based coordinate masks.
+
+##### Machine-readable results for review tooling
+
+Enable `result_json=true` on `DocTest.VisualTest` / `DocTest.PdfTest` to write a JSON sidecar per comparison into `{OUTPUT_DIR}/doctest_results/` (statuses, SSIM scores, diff regions, resolved masks, per-page renderings). The dashboard — and any other tooling — ingests these for review, accept/reject baseline management, and mask maintenance:
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest    result_json=true    take_screenshots=true    screenshot_format=png
+```
+
 ### Accept visual different by checking move distance or text content
 
 ```RobotFramework

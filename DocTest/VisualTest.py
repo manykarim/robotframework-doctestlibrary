@@ -15,6 +15,8 @@ from robot.libraries.BuiltIn import BuiltIn
 
 from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import download_file_from_url, is_url
+from DocTest.ReferencePromotion import promote_candidate_to_reference
+from DocTest.ResultWriter import RESULT_LOG_PREFIX, ComparisonResultWriter
 from DocTest.config import DEFAULT_CONFIDENCE
 from DocTest.llm import LLMDependencyError, load_llm_settings
 from DocTest.TextNormalization import apply_character_replacements
@@ -60,6 +62,31 @@ def _load_visual_llm_runtime() -> Tuple[Any, Any, Any]:
     return _VISUAL_LLM_RUNTIME
 
 
+def count_real_difference_pixels(
+    gray_reference, gray_candidate, intensity_threshold: int, edge_range: int = 60
+):
+    """Split differing pixels into anti-aliasing vs real content changes.
+
+    A differing pixel counts as anti-aliasing when it sits on a local 3x3
+    intensity edge (dilate-erode range > ``edge_range``) in BOTH images —
+    the pixelmatch-inspired heuristic validated against real cross-browser
+    captures (chromium vs firefox: 5065/5070 differing pixels classified AA).
+    Returns (differing, antialiased, real).
+    """
+    diff = cv2.absdiff(gray_reference, gray_candidate)
+    differing = diff > intensity_threshold
+    kernel = np.ones((3, 3), np.uint8)
+
+    def local_range(gray):
+        return cv2.dilate(gray, kernel).astype(int) - cv2.erode(gray, kernel).astype(int)
+
+    on_edge = (local_range(gray_reference) > edge_range) & (
+        local_range(gray_candidate) > edge_range
+    )
+    antialiased = differing & on_edge
+    return int(differing.sum()), int(antialiased.sum()), int((differing & ~on_edge).sum())
+
+
 @library
 class VisualTest:
     ROBOT_LIBRARY_VERSION = 1.0
@@ -69,6 +96,7 @@ class VisualTest:
     MOVEMENT_DETECTION_METHODS = {"template", "orb", "sift", "text"}
     MOVEMENT_DETECTION_ALIASES = {"classic": "template"}
     PARTIAL_IMAGE_THRESHOLD_DEFAULT = 0.1
+    PIXEL_INTENSITY_THRESHOLD_DEFAULT = 20
     SIFT_RATIO_THRESHOLD_DEFAULT = 0.75
     SIFT_MIN_MATCHES_DEFAULT = 2
     ORB_MAX_MATCHES_DEFAULT = 10
@@ -109,6 +137,7 @@ class VisualTest:
         document_page_cache_size: int = 2,
         verbose_movement_logging: bool = False,
         character_replacements: Optional[Dict[str, str]] = None,
+        result_json: bool = False,
         **kwargs,
     ):
         """
@@ -135,6 +164,7 @@ class VisualTest:
         | ``document_page_cache_size`` | Maximum number of rendered pages to keep in memory per document when streaming. Default is ``2``. |
         | ``verbose_movement_logging`` | When ``True``, emit detailed warnings from movement detection helpers (template, ORB, SIFT). Disabled by default to reduce noise. |
         | ``character_replacements`` | Dict mapping characters to replacements, applied to text extraction results. Example: ``{'\u00A0': ' '}`` to normalize non-breaking spaces. |
+        | ``result_json`` | When ``True``, every comparison writes a machine-readable JSON sidecar to ``{OUTPUT_DIR}/doctest_results/`` and logs a ``DOCTEST_RESULT:`` message. Default is ``False``. |
         | ``**kwargs`` | Everything else. |
 
 
@@ -169,6 +199,7 @@ class VisualTest:
         self.document_page_cache_size = max(1, int(document_page_cache_size))
         self.verbose_movement_logging = bool(verbose_movement_logging)
         self.character_replacements = self._parse_character_replacements(character_replacements)
+        self.result_json = bool(result_json)
 
         output_dir, reference_run, pabot_index = self._read_robot_variables()
         self.output_directory = output_dir
@@ -266,6 +297,10 @@ class VisualTest:
         | ``blur`` | Blur the image before comparison to reduce visual difference caused by noise |
         | ``threshold`` | Threshold for visual comparison between 0.0000 and 1.0000 . Default is 0.0000. Higher values mean more tolerance for visual differences. |
         | ``block_based_ssim`` | Uses additional block based block-based comparison, to catch differences in smaller areas. Makes only sense, for ``threshold`` > 0 . Default is `False` |
+        | ``max_diff_pixels`` | Pass even if structural comparison fails, as long as at most this many pixels differ (see ``pixel_intensity_threshold``). Tolerates cross-OS anti-aliasing noise without raising ``threshold``. |
+        | ``max_diff_ratio`` | Like ``max_diff_pixels`` but as a fraction of all pixels (e.g. ``0.001`` = 0.1%). When both are given, both must hold. |
+        | ``pixel_intensity_threshold`` | Minimum grayscale difference (0-255) for a pixel to count towards the budget. Default ``20``. |
+        | ``ignore_antialiasing`` | Exclude differing pixels that lie on a rendering edge in both images (cross-browser/cross-OS anti-aliasing noise) from failure decisions and pixel budgets. Without an explicit budget, all remaining pixels must be anti-aliasing. |
         | ``block_size`` | Size of the blocks for block-based comparison. Default is 32. Only relevant for ``block_based_ssim`` |
         | ``llm`` / ``llm_enabled`` | When ``${True}``, summarise differences and forward them to the configured LLM. Default ``${False}``. |
         | ``llm_override`` | Allow an approving LLM verdict to override SSIM/structural failures. Default ``${False}``. |
@@ -323,6 +358,7 @@ class VisualTest:
             "llm_temperature",
             "llm_max_output_tokens",
             "llm_request_timeout",
+            "llm_output_retries",
             "azure_openai_endpoint",
             "azure_openai_deployment",
             "azure_openai_api_version",
@@ -334,6 +370,18 @@ class VisualTest:
                 if value is not None:
                     llm_overrides[key] = value
 
+        comparison_label = kwargs.pop("name", None)
+        capture_context = kwargs.pop("context", None)
+        max_diff_pixels = kwargs.pop("max_diff_pixels", None)
+        max_diff_ratio = kwargs.pop("max_diff_ratio", None)
+        pixel_intensity_threshold = int(
+            kwargs.pop("pixel_intensity_threshold", self.PIXEL_INTENSITY_THRESHOLD_DEFAULT)
+        )
+        max_diff_pixels = int(max_diff_pixels) if max_diff_pixels is not None else None
+        max_diff_ratio = float(max_diff_ratio) if max_diff_ratio is not None else None
+        ignore_antialiasing = str(kwargs.pop("ignore_antialiasing", False)).lower() in (
+            "true", "1", "yes",
+        )
         stream_documents_override = kwargs.pop("stream_documents", None)
         page_cache_size_override = kwargs.pop("page_cache_size", None)
         if page_cache_size_override is None:
@@ -346,11 +394,48 @@ class VisualTest:
             else bool(stream_documents_override)
         )
 
+        # Reference promotion only targets local reference paths, never URLs
+        reference_target = None if is_url(reference_image) else reference_image
+
         # Download files if URLs are provided
         if is_url(reference_image):
             reference_image = download_file_from_url(reference_image)
         if is_url(candidate_image):
             candidate_image = download_file_from_url(candidate_image)
+
+        result_writer = (
+            ComparisonResultWriter(
+                self.output_directory,
+                keyword="Compare Images",
+                library="DocTest.VisualTest",
+                pabot_index=self.PABOTQUEUEINDEX,
+            )
+            if self.result_json
+            else None
+        )
+
+        if (
+            self.reference_run
+            and reference_target is not None
+            and not os.path.isfile(reference_target)
+        ):
+            promote_candidate_to_reference(reference_target, candidate_image)
+            robot_logger.info(
+                f"Reference run: reference '{reference_target}' did not exist "
+                "and was created from the candidate."
+            )
+            if result_writer is not None:
+                promotion_dpi = DPI if DPI else self.dpi
+                rel_path = result_writer.write(
+                    status="PASS",
+                    reference={"path": str(reference_target), "dpi": promotion_dpi},
+                    candidate={"path": str(candidate_image), "dpi": promotion_dpi},
+                    settings={},
+                    notes=["Reference run: reference was created from the candidate."],
+                    context=capture_context,
+                )
+                robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
+            return
 
         # Set DPI and threshold if provided
         dpi = DPI if DPI else self.dpi
@@ -410,6 +495,20 @@ class VisualTest:
                 page_notes: List[str] = []
                 diff_rectangles_cache: Optional[List[Dict[str, int]]] = None
                 combined_image_with_differences = None
+                page_images: Dict[str, str] = {}
+                clean_candidate = None
+                if result_writer is not None:
+                    # Save clean renderings before any labelling mutates them;
+                    # keep the candidate in memory for highlighted derivatives
+                    clean_candidate = cand_page.image.copy()
+                    page_images = {
+                        "reference": result_writer.save_page_image(
+                            ref_page.image, ref_page.page_number, "reference"
+                        ),
+                        "candidate": result_writer.save_page_image(
+                            cand_page.image, cand_page.page_number, "candidate"
+                        ),
+                    }
                 # Resize the candidate page if needed
                 if resize_candidate and ref_page.image.shape != cand_page.image.shape:
                     cand_page.image = cv2.resize(
@@ -437,6 +536,15 @@ class VisualTest:
                     self.add_screenshot_to_log(
                         combined_image, suffix="_combined", original_size=False
                     )
+                    if result_writer is not None:
+                        result_writer.add_page(
+                            page_number=ref_page.page_number,
+                            status="FAIL",
+                            threshold=threshold,
+                            images=page_images,
+                            notes=["Image dimensions are different."],
+                            resolved_masks=ref_page.pixel_ignore_areas,
+                        )
                     continue
 
                 similar, diff, thresh, absolute_diff, score = ref_page.compare_with(
@@ -446,6 +554,44 @@ class VisualTest:
                     block_based_ssim=block_based_ssim,
                     block_size=block_size,
                 )
+
+                if (
+                    not similar
+                    and absolute_diff is not None
+                    and (
+                        max_diff_pixels is not None
+                        or max_diff_ratio is not None
+                        or ignore_antialiasing
+                    )
+                ):
+                    total = int(absolute_diff.size)
+                    antialiased = 0
+                    if ignore_antialiasing:
+                        _, antialiased, changed = count_real_difference_pixels(
+                            cv2.cvtColor(ref_page.image, cv2.COLOR_BGR2GRAY),
+                            cv2.cvtColor(cand_page.image, cv2.COLOR_BGR2GRAY),
+                            pixel_intensity_threshold,
+                        )
+                    else:
+                        changed = int(
+                            np.count_nonzero(absolute_diff > pixel_intensity_threshold)
+                        )
+                    # ignore_antialiasing alone implies a zero budget for real pixels
+                    effective_max_pixels = max_diff_pixels
+                    if effective_max_pixels is None and max_diff_ratio is None:
+                        effective_max_pixels = 0
+                    within_pixels = (
+                        effective_max_pixels is None or changed <= effective_max_pixels
+                    )
+                    within_ratio = max_diff_ratio is None or changed / total <= max_diff_ratio
+                    if within_pixels and within_ratio:
+                        similar = True
+                        robot_logger.info(
+                            f"Page {ref_page.page_number}: {changed} of {total} pixels differ "
+                            f"meaningfully (+{antialiased} anti-aliasing, ignored="
+                            f"{ignore_antialiasing}) — within the accepted pixel budget "
+                            f"(max_diff_pixels={max_diff_pixels}, max_diff_ratio={max_diff_ratio})."
+                        )
 
                 if self.take_screenshots:
                     # Save original images to the screenshot directory and add them to the Robot Framework log
@@ -843,10 +989,63 @@ class VisualTest:
                         if entry[0] == "print":
                             robot_logger.info(entry[1])
 
+                if result_writer is not None:
+                    images = dict(page_images)
+                    regions_text: List[Dict[str, Any]] = []
+                    if not similar:
+                        diff_image_path = result_writer.save_page_image(
+                            absolute_diff, ref_page.page_number, "diff"
+                        )
+                        if diff_image_path:
+                            images["diff"] = diff_image_path
+                        combined_path = result_writer.save_page_image(
+                            combined_image_with_differences,
+                            ref_page.page_number,
+                            "combined_with_diff",
+                        )
+                        if combined_path:
+                            images["combined_with_diff"] = combined_path
+                        rectangles = diff_rectangles_cache or []
+                        images.update(result_writer.save_candidate_with_diff(
+                            clean_candidate, rectangles, ref_page.page_number))
+                        # Region text is free when PDF text is embedded; OCR-only
+                        # pages skip it (the dashboard extracts on demand instead)
+                        if ref_page.pdf_text_words and cand_page.pdf_text_words:
+                            for rect in rectangles:
+                                try:
+                                    same_text, ref_text, cand_text = (
+                                        ref_page._compare_text_content_in_area_with(
+                                            cand_page, rect, False))
+                                    regions_text.append({
+                                        "region": rect,
+                                        "same": bool(same_text),
+                                        "reference_text": ref_text or "",
+                                        "candidate_text": cand_text or "",
+                                    })
+                                except Exception:  # defensive: never break compares
+                                    continue
+                    result_writer.add_page(
+                        page_number=ref_page.page_number,
+                        status="PASS" if similar else "FAIL",
+                        score=score,
+                        threshold=threshold,
+                        diff_regions=[] if similar else (diff_rectangles_cache or []),
+                        images=images,
+                        notes=page_notes[:],
+                        resolved_masks=ref_page.pixel_ignore_areas,
+                        regions_text=regions_text,
+                    )
+
             llm_decision = None
             llm_label_enum = None
             if detected_differences and llm_requested:
                 llm_runtime_notes.append(f"Threshold: {threshold}")
+                if capture_context:
+                    # web comparisons: give the model the browser/viewport/URL
+                    # and the DOM-analysis verdict next to the visual evidence
+                    llm_runtime_notes.append(
+                        f"Capture context: {json.dumps(capture_context, default=str)}"
+                    )
                 if check_text_content:
                     llm_runtime_notes.append("Text content verification was enabled.")
                 if move_tolerance:
@@ -884,6 +1083,63 @@ class VisualTest:
                         robot_logger.info("LLM returned FLAG - keeping original comparison result.")
                     elif not llm_decision.is_positive and llm_override_result:
                         robot_logger.info("LLM rejected differences. Baseline failure will be raised.")
+
+            if detected_differences and self.reference_run:
+                if reference_target is not None:
+                    promote_candidate_to_reference(reference_target, candidate_image)
+                    robot_logger.info(
+                        f"Reference run: candidate saved as new reference "
+                        f"'{reference_target}'. Detected differences were accepted."
+                    )
+                    detected_differences = []
+                else:
+                    robot_logger.warn(
+                        "Reference run requested but the reference is a URL; "
+                        "cannot save the candidate as reference."
+                    )
+
+            if result_writer is not None:
+                llm_info = None
+                if llm_decision:
+                    llm_info = {
+                        "decision": str(_coerce_label_value(llm_decision.decision)),
+                        "reason": llm_decision.reason,
+                    }
+                rel_path = result_writer.write(
+                    status="FAIL" if detected_differences else "PASS",
+                    reference={
+                        "path": str(reference_image),
+                        "pages": reference_doc.page_count,
+                        "dpi": dpi,
+                    },
+                    candidate={
+                        "path": str(candidate_image),
+                        "pages": candidate_doc.page_count,
+                        "dpi": dpi,
+                    },
+                    settings={
+                        "threshold": threshold,
+                        "move_tolerance": move_tolerance,
+                        "check_text_content": check_text_content,
+                        "watermark_file": watermark_file,
+                        "ignore_watermarks": bool(ignore_watermarks),
+                        "screenshot_format": self.screenshot_format,
+                        "ocr_engine": ocr_engine,
+                        "force_ocr": force_ocr,
+                        "blur": blur,
+                        "block_based_ssim": block_based_ssim,
+                        "resize_candidate": resize_candidate,
+                    },
+                    masks={
+                        "placeholder_file": placeholder_file,
+                        "mask": mask,
+                        "abstract": reference_doc.abstract_ignore_areas,
+                    },
+                    llm=llm_info,
+                    name=comparison_label,
+                    context=capture_context,
+                )
+                robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
 
             for diff in detected_differences:
                 robot_logger.info(diff["message"])
@@ -1690,6 +1946,19 @@ class VisualTest:
 
         """
         self.character_replacements = self._parse_character_replacements(character_replacements)
+
+    @keyword
+    def set_result_json(self, result_json: bool):
+        """Set whether comparisons write machine-readable JSON sidecar results.
+
+        | =Arguments= | =Description= |
+        | ``result_json`` | When ``True``, every comparison writes a JSON sidecar to ``{OUTPUT_DIR}/doctest_results/`` and logs a ``DOCTEST_RESULT:`` message. |
+
+        Examples:
+        | `Set Result Json`    ${True}
+        | `Compare Images`    reference.png    candidate.png
+        """
+        self.result_json = bool(result_json)
 
     @keyword
     def get_barcodes(

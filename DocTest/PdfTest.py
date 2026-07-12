@@ -6,12 +6,15 @@ from robot.api import logger as robot_logger
 from robot.api.deco import keyword, library
 import fitz
 import json
+import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Pattern, Tuple
 from DocTest.config import DEFAULT_DPI
 from DocTest.DocumentRepresentation import DocumentRepresentation
 from DocTest.Downloader import is_url, download_file_from_url
+from DocTest.ReferencePromotion import promote_candidate_to_reference
+from DocTest.ResultWriter import RESULT_LOG_PREFIX, ComparisonResultWriter
 from DocTest.PdfStructureComparator import (
     StructureTolerance,
     compare_document_structures,
@@ -112,9 +115,59 @@ class PdfTest(object):
     | ``character_replacements`` | Dict mapping characters to replacements, applied to all text extraction/comparison. Example: ``{'\u00A0': ' '}`` to normalize non-breaking spaces. |
     """
 
-    def __init__(self, character_replacements: Optional[Dict[str, str]] = None, **kwargs):
+    def __init__(
+        self,
+        character_replacements: Optional[Dict[str, str]] = None,
+        result_json: bool = False,
+        **kwargs,
+    ):
         fitz.TOOLS.set_aa_level(0)
         self.character_replacements = self._parse_character_replacements(character_replacements)
+        self.reference_run = self._read_reference_run_variable()
+        self.result_json = bool(result_json)
+        self.output_directory, self.pabot_index = self._read_output_variables()
+
+    @staticmethod
+    def _read_reference_run_variable() -> bool:
+        try:
+            from robot.libraries.BuiltIn import BuiltIn
+
+            return bool(BuiltIn().get_variable_value("${REFERENCE_RUN}", False))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _read_output_variables():
+        try:
+            from robot.libraries.BuiltIn import BuiltIn
+
+            built_in = BuiltIn()
+            output_dir = built_in.get_variable_value("${OUTPUT DIR}")
+            pabot_index = built_in.get_variable_value("${PABOTQUEUEINDEX}")
+        except Exception:
+            return Path.cwd(), None
+        return Path(output_dir) if output_dir else Path.cwd(), pabot_index
+
+    @keyword
+    def set_result_json(self, result_json: bool):
+        """Set whether comparisons write machine-readable JSON sidecar results.
+
+        | =Arguments= | =Description= |
+        | ``result_json`` | When ``True``, every comparison writes a JSON sidecar to ``{OUTPUT_DIR}/doctest_results/`` and logs a ``DOCTEST_RESULT:`` message. |
+        """
+        self.result_json = bool(result_json)
+
+    @keyword
+    def set_reference_run(self, reference_run: bool):
+        """Set whether comparisons run as reference runs.
+
+        | =Arguments= | =Description= |
+        | ``reference_run`` | Whether the run is a reference run. |
+
+        In a reference run, a missing or differing reference document is
+        replaced by the candidate document and the comparison passes.
+        """
+        self.reference_run = reference_run
 
     def _parse_character_replacements(
         self, value: Optional[Any]
@@ -194,6 +247,7 @@ class PdfTest(object):
         | `Compare Pdf Documents`    reference.pdf    candidate.pdf    compare=structure|metadata    structure_position_tolerance=5.0
 
         """
+        comparison_label = kwargs.pop("name", None)
         llm_requested = bool(
             kwargs.pop("llm", False)
             or kwargs.pop("llm_enabled", False)
@@ -215,6 +269,7 @@ class PdfTest(object):
             "llm_temperature",
             "llm_max_output_tokens",
             "llm_request_timeout",
+            "llm_output_retries",
             "azure_openai_endpoint",
             "azure_openai_deployment",
             "azure_openai_api_version",
@@ -322,8 +377,45 @@ class PdfTest(object):
         llm_general_notes.append(f"mask_applied={'yes' if mask_applied else 'no'}")
         llm_general_notes.append(f"text_mask_patterns={'yes' if text_pattern_values else 'no'}")
 
+        # Reference promotion only targets local reference paths, never URLs
+        reference_target = None if is_url(reference_document) else reference_document
+
         reference_document = self._ensure_local_document(reference_document)
         candidate_document = self._ensure_local_document(candidate_document)
+
+        result_writer = (
+            ComparisonResultWriter(
+                self.output_directory,
+                keyword="Compare Pdf Documents",
+                library="DocTest.PdfTest",
+                pabot_index=self.pabot_index,
+            )
+            if self.result_json
+            else None
+        )
+
+        if (
+            self.reference_run
+            and reference_target is not None
+            and not os.path.isfile(reference_target)
+        ):
+            promote_candidate_to_reference(reference_target, candidate_document)
+            robot_logger.info(
+                f"Reference run: reference '{reference_target}' did not exist "
+                "and was created from the candidate."
+            )
+            self._write_pdf_result(
+                result_writer,
+                status="PASS",
+                reference_document=reference_target,
+                candidate_document=candidate_document,
+                compare_set=compare_set,
+                dpi=structure_dpi,
+                differences=[],
+                notes=["Reference run: reference was created from the candidate."],
+                name=comparison_label,
+            )
+            return
 
         reference_repr = DocumentRepresentation(
             reference_document,
@@ -352,6 +444,24 @@ class PdfTest(object):
             )
 
             if reference_snapshot['page_count'] != candidate_snapshot['page_count']:
+                promoted = self._promote_on_reference_run(reference_target, candidate_document)
+                self._write_pdf_result(
+                    result_writer,
+                    status="PASS" if promoted else "FAIL",
+                    reference_document=reference_document,
+                    candidate_document=candidate_document,
+                    compare_set=compare_set,
+                    dpi=structure_dpi,
+                    reference_pages=reference_snapshot['page_count'],
+                    candidate_pages=candidate_snapshot['page_count'],
+                    differences=[{
+                        "facet": "pages",
+                        "description": "Documents have different number of pages.",
+                    }],
+                    name=comparison_label,
+                )
+                if promoted:
+                    return
                 raise AssertionError("Documents have different number of pages.")
 
             metadata_requested = compare_all or 'metadata' in compare_set
@@ -370,6 +480,10 @@ class PdfTest(object):
                         "facet": facet,
                         "description": description,
                         "details": pformat(diff_payload, width=200),
+                        # machine-readable payload for structured rendering;
+                        # the sidecar writer stringifies anything non-JSON-safe
+                        "data": dict(diff_payload) if isinstance(diff_payload, dict)
+                        else diff_payload,
                     }
                 )
 
@@ -520,7 +634,25 @@ class PdfTest(object):
                     elif not llm_decision.is_positive and llm_override_result:
                         robot_logger.info("LLM rejected PDF differences. Baseline failure will stand.")
 
+            promoted = False
             if differences_detected:
+                promoted = self._promote_on_reference_run(reference_target, candidate_document)
+            self._write_pdf_result(
+                result_writer,
+                status="PASS" if (promoted or not differences_detected) else "FAIL",
+                reference_document=reference_document,
+                candidate_document=candidate_document,
+                compare_set=compare_set,
+                dpi=structure_dpi,
+                reference_pages=reference_snapshot['page_count'],
+                candidate_pages=candidate_snapshot['page_count'],
+                differences=llm_differences,
+                notes=(
+                    ["Reference run: candidate saved as new reference."] if promoted else None
+                ),
+                name=comparison_label,
+            )
+            if differences_detected and not promoted:
                 raise AssertionError('The compared PDF Document Data is different.')
         finally:
             reference_repr.close()
@@ -1117,6 +1249,65 @@ class PdfTest(object):
 
     def _ensure_local_document(self, document):
         return download_file_from_url(document) if is_url(document) else document
+
+    def _write_pdf_result(
+        self,
+        result_writer: Optional[ComparisonResultWriter],
+        status: str,
+        reference_document,
+        candidate_document,
+        compare_set,
+        dpi: int,
+        differences: List[Dict[str, Any]],
+        reference_pages: Optional[int] = None,
+        candidate_pages: Optional[int] = None,
+        notes: Optional[List[str]] = None,
+        name: Optional[str] = None,
+    ) -> None:
+        """Write the comparison sidecar for a PDF comparison, if enabled.
+
+        PdfTest compares text, metadata, and structure, so sidecars carry
+        document-level results (per-page granularity is a visual-comparison
+        concept; see ``Compare Images``).
+        """
+        if result_writer is None:
+            return
+        all_notes = ["Per-page granularity is not available for PdfTest comparisons."]
+        if notes:
+            all_notes.extend(notes)
+        if differences:
+            for diff in differences:
+                all_notes.append(f"[{diff.get('facet')}] {diff.get('description')}")
+        rel_path = result_writer.write(
+            status=status,
+            reference={"path": str(reference_document), "pages": reference_pages, "dpi": dpi},
+            candidate={"path": str(candidate_document), "pages": candidate_pages, "dpi": dpi},
+            settings={"compare": sorted(compare_set)},
+            notes=all_notes,
+            facets=differences,
+            name=name,
+        )
+        robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
+
+    def _promote_on_reference_run(self, reference_target, candidate_document) -> bool:
+        """Save the candidate as new reference if a reference run is active.
+
+        Returns True when promotion happened and the comparison shall pass.
+        """
+        if not self.reference_run:
+            return False
+        if reference_target is None:
+            robot_logger.warn(
+                "Reference run requested but the reference is a URL; "
+                "cannot save the candidate as reference."
+            )
+            return False
+        promote_candidate_to_reference(reference_target, candidate_document)
+        robot_logger.info(
+            f"Reference run: candidate saved as new reference "
+            f"'{reference_target}'. Detected differences were accepted."
+        )
+        return True
 
     def _handle_llm_for_pdf_differences(
         self,

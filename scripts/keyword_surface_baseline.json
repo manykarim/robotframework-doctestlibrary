@@ -1,0 +1,1138 @@
+{
+  "DocTest.PdfTest": {
+    "Check Text Content": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "expected_text_list",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "candidate_document",
+        "required": true
+      }
+    ],
+    "Compare Pdf Documents": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "reference_document",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "candidate_document",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "Compare Pdf Documents With Llm": [
+      {
+        "default": null,
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "NAMED_ONLY",
+        "name": "llm_override",
+        "required": false
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "Compare Pdf Structure": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "reference_document",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "candidate_document",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "PDF Should Contain Strings": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "expected_text_list",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "candidate_document",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "PDF Should Not Contain Strings": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "expected_text_list",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "candidate_document",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "Set Reference Run": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "reference_run",
+        "required": true
+      }
+    ],
+    "Set Result Json": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "result_json",
+        "required": true
+      }
+    ]
+  },
+  "DocTest.PrintJobTests": {
+    "Check Print Job Property": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "print_job",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "property",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "value",
+        "required": true
+      }
+    ],
+    "Compare Print Jobs": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "type",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "reference_file",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "test_file",
+        "required": true
+      }
+    ],
+    "Get Pcl Print Job": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "filename",
+        "required": true
+      }
+    ],
+    "Get Postscript Print Job": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "filename",
+        "required": true
+      }
+    ]
+  },
+  "DocTest.VisualTest": {
+    "Compare Images": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "reference_image",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "candidate_image",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "placeholder_file",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "check_text_content",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "move_tolerance",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "movement_detection",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "contains_barcodes",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "watermark_file",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "ignore_watermarks",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "force_ocr",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "ocr_engine",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "DPI",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "resize_candidate",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "blur",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "threshold",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "mask",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "get_pdf_content",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "block_based_ssim",
+        "required": false
+      },
+      {
+        "default": "32",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "block_size",
+        "required": false
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "Compare Images With Llm": [
+      {
+        "default": null,
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "NAMED_ONLY",
+        "name": "llm_override",
+        "required": false
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "Get Barcodes": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Get Barcodes From Document": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Get Text": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Get Text From Area": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "area",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Get Text From Document": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Image Should Contain Template": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "image",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "template",
+        "required": true
+      },
+      {
+        "default": "0.0",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "threshold",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "take_screenshots",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "log_template",
+        "required": false
+      },
+      {
+        "default": "template",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "detection",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "tpl_crop_x1",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "tpl_crop_y1",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "tpl_crop_x2",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "tpl_crop_y2",
+        "required": false
+      }
+    ],
+    "Set Character Replacements": [
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "character_replacements",
+        "required": false
+      }
+    ],
+    "Set Dpi": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "dpi",
+        "required": true
+      }
+    ],
+    "Set Embed Screenshots": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "embed_screenshots",
+        "required": true
+      }
+    ],
+    "Set Force Ocr": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "force_ocr",
+        "required": true
+      }
+    ],
+    "Set Movement Detection": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "movement_detection",
+        "required": true
+      }
+    ],
+    "Set Ocr Engine": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "ocr_engine",
+        "required": true
+      }
+    ],
+    "Set Reference Run": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "reference_run",
+        "required": true
+      }
+    ],
+    "Set Result Json": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "result_json",
+        "required": true
+      }
+    ],
+    "Set Screenshot Dir": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "screenshot_dir",
+        "required": true
+      }
+    ],
+    "Set Screenshot Format": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "screenshot_format",
+        "required": true
+      }
+    ],
+    "Set Show Diff": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "show_diff",
+        "required": true
+      }
+    ],
+    "Set Take Screenshots": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "take_screenshots",
+        "required": true
+      }
+    ],
+    "Set Threshold": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "threshold",
+        "required": true
+      }
+    ]
+  },
+  "DocTest.WebVisualTest": {
+    "Compare Element To Baseline": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_ONLY",
+        "name": "locator",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_ONLY",
+        "name": "name",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_ONLY_MARKER",
+        "name": "",
+        "required": false
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "Compare Images": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "reference_image",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "candidate_image",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "placeholder_file",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "check_text_content",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "move_tolerance",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "movement_detection",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "contains_barcodes",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "watermark_file",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "ignore_watermarks",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "force_ocr",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "ocr_engine",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "DPI",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "resize_candidate",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "blur",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "threshold",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "mask",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "get_pdf_content",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "block_based_ssim",
+        "required": false
+      },
+      {
+        "default": "32",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "block_size",
+        "required": false
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "Compare Images With Llm": [
+      {
+        "default": null,
+        "kind": "VAR_POSITIONAL",
+        "name": "args",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "NAMED_ONLY",
+        "name": "llm_override",
+        "required": false
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "Compare Page To Baseline": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "name",
+        "required": true
+      },
+      {
+        "default": "True",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "full_page",
+        "required": false
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "kwargs",
+        "required": false
+      }
+    ],
+    "Get Barcodes": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Get Barcodes From Document": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Get Text": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Get Text From Area": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "area",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Get Text From Document": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "document",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_operator",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "assertion_expected",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "message",
+        "required": false
+      }
+    ],
+    "Image Should Contain Template": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "image",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "template",
+        "required": true
+      },
+      {
+        "default": "0.0",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "threshold",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "take_screenshots",
+        "required": false
+      },
+      {
+        "default": "False",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "log_template",
+        "required": false
+      },
+      {
+        "default": "template",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "detection",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "tpl_crop_x1",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "tpl_crop_y1",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "tpl_crop_x2",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "tpl_crop_y2",
+        "required": false
+      }
+    ],
+    "Set Baseline Directory": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "baseline_directory",
+        "required": true
+      }
+    ],
+    "Set Character Replacements": [
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "character_replacements",
+        "required": false
+      }
+    ],
+    "Set Dpi": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "dpi",
+        "required": true
+      }
+    ],
+    "Set Embed Screenshots": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "embed_screenshots",
+        "required": true
+      }
+    ],
+    "Set Force Ocr": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "force_ocr",
+        "required": true
+      }
+    ],
+    "Set Movement Detection": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "movement_detection",
+        "required": true
+      }
+    ],
+    "Set Ocr Engine": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "ocr_engine",
+        "required": true
+      }
+    ],
+    "Set Reference Run": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "reference_run",
+        "required": true
+      }
+    ],
+    "Set Result Json": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "result_json",
+        "required": true
+      }
+    ],
+    "Set Screenshot Dir": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "screenshot_dir",
+        "required": true
+      }
+    ],
+    "Set Screenshot Format": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "screenshot_format",
+        "required": true
+      }
+    ],
+    "Set Show Diff": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "show_diff",
+        "required": true
+      }
+    ],
+    "Set Take Screenshots": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "take_screenshots",
+        "required": true
+      }
+    ],
+    "Set Threshold": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "threshold",
+        "required": true
+      }
+    ]
+  }
+}

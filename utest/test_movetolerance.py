@@ -145,6 +145,10 @@ def test_multiple_texts_with_sift(move_distance, tolerance):
     - move_distance: The number of pixels to shift Text 2 and Text 3.
     - tolerance: The allowed movement tolerance.
     """
+    # Deterministic text content: the module-level seed only fixes the RNG
+    # stream's start, so the text here would otherwise depend on which tests
+    # ran earlier in the process (suite composition). Seed per test instead.
+    random.seed(f"movetolerance-{move_distance}-{tolerance}")
     # Create a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir_path = Path(temp_dir)
@@ -262,6 +266,10 @@ def test_multiple_texts_with_template(move_distance, tolerance):
     - move_distance: The number of pixels to shift Text 2 and Text 3.
     - tolerance: The allowed movement tolerance.
     """
+    # Deterministic text content: the module-level seed only fixes the RNG
+    # stream's start, so the text here would otherwise depend on which tests
+    # ran earlier in the process (suite composition). Seed per test instead.
+    random.seed(f"movetolerance-{move_distance}-{tolerance}")
     # Create a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir_path = Path(temp_dir)

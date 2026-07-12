@@ -11,6 +11,7 @@ if not hasattr(inspect, "getargspec"):
     inspect.getargspec = inspect.getfullargspec
 
 ROOT = pathlib.Path(__file__).parent.resolve().as_posix()
+SUPPORTED_PYTHONS = ["3.10", "3.11", "3.12", "3.13"]
 utests_completed_process = None
 atests_completed_process = None
 
@@ -18,9 +19,12 @@ atests_completed_process = None
 @task
 def utests(context):
     cmd = [
+        "uv",
+        "run",
+        "--",
         "coverage",
         "run",
-        "--source=DocTest",
+        "--source=DocTest,doctest_dashboard",
         "-p",
         "-m",
         "pytest",
@@ -34,9 +38,12 @@ def utests(context):
 @task
 def atests(context):
     cmd = [
+        "uv",
+        "run",
+        "--",
         "coverage",
         "run",
-        "--source=DocTest",
+        "--source=DocTest,doctest_dashboard",
         "-p",
         "-m",
         "robot",
@@ -49,6 +56,8 @@ def atests(context):
         f"{ROOT}/atest/PdfContent.robot",
         f"{ROOT}/atest/PrintJobs.robot",
         f"{ROOT}/atest/MovementDetection.robot",
+        f"{ROOT}/atest/ReferenceRun.robot",
+        f"{ROOT}/atest/ResultJson.robot",
         f"{ROOT}/atest/LLM.robot",
     ]
     global atests_completed_process
@@ -57,9 +66,9 @@ def atests(context):
 
 @task(utests, atests)
 def tests(context):
-    subprocess.run("coverage combine", shell=True, check=False)
-    subprocess.run("coverage report", shell=True, check=False)
-    subprocess.run("coverage html -d results/htmlcov", shell=True, check=False)
+    subprocess.run("uv run -- coverage combine", shell=True, check=False)
+    subprocess.run("uv run -- coverage report", shell=True, check=False)
+    subprocess.run("uv run -- coverage html -d results/htmlcov", shell=True, check=False)
     if (
         utests_completed_process.returncode != 0
         or atests_completed_process.returncode != 0
@@ -69,9 +78,48 @@ def tests(context):
 
 @task
 def coverage_report(context):
-    subprocess.run("coverage combine", shell=True, check=False)
-    subprocess.run("coverage report", shell=True, check=False)
-    subprocess.run("coverage html -d results/htmlcov", shell=True, check=False)
+    subprocess.run("uv run -- coverage combine", shell=True, check=False)
+    subprocess.run("uv run -- coverage report", shell=True, check=False)
+    subprocess.run("uv run -- coverage html -d results/htmlcov", shell=True, check=False)
+
+
+@task
+def e2e(context):
+    """Run the dashboard end-to-end journeys (requires a built frontend)."""
+    subprocess.run(
+        f"uv run -- pytest {ROOT}/e2e --browser chromium", shell=True, check=True
+    )
+
+
+@task
+def multipython(context):
+    """Validate every supported interpreter: sync with all extras, audit the
+    resolved marker-controlled dependency versions, and import-smoke both
+    packages. Restores the default environment afterwards."""
+    results = {}
+    for version in SUPPORTED_PYTHONS:
+        print(f"\n=== Python {version} ===")
+        steps = [
+            f"uv sync --python {version} --all-extras -q",
+            "uv run python scripts/audit_resolved_versions.py",
+            (
+                'uv run python -c "from DocTest.VisualTest import VisualTest; '
+                "from doctest_dashboard.server.app import create_app; "
+                "print('imports OK')\""
+            ),
+        ]
+        outcome = "OK"
+        for step in steps:
+            if subprocess.run(step, shell=True, check=False).returncode != 0:
+                outcome = "FAILED"
+                break
+        results[version] = outcome
+    subprocess.run("uv sync --all-extras -q", shell=True, check=False)
+    print("\n=== multipython summary ===")
+    for version, outcome in results.items():
+        print(f"  {version}: {outcome}")
+    if any(outcome != "OK" for outcome in results.values()):
+        raise Exception("multipython validation failed")
 
 
 @task
@@ -80,6 +128,7 @@ def libdoc(context):
         ("VisualTest", "DocTest/VisualTest.py"),
         ("PdfTest", "DocTest/PdfTest.py"),
         ("PrintJobTest", "DocTest/PrintJobTests.py"),
+        ("WebVisualTest", "DocTest/WebVisualTest.py"),
         ("Ai", "DocTest/Ai/__init__.py"),
     ]
 
@@ -89,6 +138,9 @@ def libdoc(context):
         # Document without version in filename
         target = f"{ROOT}/docs/{name}.html"
         cmd = [
+            "uv",
+            "run",
+            "--",
             "python",
             "-m",
             "robot.libdoc",
@@ -104,6 +156,9 @@ def libdoc(context):
         # Document with version in filename
         target_versioned = f"{ROOT}/docs/{name}-{VERSION}.html"
         cmd = [
+            "uv",
+            "run",
+            "--",
             "python",
             "-m",
             "robot.libdoc",
@@ -115,10 +170,3 @@ def libdoc(context):
             target_versioned,
         ]
         subprocess.run(" ".join(cmd), shell=True)
-
-
-@task
-def readme(context):
-    doc_string = DocTest.__doc__ or ""
-    with open(f"{ROOT}/README.md", "w", encoding="utf-8") as readme:
-        readme.write(str(doc_string).strip() + "\n")

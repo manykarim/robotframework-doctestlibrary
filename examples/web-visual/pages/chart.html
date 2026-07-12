@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Charts</title><style>
+* { animation: none !important; transition: none !important; }
+body { margin: 0; font-family: Arial, sans-serif; width: 800px; padding: 20px; background: #fff; }
+</style></head><body>
+<h1>Quarterly results</h1>
+<svg id="svgchart" width="360" height="200">
+<rect x="20" y="80" width="60" height="120" fill="#2563eb"/>
+<rect x="100" y="40" width="60" height="160" fill="#34d399"/>
+<rect x="180" y="110" width="60" height="90" fill="#f472b6"/>
+</svg>
+<canvas id="canvaschart" width="360" height="200"></canvas>
+<script>
+const ctx = document.getElementById('canvaschart').getContext('2d');
+const draw = (h) => { ctx.clearRect(0, 0, 360, 200); ctx.fillStyle = '#7c3aed';
+  ctx.fillRect(20, 200 - h, 60, h); ctx.fillStyle = '#fbbf24'; ctx.fillRect(100, 60, 60, 140); };
+draw(100);
+window.demo = { redrawCanvas: (h) => draw(h) };
+</script>
+</body></html>

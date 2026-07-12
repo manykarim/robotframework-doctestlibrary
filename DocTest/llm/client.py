@@ -191,16 +191,28 @@ def _run_agent(
     if not identifier:
         raise RuntimeError("No LLM model configured for the requested operation.")
 
-    agent = Agent(identifier, output_type=output_type)
+    agent = Agent(
+        identifier,
+        output_type=output_type,
+        output_retries=max(1, getattr(settings, "output_retries", 3)),
+    )
 
-    try:
-        raw = agent.run_sync(list(messages))
-        return _normalise_output(raw, output_type)
-    except Exception as exc:
-        partial = getattr(exc, "partial_response", None)
-        if partial is not None:
-            return _normalise_output(partial, output_type)
-        raise
+    last_error: Optional[Exception] = None
+    for attempt in range(2):
+        try:
+            raw = agent.run_sync(list(messages))
+            return _normalise_output(raw, output_type)
+        except Exception as exc:
+            partial = getattr(exc, "partial_response", None)
+            if partial is not None:
+                return _normalise_output(partial, output_type)
+            # One full re-run when the model exhausted its output retries on
+            # malformed responses — a transient remote condition, not a bug.
+            if type(exc).__name__ == "UnexpectedModelBehavior" and attempt == 0:
+                last_error = exc
+                continue
+            raise
+    raise last_error
 
 
 def assess_visual_diff(
