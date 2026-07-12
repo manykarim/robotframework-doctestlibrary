@@ -51,13 +51,16 @@ Sidecar Can Be Disabled With Keyword
 
 *** Keywords ***
 Count Sidecars
+    # run.json is the run manifest (sidecar v1.1), not a comparison sidecar
     ${exists}=    Run Keyword And Return Status    Directory Should Exist    ${OUTPUT_DIR}${/}doctest_results
     IF    not ${exists}    RETURN    ${0}
     ${files}=    List Files In Directory    ${OUTPUT_DIR}${/}doctest_results    *.json
-    ${count}=    Get Length    ${files}
+    ${sidecars}=    Evaluate    [f for f in $files if f != 'run.json']
+    ${count}=    Get Length    ${sidecars}
     RETURN    ${count}
 
 Get Latest Sidecar
     ${files}=    List Files In Directory    ${OUTPUT_DIR}${/}doctest_results    *.json    absolute=${True}
-    ${sorted}=    Evaluate    sorted(${files}, key=lambda p: __import__('os').path.getmtime(p))
+    ${sidecars}=    Evaluate    [f for f in $files if not f.endswith('run.json')]
+    ${sorted}=    Evaluate    sorted(${sidecars}, key=lambda p: __import__('os').path.getmtime(p))
     RETURN    ${sorted}[-1]
