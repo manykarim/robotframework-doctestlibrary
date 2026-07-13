@@ -31,9 +31,12 @@ RUN wget https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download
 
 COPY policy.xml /etc/ImageMagick-6/
 
-# Copy the repository and install it, so CI images test the PR's code
+# Copy only what the build needs (never the whole context — it can
+# contain local secrets like .env), so CI images test the PR's code
 # instead of the last released package.
-COPY . /src
+COPY pyproject.toml README.md /src/
+COPY DocTest /src/DocTest
+COPY doctest_dashboard /src/doctest_dashboard
 RUN pip install --no-cache-dir "$INSTALL_SOURCE" && rm -rf /src
 
 WORKDIR /

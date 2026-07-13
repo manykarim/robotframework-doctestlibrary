@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+*.db
+.venv
+node_modules
+dist
+results*
+.pytest_cache
+__pycache__
+.claude
+.claude-flow
+.codex
+.swarm
+.temp
+data
