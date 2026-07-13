@@ -2,7 +2,6 @@ import os
 import cv2
 import pytesseract
 import numpy as np
-import json
 import logging
 import re
 from collections import OrderedDict
@@ -401,7 +400,7 @@ class Page:
             entries.append(entry)
 
         for raw_text, left, top, width, height, conf in zip(
-            raw_texts, lefts, tops, widths, heights, confidences
+            raw_texts, lefts, tops, widths, heights, confidences, strict=False
         ):
             normalized_raw = self._normalize_token(raw_text)
 
@@ -642,8 +641,6 @@ class Page:
         except ImportError:
             logging.debug('Failed to import pyzbar', exc_info=True)
             return
-        image_height = self.image.shape[0]
-        image_width = self.image.shape[1]
         barcodes = pyzbar.decode(self.image)
         #Add barcode as placehoder
         for barcode in barcodes:
@@ -813,7 +810,7 @@ class Page:
                     position += len(token) + 1
                 for start, end in spans:
                     covered = [
-                        j for j, (token_start, token_end) in zip(indices, offsets)
+                        j for j, (token_start, token_end) in zip(indices, offsets, strict=False)
                         if token_start < end and token_end > start
                     ]
                     if covered:
@@ -990,7 +987,7 @@ class Page:
         thresholded_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         # Add a white border around the image to improve OCR accuracy
         thresholded_image = cv2.copyMakeBorder(thresholded_image, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=(255, 255, 255))
-        config = f'--psm 11 -l eng'
+        config = '--psm 11 -l eng'
         text = pytesseract.image_to_string(thresholded_image, config=config)
         return text.strip()
 
@@ -1108,8 +1105,8 @@ class DocumentRepresentation:
                     page_obj.signatures = self._extract_signatures(page)
                     self.pages.append(page_obj)
             self.page_count = len(self.pages)
-        except ImportError:
-            raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
+        except ImportError as exc:
+            raise ImportError("PyMuPDF (fitz) is required for PDF processing.") from exc
 
     @staticmethod
     def _pixmap_to_bgr(pix) -> np.ndarray:
@@ -1137,12 +1134,13 @@ class DocumentRepresentation:
             self.metadata = self._pdf_document.metadata
             self.sigflags = self._pdf_document.get_sigflags()
             self.page_count = len(self._pdf_document)
-        except ImportError:
-            raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
+        except ImportError as exc:
+            raise ImportError("PyMuPDF (fitz) is required for PDF processing.") from exc
 
     def _render_pdf_page(self, page_index: int) -> Page:
         if self._pdf_document is None:
             self._prepare_pdf_stream()
+        assert self._pdf_document is not None
 
         page = self._pdf_document.load_page(page_index)
         pix = page.get_pixmap(dpi=self.dpi)
@@ -1244,9 +1242,6 @@ class DocumentRepresentation:
         import shutil
         import random
         import time
-        import tempfile
-        from os.path import splitext, split
-        import subprocess
         try:
             command = shutil.which('pcl6') or shutil.which('gpcl6win64') or shutil.which('gpcl6win32') or shutil.which('gpcl6')
         except (OSError, TypeError):
@@ -1305,9 +1300,7 @@ class DocumentRepresentation:
         import subprocess
         import shutil
         import random
-        import tempfile
         import time
-        from os.path import splitext, split 
         try:
             command = shutil.which('gs') or shutil.which('gswin64c') or shutil.which('gswin32c') or shutil.which('ghostscript')
         except (OSError, TypeError):
@@ -1455,6 +1448,10 @@ class DocumentRepresentation:
         pages = [page.get_pdf_structure(config=config) for page in self.pages]
         return DocumentStructure(pages=pages, config=config)
 
+    def get_text_content(self):
+        """Return the concatenated per-page OCR text content."""
+        return " ".join(str(page.get_text_content()) for page in self.pages)
+
     def get_text(self, force_ocr: bool = False, tesseract_config: str = TESSERACT_CONFIG):
         """Extract text content from the document."""
         # If doc is pdf, extract text directly from pdf
@@ -1494,13 +1491,6 @@ class DocumentRepresentation:
         """Compare images between two documents."""
         return self.compare_with(other_doc)
 
-    def assign_ignore_areas_to_pages(self, ignore_areas: List[Dict]):
-        """Assign each ignore area to the corresponding page."""
-        for page in self.pages:
-            for ignore_area in ignore_areas:
-                if ignore_area.get('page') == page.page_number or ignore_area.get('page') == 'all':
-                    page.ignore_areas.append(ignore_area)
-    
     @staticmethod
     def _extract_signatures(page):
         signatures = []

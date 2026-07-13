@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import cv2
-import imutils
 import numpy as np
 from assertionengine import AssertionOperator, verify_assertion
 from robot.api import logger as robot_logger
@@ -33,34 +32,27 @@ LOG = logging.getLogger(__name__)
 _VISUAL_LLM_RUNTIME: Optional[Tuple[Any, Any, Any]] = None
 
 
-def _as_bool(value, default=False):
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in ("true", "1", "yes", "on"):
-            return True
-        if lowered in ("false", "0", "no", "off"):
-            return False
-    return bool(value)
+def _grab_contours(cnts):
+    """Normalize the cv2.findContours return shape across OpenCV versions.
+
+    Inlined replacement for the single imutils.grab_contours call (imutils
+    is unmaintained); OpenCV 2/4 return (contours, hierarchy), OpenCV 3
+    returned (image, contours, hierarchy).
+    """
+    if len(cnts) == 2:
+        return cnts[0]
+    if len(cnts) == 3:
+        return cnts[1]
+    raise ValueError(
+        "Contours tuple must have length 2 or 3 — unexpected cv2.findContours return"
+    )
 
 
-def _coerce_label_value(label: Any) -> str:
-    value = getattr(label, "value", label)
-    return str(value)
-
-
-def _decision_equals_flag(label: Any, enum_cls: Any) -> bool:
-    candidate = _coerce_label_value(label).lower()
-    if enum_cls is None:
-        return candidate == "flag"
-    flag_member = getattr(enum_cls, "FLAG", None)
-    if flag_member is None:
-        return candidate == "flag"
-    flag_value = _coerce_label_value(flag_member).lower()
-    return candidate == flag_value
+from DocTest._llm_flags import (  # noqa: E402  (kept importable from this module)
+    _as_bool,
+    _coerce_label_value,
+    _decision_equals_flag,
+)
 
 
 def _load_visual_llm_runtime() -> Tuple[Any, Any, Any]:
@@ -503,9 +495,6 @@ class VisualTest:
 
         watermarks = []
 
-        # Apply ignore areas if provided
-        abstract_ignore_areas = None
-
         detected_differences: List[Dict[str, Any]] = []
         try:
             # Compare visual content through the Page class
@@ -646,14 +635,13 @@ class VisualTest:
                     # Check if the differences are only in the watermark area
                     if len(diff_rectangles) == 1:
                         diff_rect = diff_rectangles[0]
-                        x, y, w, h = (
+                        x, _y, w, h = (
                             diff_rect["x"],
                             diff_rect["y"],
                             diff_rect["width"],
                             diff_rect["height"],
                         )
                         diff_center_x = abs((x + w / 2) - ref_page.image.shape[1] / 2)
-                        diff_center_y = abs((y + h / 2) - ref_page.image.shape[0] / 2)
                         if (
                             diff_center_x
                             < ref_page.image.shape[1] * self.WATERMARK_CENTER_OFFSET
@@ -683,7 +671,6 @@ class VisualTest:
                         mask_inv = cv2.bitwise_not(wm)
                         # dilate the mask to account for slight misalignments
                         mask_inv = cv2.dilate(mask_inv, None, iterations=2)
-                        result = cv2.subtract(absolute_diff, mask_inv)
                         if (
                             cv2.countNonZero(cv2.subtract(absolute_diff, mask_inv)) == 0
                             or cv2.countNonZero(cv2.subtract(thresh, mask_inv)) == 0
@@ -902,7 +889,6 @@ class VisualTest:
 
                         # If no words are fount, proceed with nornmal tolerance check and set check_pdf_content to False
                         if len(ref_words) == 0 or len(cand_words) == 0:
-                            check_pdf_content = False
                             robot_logger.info(
                                 "No pdf layout elements found. Proceeding with normal tolerance check."
                             )
@@ -1544,7 +1530,7 @@ class VisualTest:
             }
 
         max_distance = 0.0
-        for ref_word, cand_word in zip(reference_words, candidate_words):
+        for ref_word, cand_word in zip(reference_words, candidate_words, strict=False):
             if ref_word["text"] != cand_word["text"]:
                 return {
                     "status": "mismatch",
@@ -2360,7 +2346,7 @@ class VisualTest:
         cnts = cv2.findContours(
             thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
-        cnts = imutils.grab_contours(cnts)
+        cnts = _grab_contours(cnts)
 
         # loop over the contours
         for c in cnts:
@@ -3705,7 +3691,7 @@ class VisualTest:
             LOG.error(f"ORB: Unexpected error in movement detection: {str(e)}")
             return None
 
-    def blend_two_images(self, image, overlay, ignore_color=[255, 255, 255]):
+    def blend_two_images(self, image, overlay, ignore_color=(255, 255, 255)):
         ignore_color = np.asarray(ignore_color)
         mask = ~(overlay == ignore_color).all(-1)
         # Or mask = (overlay!=ignore_color).any(-1)

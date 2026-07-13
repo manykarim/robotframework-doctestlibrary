@@ -7,7 +7,6 @@ import pytesseract
 from typing import Dict, List
 from pytesseract import Output
 import urllib
-import re
 import unicodedata
 
 logger = logging.getLogger(__name__)

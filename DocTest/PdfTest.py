@@ -1,9 +1,8 @@
 import logging
-from inspect import signature
 from pprint import pformat
 from deepdiff import DeepDiff
 from robot.api import logger as robot_logger
-from robot.api.deco import keyword, library
+from robot.api.deco import keyword
 import fitz
 import json
 import os
@@ -42,20 +41,11 @@ LOG = logging.getLogger(__name__)
 _PDF_LLM_RUNTIME: Optional[Tuple[Any, Any, Any]] = None
 
 
-def _coerce_label_value(label: Any) -> str:
-    value = getattr(label, "value", label)
-    return str(value)
-
-
-def _decision_equals_flag(label: Any, enum_cls: Any) -> bool:
-    candidate = _coerce_label_value(label).lower()
-    if enum_cls is None:
-        return candidate == "flag"
-    flag_member = getattr(enum_cls, "FLAG", None)
-    if flag_member is None:
-        return candidate == "flag"
-    flag_value = _coerce_label_value(flag_member).lower()
-    return candidate == flag_value
+from DocTest._llm_flags import (  # noqa: E402  (kept importable from this module)
+    _as_bool,
+    _coerce_label_value,
+    _decision_equals_flag,
+)
 
 
 def _load_pdf_llm_runtime() -> Tuple[Any, Any, Any]:
@@ -69,20 +59,6 @@ def _load_pdf_llm_runtime() -> Tuple[Any, Any, Any]:
         raise LLMDependencyError() from exc
     _PDF_LLM_RUNTIME = (assess_pdf_diff, create_binary_content, _LLMDecisionLabel)
     return _PDF_LLM_RUNTIME
-
-
-def _as_bool(value, default=False):
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in ("true", "1", "yes", "on"):
-            return True
-        if lowered in ("false", "0", "no", "off"):
-            return False
-    return bool(value)
 
 
 def _as_float(value, default):
@@ -505,7 +481,7 @@ class PdfTest(object):
                         diff,
                     )
 
-            for ref_page, cand_page in zip(reference_snapshot['pages'], candidate_snapshot['pages']):
+            for ref_page, cand_page in zip(reference_snapshot['pages'], candidate_snapshot['pages'], strict=False):
                 page_number = ref_page['number']
 
                 if compare_all and ref_page.get('rotation') != cand_page.get('rotation'):
@@ -938,7 +914,7 @@ class PdfTest(object):
                         text_item_found = True
                         found_text_list.append({'text':text_item, 'document':candidate_document, 'page':page.number+1})
                         continue
-                if text_item_found == False:
+                if not text_item_found:
                     missing_text_list.append({'text':text_item, 'document':candidate_document})
             if found_text_list:
                 robot_logger.info(f"Missing Texts:\n{missing_text_list}")

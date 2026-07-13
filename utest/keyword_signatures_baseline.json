@@ -1,0 +1,293 @@
+{
+  "DocTest.PdfTest": {
+    "Check Text Content": [
+      "expected_text_list",
+      "candidate_document"
+    ],
+    "Compare Pdf Documents": [
+      "reference_document",
+      "candidate_document",
+      "**kwargs"
+    ],
+    "Compare Pdf Documents With Llm": [
+      "*args",
+      "llm_override: bool = False",
+      "**kwargs"
+    ],
+    "Compare Pdf Structure": [
+      "reference_document",
+      "candidate_document",
+      "**kwargs"
+    ],
+    "PDF Should Contain Strings": [
+      "expected_text_list",
+      "candidate_document",
+      "**kwargs"
+    ],
+    "PDF Should Not Contain Strings": [
+      "expected_text_list",
+      "candidate_document",
+      "**kwargs"
+    ],
+    "Set Reference Run": [
+      "reference_run: bool"
+    ],
+    "Set Result Json": [
+      "result_json: bool"
+    ]
+  },
+  "DocTest.PrintJobTests": {
+    "Check Print Job Property": [
+      "print_job",
+      "property",
+      "value"
+    ],
+    "Compare Print Jobs": [
+      "type",
+      "reference_file",
+      "test_file"
+    ],
+    "Get Pcl Print Job": [
+      "filename"
+    ],
+    "Get Postscript Print Job": [
+      "filename"
+    ]
+  },
+  "DocTest.VisualTest": {
+    "Compare Images": [
+      "reference_image: str",
+      "candidate_image: str",
+      "placeholder_file: str | dict | list = None",
+      "check_text_content: bool = False",
+      "move_tolerance: int = None",
+      "movement_detection: str | None = None",
+      "contains_barcodes: bool = False",
+      "watermark_file: str | list | None = None",
+      "ignore_watermarks: bool = None",
+      "force_ocr: bool = False",
+      "ocr_engine: Literal['tesseract', 'east'] = None",
+      "DPI: int = None",
+      "resize_candidate: bool = False",
+      "blur: bool = False",
+      "threshold: float = None",
+      "mask: str | dict | list = None",
+      "get_pdf_content: bool = False",
+      "block_based_ssim: bool = False",
+      "block_size: int = 32",
+      "**kwargs"
+    ],
+    "Compare Images With Llm": [
+      "*args",
+      "llm_override: bool = False",
+      "**kwargs"
+    ],
+    "Get Barcodes": [
+      "document: str",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Get Barcodes From Document": [
+      "document: str",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Get Text": [
+      "document: str",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Get Text From Area": [
+      "document: str",
+      "area: str | dict | list = None",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Get Text From Document": [
+      "document: str",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Image Should Contain Template": [
+      "image: str",
+      "template: str",
+      "threshold: float = 0.0",
+      "take_screenshots: bool = False",
+      "log_template: bool = False",
+      "detection: str = template",
+      "tpl_crop_x1: int = None",
+      "tpl_crop_y1: int = None",
+      "tpl_crop_x2: int = None",
+      "tpl_crop_y2: int = None"
+    ],
+    "Set Character Replacements": [
+      "character_replacements: Dict[str, str] | str | None = None"
+    ],
+    "Set Dpi": [
+      "dpi: int"
+    ],
+    "Set Embed Screenshots": [
+      "embed_screenshots: bool"
+    ],
+    "Set Force Ocr": [
+      "force_ocr: bool"
+    ],
+    "Set Movement Detection": [
+      "movement_detection: str"
+    ],
+    "Set Ocr Engine": [
+      "ocr_engine: Literal['tesseract', 'east']"
+    ],
+    "Set Reference Run": [
+      "reference_run: bool"
+    ],
+    "Set Result Json": [
+      "result_json: bool"
+    ],
+    "Set Screenshot Dir": [
+      "screenshot_dir: str"
+    ],
+    "Set Screenshot Format": [
+      "screenshot_format: str"
+    ],
+    "Set Show Diff": [
+      "show_diff: bool"
+    ],
+    "Set Take Screenshots": [
+      "take_screenshots: bool"
+    ],
+    "Set Threshold": [
+      "threshold: float"
+    ]
+  },
+  "DocTest.WebVisualTest": {
+    "Compare Element To Baseline": [
+      "locator: str",
+      "name: str",
+      "/",
+      "**kwargs"
+    ],
+    "Compare Images": [
+      "reference_image: str",
+      "candidate_image: str",
+      "placeholder_file: str | dict | list = None",
+      "check_text_content: bool = False",
+      "move_tolerance: int = None",
+      "movement_detection: str | None = None",
+      "contains_barcodes: bool = False",
+      "watermark_file: str | list | None = None",
+      "ignore_watermarks: bool = None",
+      "force_ocr: bool = False",
+      "ocr_engine: Literal['tesseract', 'east'] = None",
+      "DPI: int = None",
+      "resize_candidate: bool = False",
+      "blur: bool = False",
+      "threshold: float = None",
+      "mask: str | dict | list = None",
+      "get_pdf_content: bool = False",
+      "block_based_ssim: bool = False",
+      "block_size: int = 32",
+      "**kwargs"
+    ],
+    "Compare Images With Llm": [
+      "*args",
+      "llm_override: bool = False",
+      "**kwargs"
+    ],
+    "Compare Page To Baseline": [
+      "name: str",
+      "full_page: bool = True",
+      "**kwargs"
+    ],
+    "Get Barcodes": [
+      "document: str",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Get Barcodes From Document": [
+      "document: str",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Get Text": [
+      "document: str",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Get Text From Area": [
+      "document: str",
+      "area: str | dict | list = None",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Get Text From Document": [
+      "document: str",
+      "assertion_operator: AssertionOperator | None = None",
+      "assertion_expected: Any = None",
+      "message: str = None"
+    ],
+    "Image Should Contain Template": [
+      "image: str",
+      "template: str",
+      "threshold: float = 0.0",
+      "take_screenshots: bool = False",
+      "log_template: bool = False",
+      "detection: str = template",
+      "tpl_crop_x1: int = None",
+      "tpl_crop_y1: int = None",
+      "tpl_crop_x2: int = None",
+      "tpl_crop_y2: int = None"
+    ],
+    "Set Baseline Directory": [
+      "baseline_directory: str"
+    ],
+    "Set Character Replacements": [
+      "character_replacements: Dict[str, str] | str | None = None"
+    ],
+    "Set Dpi": [
+      "dpi: int"
+    ],
+    "Set Embed Screenshots": [
+      "embed_screenshots: bool"
+    ],
+    "Set Force Ocr": [
+      "force_ocr: bool"
+    ],
+    "Set Movement Detection": [
+      "movement_detection: str"
+    ],
+    "Set Ocr Engine": [
+      "ocr_engine: Literal['tesseract', 'east']"
+    ],
+    "Set Reference Run": [
+      "reference_run: bool"
+    ],
+    "Set Result Json": [
+      "result_json: bool"
+    ],
+    "Set Screenshot Dir": [
+      "screenshot_dir: str"
+    ],
+    "Set Screenshot Format": [
+      "screenshot_format: str"
+    ],
+    "Set Show Diff": [
+      "show_diff: bool"
+    ],
+    "Set Take Screenshots": [
+      "take_screenshots: bool"
+    ],
+    "Set Threshold": [
+      "threshold: float"
+    ]
+  }
+}

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import re
 import textwrap
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional
 
 import cv2
+from robot.api import logger as robot_logger
 from robot.api.deco import keyword, library
 
 from DocTest.DocumentRepresentation import DocumentRepresentation
@@ -209,7 +209,7 @@ class Ai:
         doc_representation = DocumentRepresentation(doc_path, dpi=self.dpi)
         page_list = list(doc_representation.pages)
 
-        for idx, (page_meta, page_obj) in enumerate(zip(pages, page_list), 1):
+        for idx, (page_meta, page_obj) in enumerate(zip(pages, page_list, strict=False), 1):
             if target_page != "all" and int(target_page) != idx:
                 continue
             try:
@@ -379,10 +379,10 @@ class Ai:
             )
             if found_text:
                 return
-            print("LLM approved but keyword could not verify the expected content in document text; treating as failure.")
+            robot_logger.info("LLM approved but keyword could not verify the expected content in document text; treating as failure.")
             raise AssertionError(f"Expected object '{expected}' not found in '{document}'.")
         if decision.reason:
-            print(f"LLM reason: {decision.reason}")
+            robot_logger.info(f"LLM reason: {decision.reason}")
         raise AssertionError(f"Expected object '{expected}' not found in '{document}'.")
 
     @keyword(name="Get Item Count From Image", tags=("ai",))

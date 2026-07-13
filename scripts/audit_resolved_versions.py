@@ -33,7 +33,9 @@ EXPECTATIONS = {
 }
 
 # packages that must exist on this interpreter (beyond the table)
-PRESENCE = ["opencv-python-headless", "robotframework", "pytesseract", "wand"]
+# (wand was removed as a dependency — never imported; scipy remains only
+# transitively via scikit-image and is still covered by EXPECTATIONS)
+PRESENCE = ["opencv-python-headless", "robotframework", "pytesseract"]
 PRESENCE_312_PLUS = ["setuptools"]
 EXTRA_PRESENCE = ["fastapi", "uvicorn", "python-multipart"]
 
