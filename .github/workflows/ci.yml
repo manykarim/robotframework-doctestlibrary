@@ -203,7 +203,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
       - name: Build frontend
@@ -239,7 +239,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
       - name: Sync environment (web test group)
