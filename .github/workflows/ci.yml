@@ -12,9 +12,9 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           python-version: "3.12"
       - name: ruff
@@ -156,7 +156,7 @@ jobs:
       DOCTEST_LLM_BASE_URL: https://openrouter.ai/api/v1
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
       - name: Install Packages and Binaries
@@ -172,7 +172,7 @@ jobs:
           sudo cp ${archive_name}/* /usr/bin
           sudo cp policy.xml /etc/ImageMagick-6/
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           python-version: "3.13"
       - name: Install dependencies (all extras)
@@ -180,7 +180,7 @@ jobs:
       - name: Run tests with live LLM
         run: uv run invoke tests
       - name: Store LLM Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: success() || failure()
         with:
           name: llm-test-results
