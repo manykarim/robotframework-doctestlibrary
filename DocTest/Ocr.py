@@ -132,7 +132,7 @@ class EastTextExtractor:
         # resize the image and grab the new image dimensions
         resized_image = cv2.resize(image, (newW, newH))
         (H, W) = resized_image.shape[:2]
-        return (resized_image, height, width, ratio_width, ratio_height)
+        return (resized_image, W, H, ratio_width, ratio_height)
 
     def _compute_scores_geometry(self, image, width, height):
         # construct a blob from the image and then perform a forward pass of

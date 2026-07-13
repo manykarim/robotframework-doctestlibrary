@@ -479,7 +479,9 @@ class Page:
         if block_based_ssim:
             block_based_ssim_result, block_based_ssim_score = self.block_based_ssim_comparison(other_page.image, threshold=threshold, block_size=block_size)            
             if not block_based_ssim_result:
-                return False, diff, thresh, absolute_diff, 1.0 - block_based_ssim_score
+                # Clamp negative block scores so the reported difference
+                # score stays within [0, 1] for downstream consumers.
+                return False, diff, thresh, absolute_diff, 1.0 - max(block_based_ssim_score, 0.0)
         # Return a tuple: whether the pages are similar, and the difference image
         return score >= (1.0 - threshold), diff, thresh, absolute_diff, 1.0 - score
 
@@ -553,8 +555,10 @@ class Page:
                     win_size=win_size
                 )
 
-                # Track the lowest block SSIM
-                lowest_score = abs(min(lowest_score, block_score))
+                # Track the lowest block SSIM. SSIM ranges over [-1, 1];
+                # keep negative scores (anti-correlated blocks) so inverted
+                # content is detected as different.
+                lowest_score = min(lowest_score, block_score)
 
                 # If any block's SSIM falls below (1.0 - threshold), return immediately
                 if lowest_score < (1.0 - threshold):
@@ -1021,26 +1025,26 @@ class DocumentRepresentation:
         try:
             import fitz
             fitz.TOOLS.set_aa_level(0)  # PyMuPDF
-            doc = fitz.open(str(self.file_path))
-            self.metadata = doc.metadata
-            self.sigflags = doc.get_sigflags()
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                pix = page.get_pixmap(dpi=self.dpi)
-                img_data = pix.tobytes("png")
-                image = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
-                page_obj = Page(image, page_number=page_num + 1, dpi=self.dpi)
-                page_obj.is_pdf = True
-                page_obj.pdf_text_data = page.get_text("text", sort=True)
-                page_obj.pdf_text_dict = page.get_text("dict", sort=True)
-                page_obj.pdf_text_words = page.get_text("words", sort=True)
-                page_obj.pdf_text_blocks = page.get_text("blocks", sort=True)
-                page_obj.rotation = page.rotation
-                page_obj.mediabox = tuple(page.mediabox)
-                page_obj.fonts = page.get_fonts()
-                page_obj.images = page.get_images()
-                page_obj.signatures = self._extract_signatures(page)
-                self.pages.append(page_obj)
+            with fitz.open(str(self.file_path)) as doc:
+                self.metadata = doc.metadata
+                self.sigflags = doc.get_sigflags()
+                for page_num in range(len(doc)):
+                    page = doc.load_page(page_num)
+                    pix = page.get_pixmap(dpi=self.dpi)
+                    img_data = pix.tobytes("png")
+                    image = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
+                    page_obj = Page(image, page_number=page_num + 1, dpi=self.dpi)
+                    page_obj.is_pdf = True
+                    page_obj.pdf_text_data = page.get_text("text", sort=True)
+                    page_obj.pdf_text_dict = page.get_text("dict", sort=True)
+                    page_obj.pdf_text_words = page.get_text("words", sort=True)
+                    page_obj.pdf_text_blocks = page.get_text("blocks", sort=True)
+                    page_obj.rotation = page.rotation
+                    page_obj.mediabox = tuple(page.mediabox)
+                    page_obj.fonts = page.get_fonts()
+                    page_obj.images = page.get_images()
+                    page_obj.signatures = self._extract_signatures(page)
+                    self.pages.append(page_obj)
             self.page_count = len(self.pages)
         except ImportError:
             raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
@@ -1207,7 +1211,7 @@ class DocumentRepresentation:
                 filename = 'output-' + str(index+1)+'.png'
                 image_file =os.path.join(output_image_directory, filename)
                 data = cv2.imread(image_file)
-                page = Page(data, page_number=str(index+1), dpi=self.dpi)
+                page = Page(data, page_number=index + 1, dpi=self.dpi)
                 
             
                 if page is None:
@@ -1264,7 +1268,7 @@ class DocumentRepresentation:
             filename = 'output-' + str(index+1)+'.png'
             image_file =os.path.join(output_image_directory, filename)
             data = cv2.imread(image_file)
-            page = Page(data, page_number=str(index+1), dpi=self.dpi)
+            page = Page(data, page_number=index + 1, dpi=self.dpi)
             if page is None:
                 raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.file_path))
             # self.opencv_images.append(data)

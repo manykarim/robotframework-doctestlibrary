@@ -1,5 +1,6 @@
 """Unit tests for Downloader module."""
 
+import io
 import os
 import logging
 from unittest.mock import patch
@@ -15,6 +16,15 @@ from DocTest.Downloader import (
     get_filename_from_url,
     is_url,
 )
+
+
+def _payload_opener(payload=b"%PDF-1.4 test content"):
+    """Return a fake for DocTest.Downloader._open_url serving ``payload``."""
+
+    def _open(_url):
+        return io.BytesIO(payload)
+
+    return _open
 
 
 class TestIsUrl:
@@ -69,98 +79,91 @@ class TestDownloadFileFromUrl:
     """Test cases for download_file_from_url function."""
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
-    @patch("DocTest.Downloader.tempfile.gettempdir")
     @patch("DocTest.Downloader.uuid.uuid4")
     def test_download_with_default_params(
-        self, mock_uuid, mock_gettempdir, mock_urlretrieve, mock_getsize,
-        mock_warn_html
+        self, mock_uuid, mock_warn_html, tmp_path, monkeypatch
     ):
         """Test download with default directory and filename."""
-        mock_gettempdir.return_value = "/tmp"
+        monkeypatch.setattr(
+            "DocTest.Downloader.tempfile.gettempdir", lambda: str(tmp_path)
+        )
+        monkeypatch.setattr("DocTest.Downloader._open_url", _payload_opener())
         mock_uuid.return_value = "test-uuid"
         url = "https://example.com/test.pdf"
 
         result = download_file_from_url(url)
 
-        expected_path = os.path.join("/tmp", "test-uuid.pdf")
+        expected_path = os.path.join(str(tmp_path), "test-uuid.pdf")
         assert result == expected_path
-        mock_urlretrieve.assert_called_once_with(url, expected_path)
+        assert os.path.exists(expected_path)
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
     @patch("DocTest.Downloader.uuid.uuid4")
     def test_download_with_custom_directory(
-        self, mock_uuid, mock_urlretrieve, mock_getsize, mock_warn_html
+        self, mock_uuid, mock_warn_html, tmp_path, monkeypatch
     ):
         """Test download with custom directory."""
+        monkeypatch.setattr("DocTest.Downloader._open_url", _payload_opener())
         mock_uuid.return_value = "test-uuid"
         url = "https://example.com/test.pdf"
-        directory = "/custom/dir"
+        directory = str(tmp_path)
 
         result = download_file_from_url(url, directory=directory)
 
         expected_path = os.path.join(directory, "test-uuid.pdf")
         assert result == expected_path
-        mock_urlretrieve.assert_called_once_with(url, expected_path)
+        assert os.path.exists(expected_path)
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
-    def test_download_with_custom_filename(
-        self, mock_urlretrieve, mock_getsize, mock_warn_html
-    ):
+    def test_download_with_custom_filename(self, mock_warn_html, tmp_path, monkeypatch):
         """Test download with custom filename."""
+        monkeypatch.setattr("DocTest.Downloader._open_url", _payload_opener())
         url = "https://example.com/test.pdf"
-        directory = "/custom/dir"
+        directory = str(tmp_path)
         filename = "custom_name.pdf"
 
         result = download_file_from_url(url, directory=directory, filename=filename)
 
         expected_path = os.path.join(directory, filename)
         assert result == expected_path
-        mock_urlretrieve.assert_called_once_with(url, expected_path)
+        assert os.path.exists(expected_path)
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
-    @patch("DocTest.Downloader.tempfile.gettempdir")
     @patch("DocTest.Downloader.uuid.uuid4")
     def test_download_url_without_extension(
-        self, mock_uuid, mock_gettempdir, mock_urlretrieve, mock_getsize,
-        mock_warn_html
+        self, mock_uuid, mock_warn_html, tmp_path, monkeypatch
     ):
         """Test download with URL without file extension.
 
         When the URL path has no extension, the filename should be a UUID
         with no extension (not a broken path fragment like 'com/path/file').
         """
-        mock_gettempdir.return_value = "/tmp"
+        monkeypatch.setattr(
+            "DocTest.Downloader.tempfile.gettempdir", lambda: str(tmp_path)
+        )
+        monkeypatch.setattr("DocTest.Downloader._open_url", _payload_opener())
         mock_uuid.return_value = "test-uuid"
         url = "https://example.com/path/file"
 
         result = download_file_from_url(url)
 
-        expected_path = os.path.join("/tmp", "test-uuid")
+        expected_path = os.path.join(str(tmp_path), "test-uuid")
         assert result == expected_path
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
     @patch("DocTest.Downloader.uuid.uuid4")
     def test_download_url_with_query_params(
-        self, mock_uuid, mock_urlretrieve, mock_getsize, mock_warn_html
+        self, mock_uuid, mock_warn_html, tmp_path, monkeypatch
     ):
         """Test download with URL containing query parameters.
 
         Query parameters should be stripped; only the clean extension
         should be used in the filename.
         """
+        monkeypatch.setattr("DocTest.Downloader._open_url", _payload_opener())
         mock_uuid.return_value = "test-uuid"
         url = "https://example.com/test.pdf?param=value"
-        directory = "/test/dir"
+        directory = str(tmp_path)
 
         result = download_file_from_url(url, directory=directory)
 
@@ -168,20 +171,19 @@ class TestDownloadFileFromUrl:
         assert result == expected_path
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
     @patch("DocTest.Downloader.uuid.uuid4")
     def test_download_url_with_fragment(
-        self, mock_uuid, mock_urlretrieve, mock_getsize, mock_warn_html
+        self, mock_uuid, mock_warn_html, tmp_path, monkeypatch
     ):
         """Test download with URL containing fragment identifier.
 
         Fragments should be stripped; only the clean extension
         should be used in the filename.
         """
+        monkeypatch.setattr("DocTest.Downloader._open_url", _payload_opener())
         mock_uuid.return_value = "test-uuid"
         url = "https://example.com/test.pdf#page=5"
-        directory = "/test/dir"
+        directory = str(tmp_path)
 
         result = download_file_from_url(url, directory=directory)
 
@@ -189,16 +191,21 @@ class TestDownloadFileFromUrl:
         assert result == expected_path
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
     @patch("DocTest.Downloader.uuid.uuid4")
     def test_download_github_blob_url_converts_to_raw(
-        self, mock_uuid, mock_urlretrieve, mock_getsize, mock_warn_html
+        self, mock_uuid, mock_warn_html, tmp_path, monkeypatch
     ):
         """Test that GitHub blob URLs are converted to raw URLs for download."""
+        requested_urls = []
+
+        def _open(url):
+            requested_urls.append(url)
+            return io.BytesIO(b"data")
+
+        monkeypatch.setattr("DocTest.Downloader._open_url", _open)
         mock_uuid.return_value = "test-uuid"
         url = "https://github.com/user/repo/blob/main/path/file.png"
-        directory = "/test/dir"
+        directory = str(tmp_path)
 
         result = download_file_from_url(url, directory=directory)
 
@@ -207,7 +214,7 @@ class TestDownloadFileFromUrl:
         expected_raw_url = (
             "https://raw.githubusercontent.com/user/repo/main/path/file.png"
         )
-        mock_urlretrieve.assert_called_once_with(expected_raw_url, expected_path)
+        assert requested_urls == [expected_raw_url]
 
 
 class TestGetFilenameFromUrl:
@@ -366,46 +373,74 @@ class TestSchemeValidation:
             download_file_from_url("//example.com/test.pdf")
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
-    def test_http_scheme_allowed(
-        self, mock_urlretrieve, mock_getsize, mock_warn_html
-    ):
+    def test_http_scheme_allowed(self, mock_warn_html, tmp_path, monkeypatch):
         """Test that http:// URLs are allowed."""
+        monkeypatch.setattr("DocTest.Downloader._open_url", _payload_opener())
         result = download_file_from_url(
             "http://example.com/test.pdf",
-            directory="/tmp",
+            directory=str(tmp_path),
             filename="test.pdf",
         )
-        assert result == os.path.join("/tmp", "test.pdf")
+        assert result == os.path.join(str(tmp_path), "test.pdf")
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
-    def test_https_scheme_allowed(
-        self, mock_urlretrieve, mock_getsize, mock_warn_html
-    ):
+    def test_https_scheme_allowed(self, mock_warn_html, tmp_path, monkeypatch):
         """Test that https:// URLs are allowed."""
+        monkeypatch.setattr("DocTest.Downloader._open_url", _payload_opener())
         result = download_file_from_url(
             "https://example.com/test.pdf",
-            directory="/tmp",
+            directory=str(tmp_path),
             filename="test.pdf",
         )
-        assert result == os.path.join("/tmp", "test.pdf")
+        assert result == os.path.join(str(tmp_path), "test.pdf")
 
-    @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize", return_value=1024)
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
-    def test_ftp_scheme_allowed(
-        self, mock_urlretrieve, mock_getsize, mock_warn_html
-    ):
-        """Test that ftp:// URLs are allowed."""
-        result = download_file_from_url(
-            "ftp://ftp.example.com/test.zip",
-            directory="/tmp",
-            filename="test.zip",
-        )
-        assert result == os.path.join("/tmp", "test.zip")
+    def test_ftp_scheme_rejected(self, tmp_path):
+        """Test that ftp:// URLs are rejected (hardened default)."""
+        with pytest.raises(ValueError, match="scheme 'ftp' is not allowed"):
+            download_file_from_url(
+                "ftp://ftp.example.com/test.zip",
+                directory=str(tmp_path),
+                filename="test.zip",
+            )
+
+    @pytest.mark.parametrize(
+        "location,expected",
+        [
+            # ftp is allowed by the stdlib redirect handler; our handler must
+            # reject it because it is no longer in ALLOWED_SCHEMES.
+            ("ftp://internal.example.com/secret.zip", ValueError),
+            # file is rejected by the stdlib itself (HTTPError); either way
+            # the transfer must abort and leave no file behind.
+            ("file:///etc/passwd", Exception),
+        ],
+    )
+    def test_redirect_to_disallowed_scheme_rejected(self, tmp_path, location, expected):
+        """A redirect hop to a non-allowlisted scheme must abort the download."""
+        import http.server
+        import threading
+
+        class _RedirectHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(302)
+                self.send_header("Location", location)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), _RedirectHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/test.pdf"
+            with pytest.raises(expected):
+                download_file_from_url(
+                    url, directory=str(tmp_path), filename="redirected.pdf"
+                )
+            assert not (tmp_path / "redirected.pdf").exists()
+        finally:
+            server.shutdown()
+            server.server_close()
 
 
 class TestIsUrlWithAllowedSchemes:
@@ -435,7 +470,7 @@ class TestIsUrlWithAllowedSchemes:
         """Test with the module-level ALLOWED_SCHEMES constant."""
         assert is_url("http://example.com", allowed_schemes=ALLOWED_SCHEMES) is True
         assert is_url("https://example.com", allowed_schemes=ALLOWED_SCHEMES) is True
-        assert is_url("ftp://ftp.example.com", allowed_schemes=ALLOWED_SCHEMES) is True
+        assert is_url("ftp://ftp.example.com", allowed_schemes=ALLOWED_SCHEMES) is False
         assert is_url("custom://some.host", allowed_schemes=ALLOWED_SCHEMES) is False
 
     def test_invalid_url_still_rejected_with_schemes(self):
@@ -449,65 +484,63 @@ class TestFileSizeValidation:
     """Test cases for file size validation in download_file_from_url."""
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.remove")
-    @patch("DocTest.Downloader.os.path.getsize")
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
-    def test_oversized_file_rejected(
-        self, mock_urlretrieve, mock_getsize, mock_remove, mock_warn_html
-    ):
-        """Test that files exceeding max_size are rejected and deleted."""
-        mock_getsize.return_value = 200 * 1024 * 1024  # 200 MB
+    def test_oversized_file_rejected(self, mock_warn_html, tmp_path, monkeypatch):
+        """Test that downloads exceeding max_size abort and leave no file."""
+        monkeypatch.setattr(
+            "DocTest.Downloader._open_url", _payload_opener(b"x" * 2048)
+        )
         url = "https://example.com/large_file.bin"
 
         with pytest.raises(ValueError, match="exceeds maximum allowed size"):
-            download_file_from_url(url, directory="/tmp", filename="large.bin")
+            download_file_from_url(
+                url, directory=str(tmp_path), filename="large.bin", max_size=1024
+            )
 
-        # The file should have been deleted
-        mock_remove.assert_called_once_with(os.path.join("/tmp", "large.bin"))
+        # The partial file should have been deleted
+        assert not (tmp_path / "large.bin").exists()
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize")
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
     def test_file_within_default_max_size_accepted(
-        self, mock_urlretrieve, mock_getsize, mock_warn_html
+        self, mock_warn_html, tmp_path, monkeypatch
     ):
         """Test that files within DEFAULT_MAX_SIZE are accepted."""
-        mock_getsize.return_value = 50 * 1024 * 1024  # 50 MB
+        monkeypatch.setattr(
+            "DocTest.Downloader._open_url", _payload_opener(b"x" * 4096)
+        )
         url = "https://example.com/file.pdf"
 
-        result = download_file_from_url(url, directory="/tmp", filename="file.pdf")
-        assert result == os.path.join("/tmp", "file.pdf")
+        result = download_file_from_url(
+            url, directory=str(tmp_path), filename="file.pdf"
+        )
+        assert result == os.path.join(str(tmp_path), "file.pdf")
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.remove")
-    @patch("DocTest.Downloader.os.path.getsize")
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
-    def test_custom_max_size(
-        self, mock_urlretrieve, mock_getsize, mock_remove, mock_warn_html
-    ):
+    def test_custom_max_size(self, mock_warn_html, tmp_path, monkeypatch):
         """Test that a custom max_size is respected."""
-        mock_getsize.return_value = 2048  # 2 KB
+        monkeypatch.setattr(
+            "DocTest.Downloader._open_url", _payload_opener(b"x" * 2048)
+        )
         url = "https://example.com/file.pdf"
 
         with pytest.raises(ValueError, match="exceeds maximum allowed size"):
             download_file_from_url(
-                url, directory="/tmp", filename="file.pdf", max_size=1024
+                url, directory=str(tmp_path), filename="file.pdf", max_size=1024
             )
 
     @patch("DocTest.Downloader._warn_if_html_content")
-    @patch("DocTest.Downloader.os.path.getsize")
-    @patch("DocTest.Downloader.urllib.request.urlretrieve")
     def test_file_at_exact_max_size_accepted(
-        self, mock_urlretrieve, mock_getsize, mock_warn_html
+        self, mock_warn_html, tmp_path, monkeypatch
     ):
         """Test that a file exactly at max_size is accepted (not exceeded)."""
-        mock_getsize.return_value = 1024
+        monkeypatch.setattr(
+            "DocTest.Downloader._open_url", _payload_opener(b"x" * 1024)
+        )
         url = "https://example.com/file.pdf"
 
         result = download_file_from_url(
-            url, directory="/tmp", filename="file.pdf", max_size=1024
+            url, directory=str(tmp_path), filename="file.pdf", max_size=1024
         )
-        assert result == os.path.join("/tmp", "file.pdf")
+        assert result == os.path.join(str(tmp_path), "file.pdf")
 
     def test_default_max_size_constant(self):
         """Test that DEFAULT_MAX_SIZE is 100 MB."""
@@ -584,7 +617,7 @@ class TestModuleConstants:
         """Test that ALLOWED_SCHEMES contains expected values."""
         assert "http" in ALLOWED_SCHEMES
         assert "https" in ALLOWED_SCHEMES
-        assert "ftp" in ALLOWED_SCHEMES
+        assert "ftp" not in ALLOWED_SCHEMES
         assert "file" not in ALLOWED_SCHEMES
         assert "data" not in ALLOWED_SCHEMES
 

@@ -468,6 +468,7 @@ class VisualTest:
             ocr_engine=ocr_engine,
             ignore_area_file=placeholder_file,
             ignore_area=mask,
+            contains_barcodes=contains_barcodes,
             stream_pages=stream_documents_flag,
             page_cache_size=page_cache_size_value,
             **force_kwargs,
@@ -477,6 +478,7 @@ class VisualTest:
             candidate_image,
             dpi=dpi,
             ocr_engine=ocr_engine,
+            contains_barcodes=contains_barcodes,
             stream_pages=stream_documents_flag,
             page_cache_size=page_cache_size_value,
             **force_kwargs,
@@ -509,6 +511,23 @@ class VisualTest:
                             cand_page.image, cand_page.page_number, "candidate"
                         ),
                     }
+                if contains_barcodes:
+                    # Barcode areas are masked out of the pixel comparison via
+                    # pixel_ignore_areas; the decoded values are compared instead.
+                    ref_values = sorted(b["value"] for b in ref_page.barcodes)
+                    cand_values = sorted(b["value"] for b in cand_page.barcodes)
+                    if ref_values != cand_values:
+                        message = (
+                            f"The barcodes on page {ref_page.page_number} differ: "
+                            f"reference {ref_values}, candidate {cand_values}"
+                        )
+                        page_notes.append(message)
+                        detected_differences.append({
+                            "message": message,
+                            "page": ref_page.page_number,
+                            "type": "barcode",
+                        })
+
                 # Resize the candidate page if needed
                 if resize_candidate and ref_page.image.shape != cand_page.image.shape:
                     cand_page.image = cv2.resize(
@@ -632,18 +651,20 @@ class VisualTest:
                     if watermarks == []:
                         watermarks = self.load_watermarks(watermark_file)
 
-                    # First, try each watermark mask individually
-                    for mask in watermarks:
+                    # First, try each watermark mask individually.
+                    # Do NOT name the loop variable `mask` — it would shadow the
+                    # keyword's `mask` argument, which is written to the sidecar.
+                    for wm in watermarks:
                         if (
-                            mask.shape[0] != ref_page.image.shape[0]
-                            or mask.shape[1] != ref_page.image.shape[1]
+                            wm.shape[0] != ref_page.image.shape[0]
+                            or wm.shape[1] != ref_page.image.shape[1]
                         ):
                             # Resize mask to match thresh
-                            mask = cv2.resize(
-                                mask, (ref_page.image.shape[1], ref_page.image.shape[0])
+                            wm = cv2.resize(
+                                wm, (ref_page.image.shape[1], ref_page.image.shape[0])
                             )
 
-                        mask_inv = cv2.bitwise_not(mask)
+                        mask_inv = cv2.bitwise_not(wm)
                         # dilate the mask to account for slight misalignments
                         mask_inv = cv2.dilate(mask_inv, None, iterations=2)
                         result = cv2.subtract(absolute_diff, mask_inv)
@@ -675,26 +696,26 @@ class VisualTest:
                             )
 
                             total_individual_pixels = 0
-                            for i, mask in enumerate(watermarks):
+                            for i, wm in enumerate(watermarks):
                                 # Ensure all masks have the same dimensions
                                 if (
-                                    mask.shape[0] != ref_page.image.shape[0]
-                                    or mask.shape[1] != ref_page.image.shape[1]
+                                    wm.shape[0] != ref_page.image.shape[0]
+                                    or wm.shape[1] != ref_page.image.shape[1]
                                 ):
-                                    mask = cv2.resize(
-                                        mask,
+                                    wm = cv2.resize(
+                                        wm,
                                         (ref_page.image.shape[1], ref_page.image.shape[0]),
                                     )
 
                                 # Count pixels for debugging
-                                mask_pixels = np.sum(mask > 0)
+                                mask_pixels = np.sum(wm > 0)
                                 total_individual_pixels += mask_pixels
                                 robot_logger.debug(f"  Watermark {i + 1}: {mask_pixels} white pixels")
 
                                 # Add debugging screenshot for individual watermarks
                                 if self.take_screenshots:
                                     self.add_screenshot_to_log(
-                                        mask,
+                                        wm,
                                         suffix=f"_individual_watermark_{i + 1}",
                                         original_size=False,
                                     )
@@ -703,7 +724,7 @@ class VisualTest:
                                 # This creates a union of all black comparison areas
                                 # Note: Using AND operation because we want union of black (0) pixels
                                 # OR would give intersection of black areas, AND gives union of black areas
-                                combined_mask = cv2.bitwise_and(combined_mask, mask)
+                                combined_mask = cv2.bitwise_and(combined_mask, wm)
 
                             if combined_mask is not None:
                                 combined_black_pixels = np.sum(combined_mask == 0)

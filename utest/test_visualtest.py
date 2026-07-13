@@ -240,7 +240,18 @@ def test_find_no_existing_partial_image_with_sift(testdata_dir):
 
 
 def test_block_based_ssim(testdata_dir):
+    # These images genuinely differ: one block has a negative (anti-correlated)
+    # SSIM, which block-based mode must report as a difference at any
+    # threshold. It previously passed only because an abs() bug turned
+    # negative block scores into positive ones.
     visual_tester = VisualTest(threshold=0.999)
     ref_image=str(testdata_dir / "birthday_left.png")
     cand_image=str(testdata_dir / "birthday_right.png")
-    ssim = visual_tester.compare_images(ref_image, cand_image, block_based_ssim=True, block_size=32)
+    with pytest.raises(AssertionError):
+        visual_tester.compare_images(ref_image, cand_image, block_based_ssim=True, block_size=32)
+
+
+def test_block_based_ssim_passes_for_identical_images(testdata_dir):
+    visual_tester = VisualTest(threshold=0.999)
+    ref_image=str(testdata_dir / "birthday_left.png")
+    visual_tester.compare_images(ref_image, ref_image, block_based_ssim=True, block_size=32)

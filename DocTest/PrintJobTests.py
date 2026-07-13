@@ -357,8 +357,10 @@ def compare_print_jobs(type, reference_file, test_file):
     elif type=='pcl':
         reference_print_job = get_pcl_print_job(reference_file)
         test_print_job = get_pcl_print_job(test_file)
-    elif type=='afp':
-        pass
+    else:
+        raise ValueError(
+            f"Unsupported print job type '{type}'. Supported types are: 'pcl', 'ps'."
+        )
     compare_properties(reference_print_job, test_print_job)
 
 def compare_properties(reference_print_job, test_print_job):
@@ -373,6 +375,11 @@ def compare_properties(reference_print_job, test_print_job):
     robot_logger.info(pformat(DeepDiff(reference_print_job.properties, test_print_job.properties, verbose_level=2)))
     for reference_property_item in reference_print_job.properties:
         test_property_item = next((item for item in test_print_job.properties if item["property"] == reference_property_item["property"]), None)
+        if test_property_item is None:
+            properties_are_equal = False
+            for x in reference_property_item['value']:
+                list_difference.append({'file':'reference', 'property':reference_property_item['property'], 'value':x})
+            continue
         if reference_property_item['value']!=test_property_item['value']:
             properties_are_equal = False
 
@@ -383,6 +390,13 @@ def compare_properties(reference_print_job, test_print_job):
             for x in test_property_item['value']:
                 if x not in reference_property_item['value']:
                     list_difference.append({'file':'test', 'property':test_property_item['property'], 'value':x})
+
+    reference_property_names = {item["property"] for item in reference_print_job.properties}
+    for test_property_item in test_print_job.properties:
+        if test_property_item["property"] not in reference_property_names:
+            properties_are_equal = False
+            for x in test_property_item['value']:
+                list_difference.append({'file':'test', 'property':test_property_item['property'], 'value':x})
 
     if properties_are_equal==False:
         robot_logger.info(pformat(list_difference))

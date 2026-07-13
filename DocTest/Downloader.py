@@ -8,8 +8,32 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_SCHEMES = ("http", "https", "ftp")
+ALLOWED_SCHEMES = ("http", "https")
 DEFAULT_MAX_SIZE = 100 * 1024 * 1024  # 100 MB
+_DOWNLOAD_CHUNK_SIZE = 64 * 1024
+
+
+class _SchemeValidatingRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Redirect handler that re-validates the scheme of every redirect hop.
+
+    `urlretrieve`/openers follow redirects transparently, so an allowed
+    http(s) URL could otherwise bounce to an arbitrary scheme or handler.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlparse(newurl)
+        if parsed.scheme not in ALLOWED_SCHEMES:
+            raise ValueError(
+                f"Redirect to URL scheme '{parsed.scheme}' is not allowed. "
+                f"Allowed schemes: {', '.join(ALLOWED_SCHEMES)}"
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open_url(url):
+    """Open ``url`` for reading, re-validating the scheme on every redirect hop."""
+    opener = urllib.request.build_opener(_SchemeValidatingRedirectHandler())
+    return opener.open(url)
 
 
 def is_url(url, allowed_schemes=None):
@@ -101,16 +125,32 @@ def download_file_from_url(url, directory=None, filename=None, max_size=None):
             filename = str(uuid.uuid4())
     file_path = os.path.join(directory, filename)
     download_url = convert_github_blob_to_raw(url)
-    urllib.request.urlretrieve(download_url, file_path)
 
-    # Validate downloaded file size
-    file_size = os.path.getsize(file_path)
-    if file_size > max_size:
-        os.remove(file_path)
-        raise ValueError(
-            f"Downloaded file size ({file_size} bytes) exceeds maximum "
-            f"allowed size ({max_size} bytes). File has been deleted."
-        )
+    # Stream the download so the size limit aborts the transfer early
+    # instead of being checked only after a full download.
+    try:
+        with _open_url(download_url) as response:
+            bytes_written = 0
+            with open(file_path, "wb") as out_file:
+                while True:
+                    chunk = response.read(_DOWNLOAD_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    bytes_written += len(chunk)
+                    if bytes_written > max_size:
+                        raise ValueError(
+                            f"Download size exceeds maximum allowed size "
+                            f"({max_size} bytes). Transfer aborted."
+                        )
+                    out_file.write(chunk)
+    except BaseException:
+        # Never leave partial temp files behind on any failure.
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                logger.warning("Could not remove partial download: %s", file_path)
+        raise
 
     # Sniff for HTML content when we likely expected a document/image
     _warn_if_html_content(file_path, url)
