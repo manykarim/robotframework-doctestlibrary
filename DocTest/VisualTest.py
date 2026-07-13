@@ -33,6 +33,20 @@ LOG = logging.getLogger(__name__)
 _VISUAL_LLM_RUNTIME: Optional[Tuple[Any, Any, Any]] = None
 
 
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("true", "1", "yes", "on"):
+            return True
+        if lowered in ("false", "0", "no", "off"):
+            return False
+    return bool(value)
+
+
 def _coerce_label_value(label: Any) -> str:
     value = getattr(label, "value", label)
     return str(value)
@@ -78,7 +92,9 @@ def count_real_difference_pixels(
     kernel = np.ones((3, 3), np.uint8)
 
     def local_range(gray):
-        return cv2.dilate(gray, kernel).astype(int) - cv2.erode(gray, kernel).astype(int)
+        # uint8 subtract: dilate >= erode pointwise, so no clamping occurs;
+        # identical result to int64 arithmetic at a fraction of the cost.
+        return cv2.subtract(cv2.dilate(gray, kernel), cv2.erode(gray, kernel))
 
     on_edge = (local_range(gray_reference) > edge_range) & (
         local_range(gray_candidate) > edge_range
@@ -337,12 +353,12 @@ class VisualTest:
 
         | `Compare Images`    reference.pdf    candidate.pdf    mask=top:10;bottom:10   #Excludes two areas top and bottom with 10% from comparison
         """
-        llm_requested = bool(
-            kwargs.pop("llm", False)
-            or kwargs.pop("llm_enabled", False)
-            or kwargs.pop("use_llm", False)
+        llm_requested = (
+            _as_bool(kwargs.pop("llm", False))
+            or _as_bool(kwargs.pop("llm_enabled", False))
+            or _as_bool(kwargs.pop("use_llm", False))
         )
-        llm_override_result = bool(kwargs.pop("llm_override", False))
+        llm_override_result = _as_bool(kwargs.pop("llm_override", False))
         llm_overrides: Dict[str, Optional[str]] = {}
         llm_runtime_notes: List[str] = []
         custom_llm_prompt = kwargs.pop("llm_prompt", None)
@@ -996,10 +1012,19 @@ class VisualTest:
                             "rectangles": diff_rectangles_cache,
                             "score": score,
                             "threshold": threshold,
-                            "absolute_diff": absolute_diff.copy() if absolute_diff is not None else None,
-                            "combined_diff": combined_image_with_differences.copy()
-                            if combined_image_with_differences is not None
-                            else None,
+                            # Full-page diff copies are only consumed by the
+                            # LLM payload path — skip the ~11 MB/page copies
+                            # when no LLM was requested.
+                            "absolute_diff": (
+                                absolute_diff.copy()
+                                if llm_requested and absolute_diff is not None
+                                else None
+                            ),
+                            "combined_diff": (
+                                combined_image_with_differences.copy()
+                                if llm_requested and combined_image_with_differences is not None
+                                else None
+                            ),
                             "notes": page_notes[:],
                         }
                     )

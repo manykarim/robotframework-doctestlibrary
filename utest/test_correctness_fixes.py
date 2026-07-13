@@ -57,6 +57,42 @@ class TestLlmStringFlagCoercion:
         assert calls, "LLM runtime should be requested for llm='True'"
 
 
+class TestVisualLlmStringFlagCoercion:
+    """§2.1 (VisualTest variant) — string 'False' must disable the LLM flags."""
+
+    def _run_compare(self, testdata_dir, monkeypatch, **llm_kwargs):
+        calls = []
+
+        def _fake_runtime():
+            calls.append(True)
+            from DocTest.VisualTest import LLMDependencyError
+            raise LLMDependencyError()
+
+        monkeypatch.setattr(
+            "DocTest.VisualTest._load_visual_llm_runtime", _fake_runtime
+        )
+        tester = VisualTest()
+        with pytest.raises(AssertionError):
+            tester.compare_images(
+                str(testdata_dir / "birthday_1080.png"),
+                str(testdata_dir / "birthday_1080_date_id.png"),
+                **llm_kwargs,
+            )
+        return calls
+
+    def test_string_false_disables_llm(self, testdata_dir, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        calls = self._run_compare(
+            testdata_dir, monkeypatch, llm="False", llm_override="False"
+        )
+        assert calls == []
+
+    def test_string_true_enables_llm(self, testdata_dir, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        calls = self._run_compare(testdata_dir, monkeypatch, llm="True")
+        assert calls
+
+
 class TestContainsBarcodes:
     """§2.2 — contains_barcodes must be forwarded and content-checked."""
 
