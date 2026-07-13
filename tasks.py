@@ -18,17 +18,20 @@ atests_completed_process = None
 
 @task
 def utests(context):
+    # pytest-cov instead of a coverage-run wrapper: xdist workers are traced
+    # correctly, and [tool.coverage.run] parallel=true keeps the data files
+    # mergeable with the coverage-wrapped Robot runs via `coverage combine`.
     cmd = [
         "uv",
         "run",
         "--",
-        "coverage",
-        "run",
-        "--source=DocTest,doctest_dashboard",
-        "-p",
-        "-m",
         "pytest",
         "--junitxml=results/pytest.xml",
+        "--cov=DocTest",
+        "--cov=doctest_dashboard",
+        "--cov-report=",
+        "-n auto",
+        "--timeout=300",
         f"{ROOT}/utest",
     ]
     global utests_completed_process
@@ -67,13 +70,16 @@ def atests(context):
 @task(utests, atests)
 def tests(context):
     subprocess.run("uv run -- coverage combine", shell=True, check=False)
-    subprocess.run("uv run -- coverage report", shell=True, check=False)
+    # coverage report enforces [tool.coverage.report] fail_under
+    report_process = subprocess.run("uv run -- coverage report", shell=True, check=False)
     subprocess.run("uv run -- coverage html -d results/htmlcov", shell=True, check=False)
     if (
         utests_completed_process.returncode != 0
         or atests_completed_process.returncode != 0
     ):
         raise Exception("Tests failed")
+    if report_process.returncode != 0:
+        raise Exception("Coverage below the configured fail_under floor")
 
 
 @task

@@ -154,7 +154,6 @@ def check_all_capabilities() -> Dict[str, Dict]:
                 b.strip() for b in fallback_str.split(",") if b.strip()
             )
 
-        used_fallback = False
         for idx, binary_name in enumerate(binaries_to_try):
             path = check_binary(binary_name)
             if path is not None:
@@ -164,7 +163,6 @@ def check_all_capabilities() -> Dict[str, Dict]:
                 if version:
                     entry["version"] = version
                 if idx > 0:
-                    used_fallback = True
                     entry["note"] = f"Using fallback '{binary_name}' command"
                 break
 

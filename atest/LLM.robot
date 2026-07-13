@@ -7,13 +7,16 @@ Library    DocTest.Ai
 Suite Setup    Require LLM Credentials
 
 *** Variables ***
-${openai}    %{OPENAI_API_KEY=""}
-${azure}    %{AZURE_OPENAI_API_KEY=""}
+# Empty defaults (a default of "" would be a literal two-character string
+# and the skip check below would never fire).
+${openai}    %{OPENAI_API_KEY=}
+${azure}    %{AZURE_OPENAI_API_KEY=}
+${doctest_llm}    %{DOCTEST_LLM_API_KEY=}
 
 *** Keywords ***
 Require LLM Credentials
-    IF    '${openai}' == '' and '${azure}' == ''
-        Skip    LLM credentials not configured. Set OPENAI_API_KEY or AZURE_OPENAI_API_KEY to run AI tests.
+    IF    '${openai}' == '' and '${azure}' == '' and '${doctest_llm}' == ''
+        Skip    LLM credentials not configured. Set OPENAI_API_KEY, AZURE_OPENAI_API_KEY or DOCTEST_LLM_API_KEY to run AI tests.
     END
 
 

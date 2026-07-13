@@ -2,10 +2,9 @@ import logging
 from pprint import pformat
 from parsimonious.grammar import Grammar, NodeVisitor
 import re
-from pathlib import Path
 from deepdiff import DeepDiff
 from robot.api import logger as robot_logger
-from robot.api.deco import keyword, library, not_keyword
+from robot.api.deco import keyword, not_keyword
 from DocTest.Downloader import is_url, download_file_from_url
 
 logger = logging.getLogger(__name__)
@@ -93,14 +92,14 @@ class PostscriptVisitor(NodeVisitor):
         page, page_sections, _, document, _, page_trailer = visited_children
         page_number = page[1].strip().split()
         for item in page_sections:
-            if item!=None:
+            if item is not None:
                 item['page']=page_number[0]
                 self.pages.append(item)
         pass
 
 
     def visit_page_sections(self, node, visited_children):
-        if visited_children[0]!=None:
+        if visited_children[0] is not None:
 
             if node.children[0].expr_name=='page_setup':
                 return {'property':'feature', 'value':visited_children}
@@ -129,8 +128,7 @@ class PostscriptVisitor(NodeVisitor):
         pass
 
     def visit_feature(self, node, visited_children):
-        begin_feature, ppd_feature, _ = visited_children 
-        name = begin_feature.children[0]
+        begin_feature, ppd_feature, _ = visited_children
         feature = begin_feature.children[1]
         feature = feature.text.strip()
         ppd_feature = ppd_feature.text.strip()
@@ -144,9 +142,9 @@ class PostscriptVisitor(NodeVisitor):
     def visit_header(self, node, visited_children):
         _, comments, _ = visited_children
         for comment in comments:
-            if comment!=None:
+            if comment is not None:
                 self.header.append(comment)
-        return [comment for comment in comments if comment!=None]
+        return [comment for comment in comments if comment is not None]
 
     def visit_document_trailer(self, node, visited_children):
         _, items = visited_children
@@ -164,9 +162,9 @@ class PostscriptVisitor(NodeVisitor):
        
 @not_keyword
 def chop(text, prefix=None, suffix=None):
-    if prefix!=None:
+    if prefix is not None:
         text=re.sub(prefix, '', text)
-    if suffix!=None:
+    if suffix is not None:
         text=re.sub(suffix, '', text)
     return text
 
@@ -357,8 +355,10 @@ def compare_print_jobs(type, reference_file, test_file):
     elif type=='pcl':
         reference_print_job = get_pcl_print_job(reference_file)
         test_print_job = get_pcl_print_job(test_file)
-    elif type=='afp':
-        pass
+    else:
+        raise ValueError(
+            f"Unsupported print job type '{type}'. Supported types are: 'pcl', 'ps'."
+        )
     compare_properties(reference_print_job, test_print_job)
 
 def compare_properties(reference_print_job, test_print_job):
@@ -373,6 +373,11 @@ def compare_properties(reference_print_job, test_print_job):
     robot_logger.info(pformat(DeepDiff(reference_print_job.properties, test_print_job.properties, verbose_level=2)))
     for reference_property_item in reference_print_job.properties:
         test_property_item = next((item for item in test_print_job.properties if item["property"] == reference_property_item["property"]), None)
+        if test_property_item is None:
+            properties_are_equal = False
+            for x in reference_property_item['value']:
+                list_difference.append({'file':'reference', 'property':reference_property_item['property'], 'value':x})
+            continue
         if reference_property_item['value']!=test_property_item['value']:
             properties_are_equal = False
 
@@ -384,7 +389,14 @@ def compare_properties(reference_print_job, test_print_job):
                 if x not in reference_property_item['value']:
                     list_difference.append({'file':'test', 'property':test_property_item['property'], 'value':x})
 
-    if properties_are_equal==False:
+    reference_property_names = {item["property"] for item in reference_print_job.properties}
+    for test_property_item in test_print_job.properties:
+        if test_property_item["property"] not in reference_property_names:
+            properties_are_equal = False
+            for x in test_property_item['value']:
+                list_difference.append({'file':'test', 'property':test_property_item['property'], 'value':x})
+
+    if not properties_are_equal:
         robot_logger.info(pformat(list_difference))
         raise AssertionError('The compared print jobs are different.')
 
@@ -444,10 +456,13 @@ def printTable(myDict, colList=None):
    """
    if type(myDict) is not list:
        myDict = [myDict]
-   if not colList: colList = list(myDict[0].keys() if myDict else [])
+   if not colList:
+       colList = list(myDict[0].keys() if myDict else [])
    myList = [colList] # 1st row = header
-   for item in myDict: myList.append([str(item[col] if item[col] is not None else '') for col in colList])
-   colSize = [max(map(len,col)) for col in zip(*myList)]
+   for item in myDict:
+       myList.append([str(item[col] if item[col] is not None else '') for col in colList])
+   colSize = [max(map(len,col)) for col in zip(*myList, strict=False)]
    formatStr = ' | '.join(["{{:<{}}}".format(i) for i in colSize])
    myList.insert(1, ['-' * i for i in colSize]) # Seperating line
-   for item in myList: robot_logger.info(formatStr.format(*item))
+   for item in myList:
+       robot_logger.info(formatStr.format(*item))

@@ -22,25 +22,21 @@ classifiers = [
 # in maintained versions, and 3.9 is past end of life.
 dependencies = [
     "PyMuPDF>=1.26.0",
-    "imutils",
     "numpy>=1.26; python_version < '3.13'",
     "numpy>=2.1.0; python_version >= '3.13'",
-    "opencv-python-headless",
-    "parsimonious",
-    "pytesseract",
+    "opencv-python-headless>=4.8",
+    "parsimonious>=0.10",
+    "pytesseract>=0.3.10",
     "robotframework>=4",
-    "scipy; python_version < '3.12'",
-    "scipy>=1.11; python_version >= '3.12'",
     "scikit-image; python_version < '3.12'",
     "scikit-image>=0.22.0; python_version == '3.12'",
     "scikit-image>=0.25.0; python_version >= '3.13'",
-    "Wand",
-    "pylibdmtx",
+    "pylibdmtx>=0.1.10",
     "deepdiff; python_version < '3.12'",
     "deepdiff>=6.0; python_version >= '3.12'",
-    "pyzbar",
+    "pyzbar>=0.1.9",
     "setuptools; python_version >= '3.12'",
-    "robotframework-assertion-engine",
+    "robotframework-assertion-engine>=3.0.3",
 ]
 
 [project.urls]
@@ -59,7 +55,16 @@ dashboard = [
     "python-multipart>=0.0.9",
 ]
 all = [
-    "robotframework-doctestlibrary[ai,dashboard]",
+    "robotframework-doctestlibrary[ai,dashboard,barcode,printjobs]",
+]
+# Forward-looking extras: these packages are currently also in the base
+# dependencies; a future documented release will move them here exclusively.
+barcode = [
+    "pylibdmtx>=0.1.10",
+    "pyzbar>=0.1.9",
+]
+printjobs = [
+    "parsimonious>=0.10",
 ]
 # convenience extras: pull one web automation library for DocTest.WebVisualTest
 # (which itself needs no extra dependencies — it drives whichever is installed)
@@ -87,6 +92,10 @@ dev = [
     "httpx",
     "pytest-playwright",
     "packaging",
+    "pytest-benchmark>=5.2.3",
+    "pytest-xdist>=3.8.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [build-system]
@@ -105,3 +114,51 @@ artifacts = ["doctest_dashboard/static"]
 include = ["DocTest", "doctest_dashboard", "README.md"]
 exclude = ["DocTest/data/frozen_east_text_detection.pb"]
 artifacts = ["doctest_dashboard/static"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+# Lenient baseline: pyflakes, core pycodestyle errors, bugbear.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = [
+    "E722", # bare except — legacy pattern, narrowed incrementally
+    "E741", # ambiguous variable names in CV math code
+    "B008", # function call in default — Robot keyword idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+"DocTest/__init__.py" = ["F401"]
+
+[tool.mypy]
+files = ["DocTest"]
+ignore_missing_imports = true
+no_strict_optional = true
+allow_redefinition = true
+implicit_reexport = true
+check_untyped_defs = false
+# Lenient baseline for the legacy CV/numpy math code: numeric-typing noise
+# is disabled; attr-defined/name-defined/return-value stay on (they catch
+# real bugs — three were found on first run).
+disable_error_code = [
+    "operator",
+    "arg-type",
+    "var-annotated",
+    "assignment",
+    "misc",
+    "list-item",
+]
+
+[tool.coverage.run]
+# Parallel data files: pytest-cov (utest, xdist workers) and the
+# coverage-wrapped Robot runs (atest) all emit suffixed files that
+# `coverage combine` merges before reporting.
+parallel = true
+source = ["DocTest", "doctest_dashboard"]
+
+[tool.coverage.report]
+# Floor is set below the measured combined utest+atest coverage
+# (45-49% across CI jobs as of 2026-07); raise it as coverage grows,
+# never lower it.
+fail_under = 40

@@ -9,6 +9,26 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+      - name: ruff
+        run: uvx ruff check DocTest
+      - name: mypy
+        run: |
+          uv sync --all-extras
+          uv run --with mypy mypy DocTest
+      - name: pip-audit
+        run: |
+          uv export --format requirements-txt --no-emit-project --no-dev > requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt --disable-pip
+        continue-on-error: true
+
   smoke-no-ai:
     runs-on: ubuntu-latest
     steps:
@@ -65,13 +85,9 @@ jobs:
 
   test:
     needs: smoke-no-ai
-    env:
-      DOCTEST_LLM_MODEL: ${{ vars.DOCTEST_LLM_MODEL }}
-      DOCTEST_LLM_VISION_MODEL: ${{ vars.DOCTEST_LLM_VISION_MODEL }}
-      DOCTEST_LLM_PROVIDER: ${{ vars.DOCTEST_LLM_PROVIDER }}
-      DOCTEST_LLM_ENABLED: true
-      DOCTEST_LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-      DOCTEST_LLM_BASE_URL: https://openrouter.ai/api/v1
+    # Required matrix runs WITHOUT live-LLM access: a paid external service
+    # must not gate every PR on every interpreter. LLM coverage lives in the
+    # separate non-required llm-tests job below.
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -125,6 +141,52 @@ jobs:
           name: xUnit Tests ${{ matrix.python-version }} # Name of the check run which will be created
           path: results/pytest.xml,results/xunit.xml # Path to test results
           reporter: java-junit # Format of test results
+
+  llm-tests:
+    # Optional: exercises the live-LLM paths on one interpreter. Not a
+    # required check — external model availability must not block merges.
+    needs: smoke-no-ai
+    continue-on-error: true
+    env:
+      DOCTEST_LLM_MODEL: ${{ vars.DOCTEST_LLM_MODEL }}
+      DOCTEST_LLM_VISION_MODEL: ${{ vars.DOCTEST_LLM_VISION_MODEL }}
+      DOCTEST_LLM_PROVIDER: ${{ vars.DOCTEST_LLM_PROVIDER }}
+      DOCTEST_LLM_ENABLED: true
+      DOCTEST_LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      DOCTEST_LLM_BASE_URL: https://openrouter.ai/api/v1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Install Packages and Binaries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
+          export release_name=gs9561
+          export archive_name=ghostpcl-9.56.1-linux-x86_64
+          wget https://github.com/ArtifexSoftware/ghostpdl-downloads/releases/download/${release_name}/${archive_name}.tgz
+          tar -xvzf ${archive_name}.tgz
+          chmod +x ${archive_name}/gpcl6*
+          cp ${archive_name}/gpcl6* ${archive_name}/pcl6
+          sudo cp ${archive_name}/* /usr/bin
+          sudo cp policy.xml /etc/ImageMagick-6/
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies (all extras)
+        run: uv sync --all-extras
+      - name: Run tests with live LLM
+        run: uv run invoke tests
+      - name: Store LLM Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: success() || failure()
+        with:
+          name: llm-test-results
+          path: |
+            results/*.html
+            results/*.xml
 
   dashboard:
     needs: smoke-no-ai

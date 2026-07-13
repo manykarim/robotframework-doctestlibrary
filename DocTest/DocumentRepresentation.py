@@ -2,7 +2,6 @@ import os
 import cv2
 import pytesseract
 import numpy as np
-import json
 import logging
 import re
 from collections import OrderedDict
@@ -26,15 +25,24 @@ logger = logging.getLogger(__name__)
 # Constants
 
 
+_PDF_TEXT_UNSET = object()
+
+
 class Page:
     def __init__(self, image: np.ndarray, page_number: int, dpi: int = DEFAULT_DPI):
         self.page_number = page_number
         self.image = image  # Image as NumPy array (OpenCV format)
         self.dpi = dpi
         self.ocr_text_data: Optional[Dict] = None
-        self.pdf_text_data: Optional[Dict] = None
-        self.pdf_text_dict: Optional[Dict] = None
-        self.pdf_text_blocks: Optional[Dict] = None
+        # The expensive PDF text representations are extracted lazily on
+        # first access (see the pdf_text_* properties). `pdf_text_words`
+        # stays eager: it is cheap and used on the common compare path.
+        self._pdf_text_data = _PDF_TEXT_UNSET
+        self._pdf_text_dict = _PDF_TEXT_UNSET
+        self._pdf_text_blocks = _PDF_TEXT_UNSET
+        # (source PDF path, 0-based page index) for on-demand extraction;
+        # None for non-PDF pages.
+        self._pdf_text_source: Optional[Tuple[str, int]] = None
         self.pdf_text_words: Optional[Dict] = None
         self.text: str = ""
         self.barcodes: List[Dict] = []
@@ -50,6 +58,51 @@ class Page:
         self.images: List = []
         self.signatures: List = []
         self._pdf_ignore_rectangles: List[Tuple[float, float, float, float]] = []
+
+    def _extract_pdf_text(self, fmt: str):
+        """Extract a text representation on demand from the source PDF.
+
+        The rendering loaders close their fitz document deterministically,
+        so late access re-opens the document by path. This only happens on
+        text-consuming paths (masks, text checks), never on plain pixel
+        comparisons.
+        """
+        if self._pdf_text_source is None:
+            return None
+        import fitz
+        path, index = self._pdf_text_source
+        with fitz.open(path) as doc:
+            return doc.load_page(index).get_text(fmt, sort=True)
+
+    @property
+    def pdf_text_data(self):
+        if self._pdf_text_data is _PDF_TEXT_UNSET:
+            self._pdf_text_data = self._extract_pdf_text("text")
+        return self._pdf_text_data
+
+    @pdf_text_data.setter
+    def pdf_text_data(self, value):
+        self._pdf_text_data = value
+
+    @property
+    def pdf_text_dict(self):
+        if self._pdf_text_dict is _PDF_TEXT_UNSET:
+            self._pdf_text_dict = self._filter_pdf_dict(self._extract_pdf_text("dict"))
+        return self._pdf_text_dict
+
+    @pdf_text_dict.setter
+    def pdf_text_dict(self, value):
+        self._pdf_text_dict = value
+
+    @property
+    def pdf_text_blocks(self):
+        if self._pdf_text_blocks is _PDF_TEXT_UNSET:
+            self._pdf_text_blocks = self._filter_pdf_blocks(self._extract_pdf_text("blocks"))
+        return self._pdf_text_blocks
+
+    @pdf_text_blocks.setter
+    def pdf_text_blocks(self, value):
+        self._pdf_text_blocks = value
 
     def release_resources(self):
         """Release heavy in-memory artifacts to assist streaming workflows."""
@@ -114,8 +167,6 @@ class Page:
         """Remove PDF text artifacts that intersect ignore rectangles."""
         if not self.pixel_ignore_areas:
             return
-        if not (self.pdf_text_dict or self.pdf_text_words or self.pdf_text_blocks):
-            return
 
         pdf_rects: List[Tuple[float, float, float, float]] = []
         scale = 72.0 / max(self.dpi, 1)
@@ -131,55 +182,67 @@ class Page:
 
         self._pdf_ignore_rectangles = pdf_rects
 
-        def intersects(bbox: Tuple[float, float, float, float]) -> bool:
-            for rx0, ry0, rx1, ry1 in pdf_rects:
-                if not (bbox[2] <= rx0 or rx1 <= bbox[0] or bbox[3] <= ry0 or ry1 <= bbox[1]):
-                    return True
-            return False
-
+        # Filter only representations that are already materialized;
+        # the lazy getters apply the same filter on late extraction.
         if self.pdf_text_words:
             filtered_words = []
             for word in self.pdf_text_words:
                 bbox = (word[0], word[1], word[2], word[3])
-                if intersects(bbox):
+                if self._intersects_ignore_rects(bbox):
                     continue
                 filtered_words.append(word)
             self.pdf_text_words = filtered_words
 
-        if self.pdf_text_dict and self.pdf_text_dict.get('blocks'):
-            filtered_blocks = []
-            for block in self.pdf_text_dict.get('blocks', []):
-                if block.get('type') != 0:
-                    filtered_blocks.append(block)
-                    continue
-                new_lines = []
-                for line in block.get('lines', []):
-                    new_spans = []
-                    for span in line.get('spans', []):
-                        bbox = tuple(span.get('bbox', (0.0, 0.0, 0.0, 0.0)))
-                        if intersects(bbox):
-                            continue
-                        new_spans.append(span)
-                    if new_spans:
-                        line['spans'] = new_spans
-                        new_lines.append(line)
-                if new_lines:
-                    block['lines'] = new_lines
-                    filtered_blocks.append(block)
-            self.pdf_text_dict['blocks'] = filtered_blocks
-
-        if self.pdf_text_blocks:
-            filtered_text_blocks = []
-            for block in self.pdf_text_blocks:
-                bbox = None
-                if isinstance(block, (list, tuple)) and len(block) > 1 and isinstance(block[1], (list, tuple)):
-                    bbox = tuple(block[1])
-                if bbox and intersects(bbox):
-                    continue
-                filtered_text_blocks.append(block)
-            self.pdf_text_blocks = filtered_text_blocks
+        if self._pdf_text_dict is not _PDF_TEXT_UNSET:
+            self._pdf_text_dict = self._filter_pdf_dict(self._pdf_text_dict)
+        if self._pdf_text_blocks is not _PDF_TEXT_UNSET:
+            self._pdf_text_blocks = self._filter_pdf_blocks(self._pdf_text_blocks)
 
         self._structure_cache.clear()
+
+    def _intersects_ignore_rects(self, bbox: Tuple[float, float, float, float]) -> bool:
+        for rx0, ry0, rx1, ry1 in self._pdf_ignore_rectangles:
+            if not (bbox[2] <= rx0 or rx1 <= bbox[0] or bbox[3] <= ry0 or ry1 <= bbox[1]):
+                return True
+        return False
+
+    def _filter_pdf_dict(self, text_dict):
+        if not (self._pdf_ignore_rectangles and text_dict and text_dict.get('blocks')):
+            return text_dict
+        filtered_blocks = []
+        for block in text_dict.get('blocks', []):
+            if block.get('type') != 0:
+                filtered_blocks.append(block)
+                continue
+            new_lines = []
+            for line in block.get('lines', []):
+                new_spans = []
+                for span in line.get('spans', []):
+                    bbox = tuple(span.get('bbox', (0.0, 0.0, 0.0, 0.0)))
+                    if self._intersects_ignore_rects(bbox):
+                        continue
+                    new_spans.append(span)
+                if new_spans:
+                    line['spans'] = new_spans
+                    new_lines.append(line)
+            if new_lines:
+                block['lines'] = new_lines
+                filtered_blocks.append(block)
+        text_dict['blocks'] = filtered_blocks
+        return text_dict
+
+    def _filter_pdf_blocks(self, text_blocks):
+        if not (self._pdf_ignore_rectangles and text_blocks):
+            return text_blocks
+        filtered_text_blocks = []
+        for block in text_blocks:
+            bbox = None
+            if isinstance(block, (list, tuple)) and len(block) > 1 and isinstance(block[1], (list, tuple)):
+                bbox = tuple(block[1])
+            if bbox and self._intersects_ignore_rects(bbox):
+                continue
+            filtered_text_blocks.append(block)
+        return filtered_text_blocks
 
     def get_area(self, area: Dict):
         """Gets the area of the image specified by the coordinates."""
@@ -337,7 +400,7 @@ class Page:
             entries.append(entry)
 
         for raw_text, left, top, width, height, conf in zip(
-            raw_texts, lefts, tops, widths, heights, confidences
+            raw_texts, lefts, tops, widths, heights, confidences, strict=False
         ):
             normalized_raw = self._normalize_token(raw_text)
 
@@ -479,7 +542,9 @@ class Page:
         if block_based_ssim:
             block_based_ssim_result, block_based_ssim_score = self.block_based_ssim_comparison(other_page.image, threshold=threshold, block_size=block_size)            
             if not block_based_ssim_result:
-                return False, diff, thresh, absolute_diff, 1.0 - block_based_ssim_score
+                # Clamp negative block scores so the reported difference
+                # score stays within [0, 1] for downstream consumers.
+                return False, diff, thresh, absolute_diff, 1.0 - max(block_based_ssim_score, 0.0)
         # Return a tuple: whether the pages are similar, and the difference image
         return score >= (1.0 - threshold), diff, thresh, absolute_diff, 1.0 - score
 
@@ -553,8 +618,10 @@ class Page:
                     win_size=win_size
                 )
 
-                # Track the lowest block SSIM
-                lowest_score = abs(min(lowest_score, block_score))
+                # Track the lowest block SSIM. SSIM ranges over [-1, 1];
+                # keep negative scores (anti-correlated blocks) so inverted
+                # content is detected as different.
+                lowest_score = min(lowest_score, block_score)
 
                 # If any block's SSIM falls below (1.0 - threshold), return immediately
                 if lowest_score < (1.0 - threshold):
@@ -574,8 +641,6 @@ class Page:
         except ImportError:
             logging.debug('Failed to import pyzbar', exc_info=True)
             return
-        image_height = self.image.shape[0]
-        image_width = self.image.shape[1]
         barcodes = pyzbar.decode(self.image)
         #Add barcode as placehoder
         for barcode in barcodes:
@@ -745,7 +810,7 @@ class Page:
                     position += len(token) + 1
                 for start, end in spans:
                     covered = [
-                        j for j, (token_start, token_end) in zip(indices, offsets)
+                        j for j, (token_start, token_end) in zip(indices, offsets, strict=False)
                         if token_start < end and token_end > start
                     ]
                     if covered:
@@ -922,7 +987,7 @@ class Page:
         thresholded_image = cv2.threshold(gray_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         # Add a white border around the image to improve OCR accuracy
         thresholded_image = cv2.copyMakeBorder(thresholded_image, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=(255, 255, 255))
-        config = f'--psm 11 -l eng'
+        config = '--psm 11 -l eng'
         text = pytesseract.image_to_string(thresholded_image, config=config)
         return text.strip()
 
@@ -1021,29 +1086,45 @@ class DocumentRepresentation:
         try:
             import fitz
             fitz.TOOLS.set_aa_level(0)  # PyMuPDF
-            doc = fitz.open(str(self.file_path))
-            self.metadata = doc.metadata
-            self.sigflags = doc.get_sigflags()
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                pix = page.get_pixmap(dpi=self.dpi)
-                img_data = pix.tobytes("png")
-                image = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
-                page_obj = Page(image, page_number=page_num + 1, dpi=self.dpi)
-                page_obj.is_pdf = True
-                page_obj.pdf_text_data = page.get_text("text", sort=True)
-                page_obj.pdf_text_dict = page.get_text("dict", sort=True)
-                page_obj.pdf_text_words = page.get_text("words", sort=True)
-                page_obj.pdf_text_blocks = page.get_text("blocks", sort=True)
-                page_obj.rotation = page.rotation
-                page_obj.mediabox = tuple(page.mediabox)
-                page_obj.fonts = page.get_fonts()
-                page_obj.images = page.get_images()
-                page_obj.signatures = self._extract_signatures(page)
-                self.pages.append(page_obj)
+            with fitz.open(str(self.file_path)) as doc:
+                self.metadata = doc.metadata
+                self.sigflags = doc.get_sigflags()
+                for page_num in range(len(doc)):
+                    page = doc.load_page(page_num)
+                    pix = page.get_pixmap(dpi=self.dpi)
+                    image = self._pixmap_to_bgr(pix)
+                    page_obj = Page(image, page_number=page_num + 1, dpi=self.dpi)
+                    page_obj.is_pdf = True
+                    # text/dict/blocks are extracted lazily on first access
+                    page_obj._pdf_text_source = (str(self.file_path), page_num)
+                    page_obj.pdf_text_words = page.get_text("words", sort=True)
+                    page_obj.rotation = page.rotation
+                    page_obj.mediabox = tuple(page.mediabox)
+                    page_obj.fonts = page.get_fonts()
+                    page_obj.images = page.get_images()
+                    page_obj.signatures = self._extract_signatures(page)
+                    self.pages.append(page_obj)
             self.page_count = len(self.pages)
-        except ImportError:
-            raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
+        except ImportError as exc:
+            raise ImportError("PyMuPDF (fitz) is required for PDF processing.") from exc
+
+    @staticmethod
+    def _pixmap_to_bgr(pix) -> np.ndarray:
+        """Convert a PyMuPDF pixmap directly to a BGR uint8 array.
+
+        Bit-identical to the former `tobytes("png")` + `cv2.imdecode`
+        round-trip, without the PNG encode/decode cost.
+        """
+        buf = np.frombuffer(pix.samples, dtype=np.uint8)
+        row_bytes = pix.width * pix.n
+        if pix.stride != row_bytes:
+            buf = buf.reshape(pix.height, pix.stride)[:, :row_bytes]
+        image = buf.reshape(pix.height, pix.width, pix.n)
+        if pix.n == 1:
+            return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        if pix.n == 4:
+            return cv2.cvtColor(image, cv2.COLOR_RGBA2BGR)
+        return cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
     def _prepare_pdf_stream(self):
         try:
@@ -1053,23 +1134,22 @@ class DocumentRepresentation:
             self.metadata = self._pdf_document.metadata
             self.sigflags = self._pdf_document.get_sigflags()
             self.page_count = len(self._pdf_document)
-        except ImportError:
-            raise ImportError("PyMuPDF (fitz) is required for PDF processing.")
+        except ImportError as exc:
+            raise ImportError("PyMuPDF (fitz) is required for PDF processing.") from exc
 
     def _render_pdf_page(self, page_index: int) -> Page:
         if self._pdf_document is None:
             self._prepare_pdf_stream()
+        assert self._pdf_document is not None
 
         page = self._pdf_document.load_page(page_index)
         pix = page.get_pixmap(dpi=self.dpi)
-        img_data = pix.tobytes("png")
-        image = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
+        image = self._pixmap_to_bgr(pix)
         page_obj = Page(image, page_number=page_index + 1, dpi=self.dpi)
         page_obj.is_pdf = True
-        page_obj.pdf_text_data = page.get_text("text", sort=True)
-        page_obj.pdf_text_dict = page.get_text("dict", sort=True)
+        # text/dict/blocks are extracted lazily on first access
+        page_obj._pdf_text_source = (str(self.file_path), page_index)
         page_obj.pdf_text_words = page.get_text("words", sort=True)
-        page_obj.pdf_text_blocks = page.get_text("blocks", sort=True)
         page_obj.rotation = page.rotation
         page_obj.mediabox = tuple(page.mediabox)
         page_obj.fonts = page.get_fonts()
@@ -1162,9 +1242,6 @@ class DocumentRepresentation:
         import shutil
         import random
         import time
-        import tempfile
-        from os.path import splitext, split
-        import subprocess
         try:
             command = shutil.which('pcl6') or shutil.which('gpcl6win64') or shutil.which('gpcl6win32') or shutil.which('gpcl6')
         except (OSError, TypeError):
@@ -1207,7 +1284,7 @@ class DocumentRepresentation:
                 filename = 'output-' + str(index+1)+'.png'
                 image_file =os.path.join(output_image_directory, filename)
                 data = cv2.imread(image_file)
-                page = Page(data, page_number=str(index+1), dpi=self.dpi)
+                page = Page(data, page_number=index + 1, dpi=self.dpi)
                 
             
                 if page is None:
@@ -1223,9 +1300,7 @@ class DocumentRepresentation:
         import subprocess
         import shutil
         import random
-        import tempfile
         import time
-        from os.path import splitext, split 
         try:
             command = shutil.which('gs') or shutil.which('gswin64c') or shutil.which('gswin32c') or shutil.which('ghostscript')
         except (OSError, TypeError):
@@ -1264,7 +1339,7 @@ class DocumentRepresentation:
             filename = 'output-' + str(index+1)+'.png'
             image_file =os.path.join(output_image_directory, filename)
             data = cv2.imread(image_file)
-            page = Page(data, page_number=str(index+1), dpi=self.dpi)
+            page = Page(data, page_number=index + 1, dpi=self.dpi)
             if page is None:
                 raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.file_path))
             # self.opencv_images.append(data)
@@ -1373,6 +1448,10 @@ class DocumentRepresentation:
         pages = [page.get_pdf_structure(config=config) for page in self.pages]
         return DocumentStructure(pages=pages, config=config)
 
+    def get_text_content(self):
+        """Return the concatenated per-page OCR text content."""
+        return " ".join(str(page.get_text_content()) for page in self.pages)
+
     def get_text(self, force_ocr: bool = False, tesseract_config: str = TESSERACT_CONFIG):
         """Extract text content from the document."""
         # If doc is pdf, extract text directly from pdf
@@ -1412,13 +1491,6 @@ class DocumentRepresentation:
         """Compare images between two documents."""
         return self.compare_with(other_doc)
 
-    def assign_ignore_areas_to_pages(self, ignore_areas: List[Dict]):
-        """Assign each ignore area to the corresponding page."""
-        for page in self.pages:
-            for ignore_area in ignore_areas:
-                if ignore_area.get('page') == page.page_number or ignore_area.get('page') == 'all':
-                    page.ignore_areas.append(ignore_area)
-    
     @staticmethod
     def _extract_signatures(page):
         signatures = []

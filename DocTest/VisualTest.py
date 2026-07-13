@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import cv2
-import imutils
 import numpy as np
 from assertionengine import AssertionOperator, verify_assertion
 from robot.api import logger as robot_logger
@@ -33,20 +32,27 @@ LOG = logging.getLogger(__name__)
 _VISUAL_LLM_RUNTIME: Optional[Tuple[Any, Any, Any]] = None
 
 
-def _coerce_label_value(label: Any) -> str:
-    value = getattr(label, "value", label)
-    return str(value)
+def _grab_contours(cnts):
+    """Normalize the cv2.findContours return shape across OpenCV versions.
+
+    Inlined replacement for the single imutils.grab_contours call (imutils
+    is unmaintained); OpenCV 2/4 return (contours, hierarchy), OpenCV 3
+    returned (image, contours, hierarchy).
+    """
+    if len(cnts) == 2:
+        return cnts[0]
+    if len(cnts) == 3:
+        return cnts[1]
+    raise ValueError(
+        "Contours tuple must have length 2 or 3 — unexpected cv2.findContours return"
+    )
 
 
-def _decision_equals_flag(label: Any, enum_cls: Any) -> bool:
-    candidate = _coerce_label_value(label).lower()
-    if enum_cls is None:
-        return candidate == "flag"
-    flag_member = getattr(enum_cls, "FLAG", None)
-    if flag_member is None:
-        return candidate == "flag"
-    flag_value = _coerce_label_value(flag_member).lower()
-    return candidate == flag_value
+from DocTest._llm_flags import (  # noqa: E402  (kept importable from this module)
+    _as_bool,
+    _coerce_label_value,
+    _decision_equals_flag,
+)
 
 
 def _load_visual_llm_runtime() -> Tuple[Any, Any, Any]:
@@ -78,7 +84,9 @@ def count_real_difference_pixels(
     kernel = np.ones((3, 3), np.uint8)
 
     def local_range(gray):
-        return cv2.dilate(gray, kernel).astype(int) - cv2.erode(gray, kernel).astype(int)
+        # uint8 subtract: dilate >= erode pointwise, so no clamping occurs;
+        # identical result to int64 arithmetic at a fraction of the cost.
+        return cv2.subtract(cv2.dilate(gray, kernel), cv2.erode(gray, kernel))
 
     on_edge = (local_range(gray_reference) > edge_range) & (
         local_range(gray_candidate) > edge_range
@@ -337,12 +345,12 @@ class VisualTest:
 
         | `Compare Images`    reference.pdf    candidate.pdf    mask=top:10;bottom:10   #Excludes two areas top and bottom with 10% from comparison
         """
-        llm_requested = bool(
-            kwargs.pop("llm", False)
-            or kwargs.pop("llm_enabled", False)
-            or kwargs.pop("use_llm", False)
+        llm_requested = (
+            _as_bool(kwargs.pop("llm", False))
+            or _as_bool(kwargs.pop("llm_enabled", False))
+            or _as_bool(kwargs.pop("use_llm", False))
         )
-        llm_override_result = bool(kwargs.pop("llm_override", False))
+        llm_override_result = _as_bool(kwargs.pop("llm_override", False))
         llm_overrides: Dict[str, Optional[str]] = {}
         llm_runtime_notes: List[str] = []
         custom_llm_prompt = kwargs.pop("llm_prompt", None)
@@ -468,6 +476,7 @@ class VisualTest:
             ocr_engine=ocr_engine,
             ignore_area_file=placeholder_file,
             ignore_area=mask,
+            contains_barcodes=contains_barcodes,
             stream_pages=stream_documents_flag,
             page_cache_size=page_cache_size_value,
             **force_kwargs,
@@ -477,6 +486,7 @@ class VisualTest:
             candidate_image,
             dpi=dpi,
             ocr_engine=ocr_engine,
+            contains_barcodes=contains_barcodes,
             stream_pages=stream_documents_flag,
             page_cache_size=page_cache_size_value,
             **force_kwargs,
@@ -484,9 +494,6 @@ class VisualTest:
         )
 
         watermarks = []
-
-        # Apply ignore areas if provided
-        abstract_ignore_areas = None
 
         detected_differences: List[Dict[str, Any]] = []
         try:
@@ -509,6 +516,23 @@ class VisualTest:
                             cand_page.image, cand_page.page_number, "candidate"
                         ),
                     }
+                if contains_barcodes:
+                    # Barcode areas are masked out of the pixel comparison via
+                    # pixel_ignore_areas; the decoded values are compared instead.
+                    ref_values = sorted(b["value"] for b in ref_page.barcodes)
+                    cand_values = sorted(b["value"] for b in cand_page.barcodes)
+                    if ref_values != cand_values:
+                        message = (
+                            f"The barcodes on page {ref_page.page_number} differ: "
+                            f"reference {ref_values}, candidate {cand_values}"
+                        )
+                        page_notes.append(message)
+                        detected_differences.append({
+                            "message": message,
+                            "page": ref_page.page_number,
+                            "type": "barcode",
+                        })
+
                 # Resize the candidate page if needed
                 if resize_candidate and ref_page.image.shape != cand_page.image.shape:
                     cand_page.image = cv2.resize(
@@ -611,14 +635,13 @@ class VisualTest:
                     # Check if the differences are only in the watermark area
                     if len(diff_rectangles) == 1:
                         diff_rect = diff_rectangles[0]
-                        x, y, w, h = (
+                        x, _y, w, h = (
                             diff_rect["x"],
                             diff_rect["y"],
                             diff_rect["width"],
                             diff_rect["height"],
                         )
                         diff_center_x = abs((x + w / 2) - ref_page.image.shape[1] / 2)
-                        diff_center_y = abs((y + h / 2) - ref_page.image.shape[0] / 2)
                         if (
                             diff_center_x
                             < ref_page.image.shape[1] * self.WATERMARK_CENTER_OFFSET
@@ -632,21 +655,22 @@ class VisualTest:
                     if watermarks == []:
                         watermarks = self.load_watermarks(watermark_file)
 
-                    # First, try each watermark mask individually
-                    for mask in watermarks:
+                    # First, try each watermark mask individually.
+                    # Do NOT name the loop variable `mask` — it would shadow the
+                    # keyword's `mask` argument, which is written to the sidecar.
+                    for wm in watermarks:
                         if (
-                            mask.shape[0] != ref_page.image.shape[0]
-                            or mask.shape[1] != ref_page.image.shape[1]
+                            wm.shape[0] != ref_page.image.shape[0]
+                            or wm.shape[1] != ref_page.image.shape[1]
                         ):
                             # Resize mask to match thresh
-                            mask = cv2.resize(
-                                mask, (ref_page.image.shape[1], ref_page.image.shape[0])
+                            wm = cv2.resize(
+                                wm, (ref_page.image.shape[1], ref_page.image.shape[0])
                             )
 
-                        mask_inv = cv2.bitwise_not(mask)
+                        mask_inv = cv2.bitwise_not(wm)
                         # dilate the mask to account for slight misalignments
                         mask_inv = cv2.dilate(mask_inv, None, iterations=2)
-                        result = cv2.subtract(absolute_diff, mask_inv)
                         if (
                             cv2.countNonZero(cv2.subtract(absolute_diff, mask_inv)) == 0
                             or cv2.countNonZero(cv2.subtract(thresh, mask_inv)) == 0
@@ -675,26 +699,26 @@ class VisualTest:
                             )
 
                             total_individual_pixels = 0
-                            for i, mask in enumerate(watermarks):
+                            for i, wm in enumerate(watermarks):
                                 # Ensure all masks have the same dimensions
                                 if (
-                                    mask.shape[0] != ref_page.image.shape[0]
-                                    or mask.shape[1] != ref_page.image.shape[1]
+                                    wm.shape[0] != ref_page.image.shape[0]
+                                    or wm.shape[1] != ref_page.image.shape[1]
                                 ):
-                                    mask = cv2.resize(
-                                        mask,
+                                    wm = cv2.resize(
+                                        wm,
                                         (ref_page.image.shape[1], ref_page.image.shape[0]),
                                     )
 
                                 # Count pixels for debugging
-                                mask_pixels = np.sum(mask > 0)
+                                mask_pixels = np.sum(wm > 0)
                                 total_individual_pixels += mask_pixels
                                 robot_logger.debug(f"  Watermark {i + 1}: {mask_pixels} white pixels")
 
                                 # Add debugging screenshot for individual watermarks
                                 if self.take_screenshots:
                                     self.add_screenshot_to_log(
-                                        mask,
+                                        wm,
                                         suffix=f"_individual_watermark_{i + 1}",
                                         original_size=False,
                                     )
@@ -703,7 +727,7 @@ class VisualTest:
                                 # This creates a union of all black comparison areas
                                 # Note: Using AND operation because we want union of black (0) pixels
                                 # OR would give intersection of black areas, AND gives union of black areas
-                                combined_mask = cv2.bitwise_and(combined_mask, mask)
+                                combined_mask = cv2.bitwise_and(combined_mask, wm)
 
                             if combined_mask is not None:
                                 combined_black_pixels = np.sum(combined_mask == 0)
@@ -865,7 +889,6 @@ class VisualTest:
 
                         # If no words are fount, proceed with nornmal tolerance check and set check_pdf_content to False
                         if len(ref_words) == 0 or len(cand_words) == 0:
-                            check_pdf_content = False
                             robot_logger.info(
                                 "No pdf layout elements found. Proceeding with normal tolerance check."
                             )
@@ -975,10 +998,19 @@ class VisualTest:
                             "rectangles": diff_rectangles_cache,
                             "score": score,
                             "threshold": threshold,
-                            "absolute_diff": absolute_diff.copy() if absolute_diff is not None else None,
-                            "combined_diff": combined_image_with_differences.copy()
-                            if combined_image_with_differences is not None
-                            else None,
+                            # Full-page diff copies are only consumed by the
+                            # LLM payload path — skip the ~11 MB/page copies
+                            # when no LLM was requested.
+                            "absolute_diff": (
+                                absolute_diff.copy()
+                                if llm_requested and absolute_diff is not None
+                                else None
+                            ),
+                            "combined_diff": (
+                                combined_image_with_differences.copy()
+                                if llm_requested and combined_image_with_differences is not None
+                                else None
+                            ),
                             "notes": page_notes[:],
                         }
                     )
@@ -1498,7 +1530,7 @@ class VisualTest:
             }
 
         max_distance = 0.0
-        for ref_word, cand_word in zip(reference_words, candidate_words):
+        for ref_word, cand_word in zip(reference_words, candidate_words, strict=False):
             if ref_word["text"] != cand_word["text"]:
                 return {
                     "status": "mismatch",
@@ -2314,7 +2346,7 @@ class VisualTest:
         cnts = cv2.findContours(
             thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
-        cnts = imutils.grab_contours(cnts)
+        cnts = _grab_contours(cnts)
 
         # loop over the contours
         for c in cnts:
@@ -3659,7 +3691,7 @@ class VisualTest:
             LOG.error(f"ORB: Unexpected error in movement detection: {str(e)}")
             return None
 
-    def blend_two_images(self, image, overlay, ignore_color=[255, 255, 255]):
+    def blend_two_images(self, image, overlay, ignore_color=(255, 255, 255)):
         ignore_color = np.asarray(ignore_color)
         mask = ~(overlay == ignore_color).all(-1)
         # Or mask = (overlay!=ignore_color).any(-1)

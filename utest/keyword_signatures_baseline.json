@@ -1,0 +1,293 @@
+{
+  "DocTest.PdfTest": {
+    "Check Text Content": [
+      "expected_text_list",
+      "candidate_document"
+    ],
+    "Compare Pdf Documents": [
+      "reference_document",
+      "candidate_document",
+      "**kwargs"
+    ],
+    "Compare Pdf Documents With Llm": [
+      "*args",
+      "llm_override=False",
+      "**kwargs"
+    ],
+    "Compare Pdf Structure": [
+      "reference_document",
+      "candidate_document",
+      "**kwargs"
+    ],
+    "PDF Should Contain Strings": [
+      "expected_text_list",
+      "candidate_document",
+      "**kwargs"
+    ],
+    "PDF Should Not Contain Strings": [
+      "expected_text_list",
+      "candidate_document",
+      "**kwargs"
+    ],
+    "Set Reference Run": [
+      "reference_run"
+    ],
+    "Set Result Json": [
+      "result_json"
+    ]
+  },
+  "DocTest.PrintJobTests": {
+    "Check Print Job Property": [
+      "print_job",
+      "property",
+      "value"
+    ],
+    "Compare Print Jobs": [
+      "type",
+      "reference_file",
+      "test_file"
+    ],
+    "Get Pcl Print Job": [
+      "filename"
+    ],
+    "Get Postscript Print Job": [
+      "filename"
+    ]
+  },
+  "DocTest.VisualTest": {
+    "Compare Images": [
+      "reference_image",
+      "candidate_image",
+      "placeholder_file=None",
+      "check_text_content=False",
+      "move_tolerance=None",
+      "movement_detection=None",
+      "contains_barcodes=False",
+      "watermark_file=None",
+      "ignore_watermarks=None",
+      "force_ocr=False",
+      "ocr_engine=None",
+      "DPI=None",
+      "resize_candidate=False",
+      "blur=False",
+      "threshold=None",
+      "mask=None",
+      "get_pdf_content=False",
+      "block_based_ssim=False",
+      "block_size=32",
+      "**kwargs"
+    ],
+    "Compare Images With Llm": [
+      "*args",
+      "llm_override=False",
+      "**kwargs"
+    ],
+    "Get Barcodes": [
+      "document",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Get Barcodes From Document": [
+      "document",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Get Text": [
+      "document",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Get Text From Area": [
+      "document",
+      "area=None",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Get Text From Document": [
+      "document",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Image Should Contain Template": [
+      "image",
+      "template",
+      "threshold=0.0",
+      "take_screenshots=False",
+      "log_template=False",
+      "detection=template",
+      "tpl_crop_x1=None",
+      "tpl_crop_y1=None",
+      "tpl_crop_x2=None",
+      "tpl_crop_y2=None"
+    ],
+    "Set Character Replacements": [
+      "character_replacements=None"
+    ],
+    "Set Dpi": [
+      "dpi"
+    ],
+    "Set Embed Screenshots": [
+      "embed_screenshots"
+    ],
+    "Set Force Ocr": [
+      "force_ocr"
+    ],
+    "Set Movement Detection": [
+      "movement_detection"
+    ],
+    "Set Ocr Engine": [
+      "ocr_engine"
+    ],
+    "Set Reference Run": [
+      "reference_run"
+    ],
+    "Set Result Json": [
+      "result_json"
+    ],
+    "Set Screenshot Dir": [
+      "screenshot_dir"
+    ],
+    "Set Screenshot Format": [
+      "screenshot_format"
+    ],
+    "Set Show Diff": [
+      "show_diff"
+    ],
+    "Set Take Screenshots": [
+      "take_screenshots"
+    ],
+    "Set Threshold": [
+      "threshold"
+    ]
+  },
+  "DocTest.WebVisualTest": {
+    "Compare Element To Baseline": [
+      "locator",
+      "name",
+      "/",
+      "**kwargs"
+    ],
+    "Compare Images": [
+      "reference_image",
+      "candidate_image",
+      "placeholder_file=None",
+      "check_text_content=False",
+      "move_tolerance=None",
+      "movement_detection=None",
+      "contains_barcodes=False",
+      "watermark_file=None",
+      "ignore_watermarks=None",
+      "force_ocr=False",
+      "ocr_engine=None",
+      "DPI=None",
+      "resize_candidate=False",
+      "blur=False",
+      "threshold=None",
+      "mask=None",
+      "get_pdf_content=False",
+      "block_based_ssim=False",
+      "block_size=32",
+      "**kwargs"
+    ],
+    "Compare Images With Llm": [
+      "*args",
+      "llm_override=False",
+      "**kwargs"
+    ],
+    "Compare Page To Baseline": [
+      "name",
+      "full_page=True",
+      "**kwargs"
+    ],
+    "Get Barcodes": [
+      "document",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Get Barcodes From Document": [
+      "document",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Get Text": [
+      "document",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Get Text From Area": [
+      "document",
+      "area=None",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Get Text From Document": [
+      "document",
+      "assertion_operator=None",
+      "assertion_expected=None",
+      "message=None"
+    ],
+    "Image Should Contain Template": [
+      "image",
+      "template",
+      "threshold=0.0",
+      "take_screenshots=False",
+      "log_template=False",
+      "detection=template",
+      "tpl_crop_x1=None",
+      "tpl_crop_y1=None",
+      "tpl_crop_x2=None",
+      "tpl_crop_y2=None"
+    ],
+    "Set Baseline Directory": [
+      "baseline_directory"
+    ],
+    "Set Character Replacements": [
+      "character_replacements=None"
+    ],
+    "Set Dpi": [
+      "dpi"
+    ],
+    "Set Embed Screenshots": [
+      "embed_screenshots"
+    ],
+    "Set Force Ocr": [
+      "force_ocr"
+    ],
+    "Set Movement Detection": [
+      "movement_detection"
+    ],
+    "Set Ocr Engine": [
+      "ocr_engine"
+    ],
+    "Set Reference Run": [
+      "reference_run"
+    ],
+    "Set Result Json": [
+      "result_json"
+    ],
+    "Set Screenshot Dir": [
+      "screenshot_dir"
+    ],
+    "Set Screenshot Format": [
+      "screenshot_format"
+    ],
+    "Set Show Diff": [
+      "show_diff"
+    ],
+    "Set Take Screenshots": [
+      "take_screenshots"
+    ],
+    "Set Threshold": [
+      "threshold"
+    ]
+  }
+}

@@ -22,7 +22,7 @@ def _import_runtime():
         )
 
     try:
-        from pydantic_ai import Agent, BinaryContent  # type: ignore import
+        from pydantic_ai import Agent, BinaryContent  # type: ignore
     except ImportError as exc:  # pragma: no cover - optional dependency
         raise LLMDependencyError() from exc
 

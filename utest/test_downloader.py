@@ -1,17 +1,14 @@
-import shutil
+import io
 from pathlib import Path
 
 from DocTest.Downloader import download_file_from_url, get_filename_from_url
 
 
 def _fake_urlretrieve(monkeypatch, source: Path):
-    def _copy(_, destination):
-        destination_path = Path(destination)
-        destination_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, destination_path)
-        return str(destination_path), None
+    def _open(_url):
+        return io.BytesIO(source.read_bytes())
 
-    monkeypatch.setattr("DocTest.Downloader.urllib.request.urlretrieve", _copy)
+    monkeypatch.setattr("DocTest.Downloader._open_url", _open)
 
 
 def test_download_file(monkeypatch, tmp_path, testdata_dir):

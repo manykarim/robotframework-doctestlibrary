@@ -1,9 +1,8 @@
 import logging
-from inspect import signature
 from pprint import pformat
 from deepdiff import DeepDiff
 from robot.api import logger as robot_logger
-from robot.api.deco import keyword, library
+from robot.api.deco import keyword
 import fitz
 import json
 import os
@@ -42,20 +41,11 @@ LOG = logging.getLogger(__name__)
 _PDF_LLM_RUNTIME: Optional[Tuple[Any, Any, Any]] = None
 
 
-def _coerce_label_value(label: Any) -> str:
-    value = getattr(label, "value", label)
-    return str(value)
-
-
-def _decision_equals_flag(label: Any, enum_cls: Any) -> bool:
-    candidate = _coerce_label_value(label).lower()
-    if enum_cls is None:
-        return candidate == "flag"
-    flag_member = getattr(enum_cls, "FLAG", None)
-    if flag_member is None:
-        return candidate == "flag"
-    flag_value = _coerce_label_value(flag_member).lower()
-    return candidate == flag_value
+from DocTest._llm_flags import (  # noqa: E402  (kept importable from this module)
+    _as_bool,
+    _coerce_label_value,
+    _decision_equals_flag,
+)
 
 
 def _load_pdf_llm_runtime() -> Tuple[Any, Any, Any]:
@@ -69,20 +59,6 @@ def _load_pdf_llm_runtime() -> Tuple[Any, Any, Any]:
         raise LLMDependencyError() from exc
     _PDF_LLM_RUNTIME = (assess_pdf_diff, create_binary_content, _LLMDecisionLabel)
     return _PDF_LLM_RUNTIME
-
-
-def _as_bool(value, default=False):
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in ("true", "1", "yes", "on"):
-            return True
-        if lowered in ("false", "0", "no", "off"):
-            return False
-    return bool(value)
 
 
 def _as_float(value, default):
@@ -248,12 +224,12 @@ class PdfTest(object):
 
         """
         comparison_label = kwargs.pop("name", None)
-        llm_requested = bool(
-            kwargs.pop("llm", False)
-            or kwargs.pop("llm_enabled", False)
-            or kwargs.pop("use_llm", False)
+        llm_requested = (
+            _as_bool(kwargs.pop("llm", False))
+            or _as_bool(kwargs.pop("llm_enabled", False))
+            or _as_bool(kwargs.pop("use_llm", False))
         )
-        llm_override_result = bool(kwargs.pop("llm_override", False))
+        llm_override_result = _as_bool(kwargs.pop("llm_override", False))
         llm_overrides: Dict[str, Optional[str]] = {}
         llm_general_notes: List[str] = []
         llm_differences: List[Dict[str, Any]] = []
@@ -505,7 +481,7 @@ class PdfTest(object):
                         diff,
                     )
 
-            for ref_page, cand_page in zip(reference_snapshot['pages'], candidate_snapshot['pages']):
+            for ref_page, cand_page in zip(reference_snapshot['pages'], candidate_snapshot['pages'], strict=False):
                 page_number = ref_page['number']
 
                 if compare_all and ref_page.get('rotation') != cand_page.get('rotation'):
@@ -815,22 +791,24 @@ class PdfTest(object):
         if is_url(candidate_document):
             candidate_document = download_file_from_url(candidate_document)
         doc = fitz.open(candidate_document)
-        missing_text_list = []
-        all_texts_were_found = None
-        for text_item in expected_text_list:
-            text_found_in_page = False
-            for page in doc.pages():
-                if any(text_item in s for s in page.get_text("text").splitlines()):
-                    text_found_in_page = True
-                    break
-            if text_found_in_page:
-                continue
-            all_texts_were_found = False
-            missing_text_list.append({'text':text_item, 'document':candidate_document})
-        if all_texts_were_found is False:
-            robot_logger.info(f"Missing texts: {missing_text_list}")
-            doc = None
-            raise AssertionError('Some expected texts were not found in document')
+        try:
+            missing_text_list = []
+            all_texts_were_found = None
+            for text_item in expected_text_list:
+                text_found_in_page = False
+                for page in doc.pages():
+                    if any(text_item in s for s in page.get_text("text").splitlines()):
+                        text_found_in_page = True
+                        break
+                if text_found_in_page:
+                    continue
+                all_texts_were_found = False
+                missing_text_list.append({'text':text_item, 'document':candidate_document})
+            if all_texts_were_found is False:
+                robot_logger.info(f"Missing texts: {missing_text_list}")
+                raise AssertionError('Some expected texts were not found in document')
+        finally:
+            doc.close()
 
     @keyword
     def PDF_should_contain_strings(self, expected_text_list, candidate_document, **kwargs):
@@ -860,35 +838,36 @@ class PdfTest(object):
         if is_url(candidate_document):
             candidate_document = download_file_from_url(candidate_document)
         doc = fitz.open(candidate_document)
-        # if expected_text_list is a string, convert it to a list
-        if isinstance(expected_text_list, str):
-            expected_text_list = [expected_text_list]
-        missing_text_list = []
-        found_text_list = []
-        all_texts_were_found = None
-        for text_item in expected_text_list:
-            text_found_in_page = False
-            for page in doc.pages():
-                page_text = page.get_text("text")
-                # Apply character replacements if configured
-                if char_replacements:
-                    page_text = apply_character_replacements(page_text, char_replacements)
-                if any(text_item in s for s in page_text.splitlines()):
-                    text_found_in_page = True
-                    found_text_list.append({'text':text_item, 'document':candidate_document, 'page':page.number+1})
-                    break
-            if text_found_in_page:
-                continue
-            all_texts_were_found = False
-            missing_text_list.append({'text':text_item, 'document':candidate_document})
-        if all_texts_were_found is False:
-            robot_logger.info(f"Missing Texts:\n{missing_text_list}")
-            robot_logger.info(f"Found Texts:\n{found_text_list}")
-            doc = None
-            raise AssertionError('Some expected texts were not found in document')
-        else:
-            doc = None
-            robot_logger.info(f"Found Texts:\n{found_text_list}")
+        try:
+            # if expected_text_list is a string, convert it to a list
+            if isinstance(expected_text_list, str):
+                expected_text_list = [expected_text_list]
+            missing_text_list = []
+            found_text_list = []
+            all_texts_were_found = None
+            for text_item in expected_text_list:
+                text_found_in_page = False
+                for page in doc.pages():
+                    page_text = page.get_text("text")
+                    # Apply character replacements if configured
+                    if char_replacements:
+                        page_text = apply_character_replacements(page_text, char_replacements)
+                    if any(text_item in s for s in page_text.splitlines()):
+                        text_found_in_page = True
+                        found_text_list.append({'text':text_item, 'document':candidate_document, 'page':page.number+1})
+                        break
+                if text_found_in_page:
+                    continue
+                all_texts_were_found = False
+                missing_text_list.append({'text':text_item, 'document':candidate_document})
+            if all_texts_were_found is False:
+                robot_logger.info(f"Missing Texts:\n{missing_text_list}")
+                robot_logger.info(f"Found Texts:\n{found_text_list}")
+                raise AssertionError('Some expected texts were not found in document')
+            else:
+                robot_logger.info(f"Found Texts:\n{found_text_list}")
+        finally:
+            doc.close()
 
     @keyword
     def PDF_should_not_contain_strings(self, expected_text_list, candidate_document, **kwargs):
@@ -918,33 +897,34 @@ class PdfTest(object):
         if is_url(candidate_document):
             candidate_document = download_file_from_url(candidate_document)
         doc = fitz.open(candidate_document)
-        # if expected_text_list is a string, convert it to a list
-        if isinstance(expected_text_list, str):
-            expected_text_list = [expected_text_list]
-        missing_text_list = []
-        found_text_list = []
-        for text_item in expected_text_list:
-            text_item_found = False
-            for page in doc.pages():
-                page_text = page.get_text("text")
-                # Apply character replacements if configured
-                if char_replacements:
-                    page_text = apply_character_replacements(page_text, char_replacements)
-                if any(text_item in s for s in page_text.splitlines()):
-                    text_item_found = True
-                    found_text_list.append({'text':text_item, 'document':candidate_document, 'page':page.number+1})
-                    continue
-            if text_item_found == False:
-                missing_text_list.append({'text':text_item, 'document':candidate_document})
-        if found_text_list:
-            robot_logger.info(f"Missing Texts:\n{missing_text_list}")
-            robot_logger.info(f"Found Texts:\n{found_text_list}")
-            doc = None
-            raise AssertionError('Some non-expected texts were found in document')
-        else:
-            doc = None
-            robot_logger.info('None of the non-expected texts were found in document')
-            robot_logger.info(f"Missing Texts:\n{missing_text_list}")
+        try:
+            # if expected_text_list is a string, convert it to a list
+            if isinstance(expected_text_list, str):
+                expected_text_list = [expected_text_list]
+            missing_text_list = []
+            found_text_list = []
+            for text_item in expected_text_list:
+                text_item_found = False
+                for page in doc.pages():
+                    page_text = page.get_text("text")
+                    # Apply character replacements if configured
+                    if char_replacements:
+                        page_text = apply_character_replacements(page_text, char_replacements)
+                    if any(text_item in s for s in page_text.splitlines()):
+                        text_item_found = True
+                        found_text_list.append({'text':text_item, 'document':candidate_document, 'page':page.number+1})
+                        continue
+                if not text_item_found:
+                    missing_text_list.append({'text':text_item, 'document':candidate_document})
+            if found_text_list:
+                robot_logger.info(f"Missing Texts:\n{missing_text_list}")
+                robot_logger.info(f"Found Texts:\n{found_text_list}")
+                raise AssertionError('Some non-expected texts were found in document')
+            else:
+                robot_logger.info('None of the non-expected texts were found in document')
+                robot_logger.info(f"Missing Texts:\n{missing_text_list}")
+        finally:
+            doc.close()
     
     @keyword
     def compare_pdf_documents_with_llm(self, *args, llm_override: bool = False, **kwargs):
