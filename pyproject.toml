@@ -87,6 +87,7 @@ dev = [
     "httpx",
     "pytest-playwright",
     "packaging",
+    "pytest-benchmark>=5.2.3",
 ]
 
 [build-system]
