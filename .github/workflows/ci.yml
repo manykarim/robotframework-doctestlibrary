@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Set up uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.12"
       - name: ruff
@@ -50,7 +50,7 @@ jobs:
           sudo cp ${archive_name}/* /usr/bin
           sudo cp policy.xml /etc/ImageMagick-6/
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - name: Install base dependencies (without AI extras)
@@ -112,7 +112,7 @@ jobs:
           sudo cp ${archive_name}/* /usr/bin
           sudo cp policy.xml /etc/ImageMagick-6/
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies (all extras)
@@ -172,7 +172,7 @@ jobs:
           sudo cp ${archive_name}/* /usr/bin
           sudo cp policy.xml /etc/ImageMagick-6/
       - name: Set up uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.13"
       - name: Install dependencies (all extras)
@@ -199,7 +199,7 @@ jobs:
           sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
           sudo cp policy.xml /etc/ImageMagick-6/
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
       - name: Set up Node
@@ -235,7 +235,7 @@ jobs:
           sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
           sudo cp policy.xml /etc/ImageMagick-6/
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
       - name: Set up Node
