@@ -81,3 +81,37 @@ URL reference fetching SHALL validate the scheme of every redirect hop against t
 #### Scenario: Oversized download aborts early
 - **WHEN** a download exceeds `max_size` mid-transfer
 - **THEN** the transfer stops at the limit and the partial temp file is removed
+
+### Requirement: Logged screenshots are never upscaled
+Screenshots embedded in the Robot Framework log SHALL be constrained to at most half the log column width without being enlarged beyond their natural size. An image narrower than half the column SHALL render at its natural size; an image at least half the column wide SHALL render exactly as before (bounded to half the column). The dedicated natural-size mode (`original_size=True`) SHALL remain unbounded.
+
+#### Scenario: Small crop renders at natural size
+- **WHEN** a movement-tolerance failure logs a small diff-area crop
+- **THEN** the emitted `<img>` style constrains the maximum width rather than setting a fixed width, so the crop is not upscaled
+
+#### Scenario: Full-page screenshot is unchanged
+- **WHEN** a full-page rendering or combined diff image is logged
+- **THEN** it is still bounded to half the log column width
+
+#### Scenario: Natural-size mode still unbounded
+- **WHEN** a screenshot is logged with `original_size=True` (template screenshots)
+- **THEN** its style still imposes no width bound
+
+### Requirement: Every differing page is reported
+When a multi-page comparison detects differences on more than one page, the library SHALL log a message for every detected difference before failing, not only the first. Each logged difference SHALL identify its page exactly once, and the comparison SHALL still fail with the unchanged message `The compared images are different.`
+
+#### Scenario: Differences on several pages are all reported
+- **WHEN** `Compare Images` compares a 3-page pair that differs on pages 1 and 3
+- **THEN** the log contains a difference message for page 1 and for page 3, and the keyword fails with `The compared images are different.`
+
+#### Scenario: Summary names the affected pages
+- **WHEN** a multi-page comparison fails on more than one page
+- **THEN** the log contains a leading summary line naming every affected page number
+
+#### Scenario: Pages are not labelled twice
+- **WHEN** a difference message already names its page (barcode content differences)
+- **THEN** that message is logged unchanged, without an additional page prefix
+
+#### Scenario: Single-page failure is unchanged in outcome
+- **WHEN** a single-page comparison fails
+- **THEN** the keyword still fails with `The compared images are different.`

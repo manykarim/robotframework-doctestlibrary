@@ -119,7 +119,7 @@
       "threshold=0.0",
       "take_screenshots=False",
       "log_template=False",
-      "detection=template",
+      "detection=None",
       "tpl_crop_x1=None",
       "tpl_crop_y1=None",
       "tpl_crop_x2=None",
@@ -160,6 +160,9 @@
     ],
     "Set Take Screenshots": [
       "take_screenshots"
+    ],
+    "Set Template Detection": [
+      "template_detection"
     ],
     "Set Threshold": [
       "threshold"
@@ -241,7 +244,7 @@
       "threshold=0.0",
       "take_screenshots=False",
       "log_template=False",
-      "detection=template",
+      "detection=None",
       "tpl_crop_x1=None",
       "tpl_crop_y1=None",
       "tpl_crop_x2=None",
@@ -285,6 +288,9 @@
     ],
     "Set Take Screenshots": [
       "take_screenshots"
+    ],
+    "Set Template Detection": [
+      "template_detection"
     ],
     "Set Threshold": [
       "threshold"

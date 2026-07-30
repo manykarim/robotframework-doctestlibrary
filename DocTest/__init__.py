@@ -319,6 +319,29 @@ Accept if parts are moved up to 20 pixels by pure visual check
     Compare Images    Reference.jpg    Candidate.jpg    move_tolerance=20
 ```	
 
+#### Detection method for template matching
+
+`movement_detection` only affects moved-object detection. The detection method
+used by `Image Should Contain Template` is configured separately with
+`template_detection` (`template`, `orb` or `sift`), so it does not have to be
+repeated on every call:
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.VisualTest   template_detection=sift
+
+*** Test Cases ***
+Find a logo using SIFT without repeating the detection argument
+    Image Should Contain Template    document.pdf    logo.png
+```
+
+An explicit `detection` argument still wins for a single call. The
+`Set Template Detection` keyword changes the default for the remainder of the
+current test — the library uses Robot Framework's default `TEST` scope, so use
+the import argument above to set it for a whole suite. Note that the `sift` and
+`orb` methods ignore `threshold` and their return value contains no
+`confidence` key.
+
 ### Options for taking additional screenshots, screenshot format and render resolution
 
 Take additional screenshots or reference and candidate file.

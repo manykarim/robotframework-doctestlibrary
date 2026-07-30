@@ -500,7 +500,7 @@
         "required": false
       },
       {
-        "default": "template",
+        "default": "None",
         "kind": "POSITIONAL_OR_NAMED",
         "name": "detection",
         "required": false
@@ -623,6 +623,14 @@
         "default": null,
         "kind": "POSITIONAL_OR_NAMED",
         "name": "take_screenshots",
+        "required": true
+      }
+    ],
+    "Set Template Detection": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "template_detection",
         "required": true
       }
     ],
@@ -992,7 +1000,7 @@
         "required": false
       },
       {
-        "default": "template",
+        "default": "None",
         "kind": "POSITIONAL_OR_NAMED",
         "name": "detection",
         "required": false
@@ -1123,6 +1131,14 @@
         "default": null,
         "kind": "POSITIONAL_OR_NAMED",
         "name": "take_screenshots",
+        "required": true
+      }
+    ],
+    "Set Template Detection": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "template_detection",
         "required": true
       }
     ],

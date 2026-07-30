@@ -59,6 +59,7 @@ def atests(context):
         f"{ROOT}/atest/PdfContent.robot",
         f"{ROOT}/atest/PrintJobs.robot",
         f"{ROOT}/atest/MovementDetection.robot",
+        f"{ROOT}/atest/TemplateDetection.robot",
         f"{ROOT}/atest/ReferenceRun.robot",
         f"{ROOT}/atest/ResultJson.robot",
         f"{ROOT}/atest/LLM.robot",
