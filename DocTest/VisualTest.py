@@ -103,6 +103,11 @@ class VisualTest:
     MOVEMENT_DETECTION_DEFAULT = "template"
     MOVEMENT_DETECTION_METHODS = {"template", "orb", "sift", "text"}
     MOVEMENT_DETECTION_ALIASES = {"classic": "template"}
+    # Template matching has no "text" method — hence a setting of its own
+    # rather than reusing MOVEMENT_DETECTION_* (issue #127).
+    TEMPLATE_DETECTION_DEFAULT = "template"
+    TEMPLATE_DETECTION_METHODS = {"template", "orb", "sift"}
+    TEMPLATE_DETECTION_ALIASES = {"classic": "template"}
     PARTIAL_IMAGE_THRESHOLD_DEFAULT = 0.1
     PIXEL_INTENSITY_THRESHOLD_DEFAULT = 20
     SIFT_RATIO_THRESHOLD_DEFAULT = 0.75
@@ -132,9 +137,12 @@ class VisualTest:
         embed_screenshots: bool = False,
         force_ocr: bool = False,
         watermark_file: str = None,
-        movement_detection: Literal[
-            "template", "orb", "sift", "text"
-        ] = MOVEMENT_DETECTION_DEFAULT,
+        # Plain str, not Literal: Robot Framework converts import arguments
+        # from the type hint BEFORE library code runs, so a Literal hint
+        # rejects documented aliases like "classic" and makes
+        # MOVEMENT_DETECTION_ALIASES unreachable. Values are validated below.
+        movement_detection: str = MOVEMENT_DETECTION_DEFAULT,
+        template_detection: Optional[str] = None,
         partial_image_threshold: float = PARTIAL_IMAGE_THRESHOLD_DEFAULT,
         sift_ratio_threshold: float = SIFT_RATIO_THRESHOLD_DEFAULT,
         sift_min_matches: int = SIFT_MIN_MATCHES_DEFAULT,
@@ -161,7 +169,8 @@ class VisualTest:
         | ``embed_screenshots`` | Whether to embed screenshots as base64 in the log. Default is False. |
         | ``force_ocr`` | Whether to force OCR during image comparison. Default is False. |
         | ``watermark_file`` | Path to an image/document or a folder containing multiple images. They shall only contain a ```solid black`` area of the parts that shall be ignored for visual comparisons |
-        | ``movement_detection`` | Method to be used for movement detection. Options are ``template``, ``orb``, ``sift`` or ``text`` (text-based). Default is ``template``. |
+        | ``movement_detection`` | Method to be used for movement detection. Options are ``template``, ``orb``, ``sift`` or ``text`` (text-based); ``classic`` is an alias for ``template``. Default is ``template``. |
+        | ``template_detection`` | Default detection method for `Image Should Contain Template`. Options are ``template``, ``orb`` or ``sift`` (``classic`` is an alias for ``template``). A ``detection`` argument on an individual call still wins. Default is ``template``. Note this is separate from ``movement_detection``, which additionally supports ``text`` — not a valid template-matching method. |
         | ``partial_image_threshold`` | The threshold used to identify partial images, e.g. for movement detection. Value is between 0.0 and 1.0. A higher value will tolerate more differences. Default is ``0.1``. |
         | ``sift_ratio_threshold`` | Lowe's ratio test threshold for SIFT feature matching. Lower values are more restrictive. Default is ``0.75``. |
         | ``sift_min_matches`` | Minimum number of good matches required for SIFT homography computation. Default is ``4``. |
@@ -196,6 +205,11 @@ class VisualTest:
                 f"Supported values are: {', '.join(sorted(self.MOVEMENT_DETECTION_METHODS))}."
             )
         self.movement_detection = movement_method
+        self.template_detection = (
+            self._normalize_template_detection(template_detection)
+            if template_detection
+            else None
+        )
         self.partial_image_threshold = partial_image_threshold
         self.sift_ratio_threshold = sift_ratio_threshold
         self.sift_min_matches = sift_min_matches
@@ -1173,8 +1187,33 @@ class VisualTest:
                 )
                 robot_logger.info(f"{RESULT_LOG_PREFIX} {rel_path}")
 
-            for diff in detected_differences:
-                robot_logger.info(diff["message"])
+            if detected_differences:
+                # Report EVERY difference before failing. Raising inside this
+                # loop used to stop after the first one, which made multi-page
+                # comparisons look as if later pages were never compared
+                # (issue #98) — they always were.
+                affected_pages = sorted(
+                    {
+                        page_number
+                        for page_number in (
+                            self._difference_page_number(diff)
+                            for diff in detected_differences
+                        )
+                        if page_number is not None
+                    }
+                )
+                # Only useful for multi-page documents — the point of the
+                # summary is to show that later pages were compared too.
+                # Worded neutrally because a difference may be non-visual
+                # (differing barcode content on pixel-identical pages).
+                if affected_pages and reference_doc.page_count > 1:
+                    robot_logger.info(
+                        f"Differences detected on {len(affected_pages)} of "
+                        f"{reference_doc.page_count} page(s): "
+                        f"{', '.join(str(page) for page in affected_pages)}"
+                    )
+                for diff in detected_differences:
+                    robot_logger.info(self._format_difference_message(diff))
                 self._raise_comparison_failure()
 
             robot_logger.info("Images/Document comparison passed.")
@@ -1680,6 +1719,42 @@ class VisualTest:
         height = min(height, max_height)
         return {"x": x, "y": y, "width": width, "height": height}
 
+    def _normalize_template_detection(self, detection):
+        """Lower-case, de-alias and validate a template detection method."""
+        method = str(detection).strip().lower()
+        method = self.TEMPLATE_DETECTION_ALIASES.get(method, method)
+        if method not in self.TEMPLATE_DETECTION_METHODS:
+            raise ValueError(
+                f"Unsupported template detection method '{detection}'. "
+                f"Supported values are: {', '.join(sorted(self.TEMPLATE_DETECTION_METHODS))}."
+            )
+        return method
+
+    @keyword
+    def set_template_detection(self, template_detection: str):
+        """Set the default detection method for `Image Should Contain Template`.
+
+        | =Arguments= | =Description= |
+        | ``template_detection`` | One of ``template``, ``orb``, ``sift`` (``classic`` is an alias for ``template``). |
+
+        This is the library-level counterpart of the ``detection`` argument of
+        `Image Should Contain Template`; an explicit ``detection`` argument on a
+        call still wins.
+
+        The library uses Robot Framework's default ``TEST`` scope, so the new
+        value applies to the remainder of the current test only. Use the
+        ``template_detection`` import argument to set it for a whole suite.
+
+        Examples:
+        | `Set Template Detection`    sift        # Use SIFT for subsequent template searches |
+        | `Set Template Detection`    template    # Revert to template matching |
+
+        """
+        self.template_detection = self._normalize_template_detection(template_detection)
+        robot_logger.info(
+            f"Template detection method set to '{self.template_detection}'."
+        )
+
     @keyword
     def set_movement_detection(self, movement_detection: str):
         """Set the default movement detection method for subsequent comparisons.
@@ -2073,7 +2148,7 @@ class VisualTest:
         threshold: float = 0.0,
         take_screenshots: bool = False,
         log_template: bool = False,
-        detection: str = "template",
+        detection: Optional[str] = None,
         tpl_crop_x1: int = None,
         tpl_crop_y1: int = None,
         tpl_crop_x2: int = None,
@@ -2093,7 +2168,7 @@ class VisualTest:
         | ``threshold`` | Minimum similarity between the two images between ``0.0`` and ``1.0``. Default is ``0.0`` which is an exact match. Higher values allow more differences |
         | ``take_screenshots`` | If set to ``True``, a screenshot of the image with the template highlighted gets linked to the HTML log (if `embed_screenshots` is used during import, the image gets embedded). Default is ``False``. |
         | ``log_template`` | If set to ``True``, a screenshots of the template image gets linked to the HTML log (if `embed_screenshots` is used during import, the image gets embedded). Default is ``False``. |
-        | ``detection`` | Detection method to be used. Options are ``template``, ``sift`` and ``orb``.  Default is ``template``. |
+        | ``detection`` | Detection method to be used. Options are ``template``, ``sift`` and ``orb``. Defaults to the library-level ``template_detection`` import argument (see also `Set Template Detection`), which itself defaults to ``template``. |
         | ``tpl_crop_x1`` | X1 coordinate of the rectangle to crop the template image to.  |
         | ``tpl_crop_y1`` | Y1 coordinate of the rectangle to crop the template image to.  |
         | ``tpl_crop_x2`` | X2 coordinate of the rectangle to crop the template image to.  |
@@ -2106,7 +2181,20 @@ class VisualTest:
         | `Image Should Contain Template`    reference.jpg    template.jpg    tpl_crop_x1=50  tpl_crop_y1=50  tpl_crop_x2=100  tpl_crop_y2=100    #Before image comparison, the template image gets cropped to that selection.
         | `${coordinates}`    `Image Should Contain Template`    reference.jpg    template.jpg    #Checks if template is in image and returns coordinates of template
         | `Should Be Equal As Numbers`    ${coordinates['pt1'][0]}    100    #Checks if x coordinate of found template is 100
+
+        *Note:* the ``sift`` and ``orb`` methods do not use ``threshold`` and
+        their return value contains only ``pt1``/``pt2`` — no ``confidence``
+        key. Keep that in mind when selecting one of them library-wide.
         """
+        # Resolve the detection method: explicit argument, else the
+        # library-level setting, else the default (issue #127). An empty
+        # value counts as "not provided".
+        detection = self._normalize_template_detection(
+            detection
+            or self.template_detection
+            or self.TEMPLATE_DETECTION_DEFAULT
+        )
+
         # Validate crop arguments and load images
         all_crop_args = all((tpl_crop_x1, tpl_crop_y1, tpl_crop_x2, tpl_crop_y2))
         any_crop_args = any((tpl_crop_x1, tpl_crop_y1, tpl_crop_x2, tpl_crop_y2))
@@ -2311,6 +2399,29 @@ class VisualTest:
         rectangles = [cv2.boundingRect(contour) for contour in contours]
         return rectangles
 
+    @staticmethod
+    def _difference_page_number(diff):
+        """Page a detected difference belongs to, or None if it has none."""
+        page = diff.get("ref_page")
+        if page is not None:
+            return getattr(page, "page_number", None)
+        return diff.get("page")
+
+    def _format_difference_message(self, diff):
+        """Prefix a difference message with its page number.
+
+        Only entries carrying a ``ref_page`` are prefixed: the barcode
+        message already names its page, and prefixing it too would label the
+        page twice.
+        """
+        message = diff["message"]
+        if diff.get("ref_page") is None:
+            return message
+        page_number = self._difference_page_number(diff)
+        if page_number is None:
+            return message
+        return f"Page {page_number}: {message}"
+
     def _raise_comparison_failure(
         self, message: str = "The compared images are different."
     ):
@@ -2391,7 +2502,10 @@ class VisualTest:
         if original_size:
             img_style = "width: auto; height: auto;"
         else:
-            img_style = "width:50%; height: auto;"
+            # max-width (not width): bound large screenshots to half the log
+            # column as before, but never upscale small crops beyond their
+            # natural size (issue #140).
+            img_style = "max-width:50%; height: auto;"
 
         if self.embed_screenshots:
             import base64
