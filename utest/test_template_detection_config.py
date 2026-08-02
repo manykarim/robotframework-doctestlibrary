@@ -52,8 +52,11 @@ def test_setter_keyword_sets_and_resets():
 
 
 def test_setter_keyword_rejects_invalid():
+    # Constructed outside the raises block so only the call under test can
+    # satisfy the assertion.
+    tester = VisualTest()
     with pytest.raises(ValueError, match="Unsupported template detection method"):
-        VisualTest().set_template_detection("text")
+        tester.set_template_detection("text")
 
 
 def test_movement_detection_does_not_leak_into_template_detection():
@@ -126,9 +129,12 @@ def test_explicit_call_argument_is_normalized():
 
 def test_invalid_call_argument_raises_before_file_access():
     """Validation is up front, so a bad value fails without touching the disk."""
+    # Constructed outside the raises block so only the call under test can
+    # satisfy the assertion.
+    tester = VisualTest()
     with patch("DocTest.VisualTest.DocumentRepresentation") as doc:
         with pytest.raises(ValueError, match="Unsupported template detection method"):
-            VisualTest().image_should_contain_template(
+            tester.image_should_contain_template(
                 "img.png", "tpl.png", detection="bogus"
             )
         doc.assert_not_called()
