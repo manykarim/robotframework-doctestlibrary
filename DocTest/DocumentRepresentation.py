@@ -888,25 +888,20 @@ class Page:
         
     def _process_area_ignore_area(self, ignore_area: Dict):
         """Handle area-based ignore areas (e.g., 'top', 'bottom', 'left', 'right') as percentages."""
-        page = ignore_area.get('page', 'all')
-        # Cast the page number to an integer if it is not 'all'
-        if page != 'all':
-            page = int(page)
-        if page == 'all' or page == self.page_number:
-            location = ignore_area.get('location', None)
-            percent = int(ignore_area.get('percent', 10))
-            x, y, w, h = 0, 0, self.image.shape[1], self.image.shape[0]
-            if location == 'top':
-                h = int(self.image.shape[0] * percent / 100)
-            elif location == 'bottom':
-                h = int(self.image.shape[0] * percent / 100)
-                y = self.image.shape[0] - h
-            elif location == 'left':
-                w = int(self.image.shape[1] * percent / 100)
-            elif location == 'right':
-                w = int(self.image.shape[1] * percent / 100)
-                x = self.image.shape[1] - w
-            self.pixel_ignore_areas.append({"x": x, "y": y, "width": w, "height": h})
+        location = ignore_area.get('location', None)
+        percent = int(ignore_area.get('percent', 10))
+        x, y, w, h = 0, 0, self.image.shape[1], self.image.shape[0]
+        if location == 'top':
+            h = int(self.image.shape[0] * percent / 100)
+        elif location == 'bottom':
+            h = int(self.image.shape[0] * percent / 100)
+            y = self.image.shape[0] - h
+        elif location == 'left':
+            w = int(self.image.shape[1] * percent / 100)
+        elif location == 'right':
+            w = int(self.image.shape[1] * percent / 100)
+            x = self.image.shape[1] - w
+        self.pixel_ignore_areas.append({"x": x, "y": y, "width": w, "height": h})
 
     def _get_text(self, force_ocr: bool = False, ocr_engine: Literal['tesseract', 'east'] = 'tesseract', confidence: int = DEFAULT_CONFIDENCE, tesseract_config: str = TESSERACT_CONFIG, **kwargs):
         """Extract text content from the page image."""
@@ -1427,6 +1422,9 @@ class DocumentRepresentation:
         if not self.abstract_ignore_areas:
             return
         for ignore_area in self.abstract_ignore_areas:
+            mask_page = ignore_area.get('page', 'all')
+            if mask_page != 'all' and int(mask_page) != page.page_number:
+                continue
             if ignore_area.get('type') in ['pattern', 'line_pattern', 'word_pattern']:
                 if (force_ocr or not page.pdf_text_data) and not page.ocr_performed:
                     page.apply_ocr(ocr_engine=self.ocr_engine)
