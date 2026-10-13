@@ -79,9 +79,9 @@ def test_coordinate_mask_fractional_mm_resolves_exactly():
     assert page.pixel_ignore_areas == [{'x': 0, 'y': 0, 'height': 200, 'width': 200}]
 
 
-def _page_with_ocr_tokens(tokens):
+def _page_with_ocr_tokens(tokens, page_number=1):
     image = np.zeros((50, 400, 3), dtype=np.uint8)
-    page = Page(image, page_number=1, dpi=200)
+    page = Page(image, page_number=page_number, dpi=200)
     page.ocr_performed = True
     page.ocr_text_data = {
         'text': tokens,
@@ -92,6 +92,121 @@ def _page_with_ocr_tokens(tokens):
         'conf': ['95'] * len(tokens),
     }
     return page
+
+
+def _document_with_masks(*masks):
+    document = DocumentRepresentation.__new__(DocumentRepresentation)
+    document.abstract_ignore_areas = list(masks)
+    document.ocr_engine = 'tesseract'
+    return document
+
+
+@pytest.mark.parametrize("mask_page,expected_pages", [
+    (1, [1]),
+    ('2', [2]),
+    ('all', [1, 2]),
+    (None, [1, 2]),
+])
+def test_coordinate_mask_applies_to_selected_pages(mask_page, expected_pages):
+    mask = {
+        'type': 'coordinates',
+        'x': 10,
+        'y': 20,
+        'width': 30,
+        'height': 40,
+    }
+    if mask_page is not None:
+        mask['page'] = mask_page
+
+    document = _document_with_masks(mask)
+    pages = [
+        Page(np.zeros((200, 300, 3), dtype=np.uint8), page_number=page_number)
+        for page_number in (1, 2)
+    ]
+    for page in pages:
+        document._apply_ignore_areas_to_page(page)
+
+    expected_area = {'x': 10, 'y': 20, 'width': 30, 'height': 40}
+    for page in pages:
+        if page.page_number in expected_pages:
+            assert page.pixel_ignore_areas == [expected_area]
+        else:
+            assert page.pixel_ignore_areas == []
+
+
+@pytest.mark.parametrize('pattern_type', [
+    'word_pattern',
+    'pattern',
+    'line_pattern',
+])
+def test_text_pattern_mask_only_searches_selected_page(pattern_type):
+    document = _document_with_masks({
+        'page': 2,
+        'type': pattern_type,
+        'pattern': 'Target',
+    })
+    pages = [
+        _page_with_ocr_tokens(['Target'], page_number=page_number)
+        for page_number in (1, 2)
+    ]
+    for page in pages:
+        document._apply_ignore_areas_to_page(page)
+
+    assert pages[0].pixel_ignore_areas == []
+    assert len(pages[1].pixel_ignore_areas) == 1
+
+
+def test_area_mask_page_selection_is_unchanged():
+    document = _document_with_masks({
+        'page': 2,
+        'type': 'area',
+        'location': 'top',
+        'percent': 25,
+    })
+    pages = [
+        Page(np.zeros((200, 300, 3), dtype=np.uint8), page_number=page_number)
+        for page_number in (1, 2)
+    ]
+    for page in pages:
+        document._apply_ignore_areas_to_page(page)
+
+    assert pages[0].pixel_ignore_areas == []
+    assert pages[1].pixel_ignore_areas == [
+        {'x': 0, 'y': 0, 'width': 300, 'height': 50}
+    ]
+
+
+def test_force_ocr_page_mask_skips_ocr_on_unselected_page(monkeypatch):
+    document = _document_with_masks({
+        'page': 2,
+        'type': 'pattern',
+        'pattern': 'Target',
+    })
+    pages = [
+        Page(np.zeros((50, 400, 3), dtype=np.uint8), page_number=page_number)
+        for page_number in (1, 2)
+    ]
+    ocr_calls = []
+
+    def fake_apply_ocr(page, **kwargs):
+        ocr_calls.append(page.page_number)
+        page.ocr_performed = True
+        page.ocr_text_data = {
+            'text': ['Target'],
+            'left': [10],
+            'top': [5],
+            'width': [40],
+            'height': [15],
+            'conf': ['95'],
+        }
+
+    monkeypatch.setattr(Page, 'apply_ocr', fake_apply_ocr)
+    for page in pages:
+        document._apply_ignore_areas_to_page(page, force_ocr=True)
+
+    assert ocr_calls == [2]
+    assert pages[0].pixel_ignore_areas == []
+    assert len(pages[1].pixel_ignore_areas) == 1
 
 
 @pytest.mark.parametrize("pattern,expected_matches", [
