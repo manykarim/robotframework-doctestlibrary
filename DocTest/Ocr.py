@@ -1,20 +1,60 @@
 import logging
+import tempfile
 import time
 import os
 import cv2
 import numpy as np
 import pytesseract
-from typing import Dict, List
+from typing import Dict, List, Optional, Sequence, Tuple
 from pytesseract import Output
-import urllib
+import urllib.request
 import unicodedata
 
 logger = logging.getLogger(__name__)
 
 PYTESSERACT_CONFIDENCE=20
+EAST_MODEL_URL = "https://raw.githubusercontent.com/oyyd/frozen_east_text_detection.pb/master/frozen_east_text_detection.pb"
+# A detected region taller than this many median EAST box heights holds
+# several merged text lines and is recognized as a block, not a single line.
+MULTILINE_RATIO = 1.6
 
 def remove_control_characters(s):
     return "".join(ch for ch in s if unicodedata.category(ch)[0]!="C")
+
+
+def _is_word(text: Dict[str, List], index: int) -> bool:
+    """True for a recognized word; False for Tesseract's structural rows
+    (page/block/paragraph/line, confidence -1) and empty entries."""
+    try:
+        if float(text['conf'][index]) < 0:
+            return False
+    except (TypeError, ValueError):
+        return False
+    return bool(str(text['text'][index]).strip())
+
+
+def _has_alnum_word(text: Dict[str, List]) -> bool:
+    return any(
+        _is_word(text, i) and any(ch.isalnum() for ch in str(text['text'][i]))
+        for i in range(len(text.get('text', [])))
+    )
+
+
+def _crop(image: np.ndarray, box: Tuple[int, int, int, int], pad_x: int, pad_y: int) -> Tuple[np.ndarray, int, int]:
+    """Crop *box* (x0, y0, x1, y1) plus padding, clamped to the image."""
+    height, width = image.shape[:2]
+    x0, y0 = max(0, box[0] - pad_x), max(0, box[1] - pad_y)
+    x1, y1 = min(width, box[2] + pad_x), min(height, box[3] + pad_y)
+    return image[y0:y1, x0:x1], x0, y0
+
+
+def _median_box_height(rectangles: Sequence[Tuple[int, int, int, int]], x: int, y: int, w: int, h: int) -> Optional[float]:
+    """Median height of the raw EAST boxes lying inside a region."""
+    heights = [
+        y2 - y1 for (x1, y1, x2, y2) in rectangles
+        if x1 >= x - 1 and y1 >= y - 1 and x2 <= x + w + 1 and y2 <= y + h + 1
+    ]
+    return float(np.median(heights)) if heights else None
 
 class EastTextExtractor:
     layer_names = ('feature_fusion/Conv_7/Sigmoid', 'feature_fusion/concat_3',)
@@ -62,22 +102,38 @@ class EastTextExtractor:
             start_y = int(y * ratio_height)
             end_x = int((x + w) * ratio_width)
             end_y = int((y + h) * ratio_height)
-            # ROI to be recognized
-            pad_x = max(5, int((end_x - start_x) * 0.6))
-            pad_y = max(2, int((end_y - start_y) * 0.2))
-            roi_start_x = max(0, start_x - pad_x)
-            roi_start_y = max(0, start_y - pad_y)
-            roi_end_x = min(orig_w, end_x + pad_x)
-            roi_end_y = min(orig_h, end_y + pad_y)
-            roi = loaded_image[roi_start_y:roi_end_y, roi_start_x:roi_end_x]
+            # Touching text lines merge into one contour; a single-line read
+            # (psm 7) of such a region silently drops all but one line.
+            psm = 7
+            line_height = end_y - start_y
+            median_height = _median_box_height(rectangles, x, y, w, h)
+            if median_height and h > MULTILINE_RATIO * median_height:
+                psm = 6
+                line_height = max(1, int(median_height * ratio_height))
+            # ROI to be recognized; vertical padding follows one line's
+            # height so it does not reach into neighbouring lines
+            box = (start_x, start_y, end_x, end_y)
+            roi, roi_start_x, roi_start_y = _crop(
+                loaded_image, box, max(5, int((end_x - start_x) * 0.6)), max(2, int(line_height * 0.2))
+            )
             if roi.size == 0:
                 continue
 
-            text = self._recognize_roi(roi)
-            
+            text = self._recognize_roi(roi, psm)
+            if not _has_alnum_word(text):
+                # Small labels in busy images drown in the wide context;
+                # retry once with a tight crop around the detected text.
+                tight, tight_x, tight_y = _crop(
+                    loaded_image, box, max(4, int(line_height * 0.6)), max(2, int(line_height * 0.25))
+                )
+                if tight.size > 0:
+                    retry = self._recognize_roi(tight, psm)
+                    if _has_alnum_word(retry):
+                        text, roi_start_x, roi_start_y = retry, tight_x, tight_y
+
             # recalculate coordinates in tesseract text dict and add start_x and start_y
             for i in range(len(text['text'])):
-                if text['conf'][i] == '-1':
+                if not _is_word(text, i):
                     continue
                 text['text'][i] = remove_control_characters(text['text'][i])
                 text['left'][i] = text['left'][i] + roi_start_x
@@ -85,6 +141,8 @@ class EastTextExtractor:
                 text['width'][i] = text['width'][i]
                 text['height'][i] = text['height'][i]
                 text['text'][i] = text['text'][i].strip()
+                if not text['text'][i]:
+                    continue
                 text['conf'][i] = 100
 
 
@@ -99,8 +157,8 @@ class EastTextExtractor:
 
         return results
 
-    def _recognize_roi(self, roi: np.ndarray) -> Dict[str, List[str]]:
-        config = '--oem 1 --psm 7 -l eng'
+    def _recognize_roi(self, roi: np.ndarray, psm: int = 7) -> Dict[str, List[str]]:
+        config = f'--oem 1 --psm {psm} -l eng'
         scale_factor = 3 if min(roi.shape[0], roi.shape[1]) < 80 else 1
         roi_for_ocr = roi
         if scale_factor > 1:
@@ -159,39 +217,32 @@ class EastTextExtractor:
         if os.path.exists(self.east):
             return
 
-            # load the pre-trained EAST model for text detection
+        # load the pre-trained EAST model for text detection
         pkg_path = os.path.dirname(__file__)
         data_file = os.path.join(pkg_path, self.east)
-        os.makedirs(os.path.dirname(data_file), exist_ok=True)
+        target_dir = os.path.dirname(data_file)
+        os.makedirs(target_dir, exist_ok=True)
+        if os.path.isfile(data_file):
+            return
 
-        # check if file abs_east_model_path exists
-        if os.path.isfile(data_file) is False:
-            # Download from url https://raw.githubusercontent.com/oyyd/frozen_east_text_detection.pb/master/frozen_east_text_detection.pb
-            logger.info("Downloading frozen_east_text_detection.pb from url")
-            url = "https://raw.githubusercontent.com/oyyd/frozen_east_text_detection.pb/master/frozen_east_text_detection.pb"
-            urllib.request.urlretrieve(url, data_file)
-
-
-    
-
-    def _extract_text(self, image, boxes, percent, numbers, ratio_width, ratio_height):
-        extracted_text = []
-        for (start_X, start_Y, end_X, end_Y) in boxes:
-            # scale the bounding box coordinates based on the respective
-            # ratios
-            percent = (percent / 100 + 1) if percent >= 0 else ((100 - percent) / 100)
-            start_X = int(start_X * ratio_width * percent)
-            start_Y = int(start_Y * ratio_height * percent)
-            end_X = int(end_X * ratio_width * percent)
-            end_Y = int(end_Y * ratio_height * percent)
-
-            ROIImage = image.copy()[start_Y:end_Y, start_X:end_X]
-            config = '--psm 6' if numbers else ''
-            extracted_text.append(pytesseract.image_to_string(
-                ROIImage, config=config)
-            )
-
-        return extracted_text
+        # Download into a private temp file and atomically move it into place:
+        # concurrent processes (xdist workers, pabot) must never see a
+        # half-written model at the final path.
+        logger.info("Downloading frozen_east_text_detection.pb from url")
+        fd, tmp_path = tempfile.mkstemp(prefix=".east-", suffix=".part", dir=target_dir)
+        os.close(fd)
+        try:
+            urllib.request.urlretrieve(EAST_MODEL_URL, tmp_path)
+            try:
+                os.replace(tmp_path, data_file)
+            except PermissionError:
+                # Windows: another process finished first and holds the
+                # model open; its complete file is just as good.
+                if not os.path.isfile(data_file):
+                    raise
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
 def box_extractor(scores, geometry, min_confidence):
     """

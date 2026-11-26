@@ -21,6 +21,9 @@ def _import_runtime():
             _RUNTIME_CACHE["binary_content"],
         )
 
+    # pydantic-ai 2.x prints a Logfire banner to the console; keep Robot
+    # output clean unless the user explicitly asked for it.
+    os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
     try:
         from pydantic_ai import Agent, BinaryContent  # type: ignore
     except ImportError as exc:  # pragma: no cover - optional dependency
@@ -69,7 +72,10 @@ def _resolve_model_identifier(settings: LLMSettings, purpose: str) -> Optional[s
     if provider and provider != "openai":
         return f"{provider}:{model}"
 
-    return f"openai:{model}"
+    # 'openai-chat:' pins the Chat Completions API on pydantic-ai 1.x and 2.x;
+    # in 2.x the bare 'openai:' prefix switched to the Responses API, which
+    # OpenAI-compatible endpoints (OpenRouter, local servers) may not offer.
+    return f"openai-chat:{model}"
 
 
 def _parse_decision(payload) -> LLMDecision:
@@ -191,10 +197,13 @@ def _run_agent(
     if not identifier:
         raise RuntimeError("No LLM model configured for the requested operation.")
 
+    # An int ``retries`` sets the output-validation budget on pydantic-ai
+    # 1.x and 2.x alike; ``output_retries=`` is deprecated in late 1.x and
+    # removed in 2.x. No tools are registered, so the tool budget is unused.
     agent = Agent(
         identifier,
         output_type=output_type,
-        output_retries=max(1, getattr(settings, "output_retries", 3)),
+        retries=max(1, getattr(settings, "output_retries", 3)),
     )
 
     last_error: Optional[Exception] = None

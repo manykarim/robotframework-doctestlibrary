@@ -895,8 +895,8 @@ class VisualTest:
                     diff_rectangles_cache = diff_rectangles
                     has_pdf_text = bool(ref_page.pdf_text_words) and bool(cand_page.pdf_text_words)
                     if get_pdf_content:
-                        import fitz
-                        fitz.TOOLS.set_aa_level(0)
+                        import pymupdf
+                        pymupdf.TOOLS.set_aa_level(0)
                         similar = True
                         ref_words = ref_page.pdf_text_words
                         cand_words = cand_page.pdf_text_words
@@ -1475,7 +1475,7 @@ class VisualTest:
         prefer_pdf: bool,
         force_ocr: bool,
     ):
-        import fitz
+        import pymupdf
 
         rect_bounds = (
             rect["x"],
@@ -1485,7 +1485,7 @@ class VisualTest:
         )
 
         if prefer_pdf and page.pdf_text_words:
-            rect_pts = fitz.Rect(
+            rect_pts = pymupdf.Rect(
                 rect_bounds[0] * 72 / page.dpi,
                 rect_bounds[1] * 72 / page.dpi,
                 rect_bounds[2] * 72 / page.dpi,
@@ -1493,7 +1493,7 @@ class VisualTest:
             )
             words = []
             for word in page.pdf_text_words:
-                if fitz.Rect(word[:4]).intersects(rect_pts):
+                if pymupdf.Rect(word[:4]).intersects(rect_pts):
                     bbox = (
                         word[0] * page.dpi / 72,
                         word[1] * page.dpi / 72,

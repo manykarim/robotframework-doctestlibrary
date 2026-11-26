@@ -312,7 +312,8 @@ def test_run_agent_retries_on_unexpected_model_behavior(monkeypatch):
     result = client_module._run_agent(settings, "text", ["prompt"], str)
     assert result == "recovered"
     assert calls["count"] == 2
-    assert calls["kwargs"]["output_retries"] == settings.output_retries >= 3
+    assert calls["kwargs"]["retries"] == settings.output_retries >= 3
+    assert "output_retries" not in calls["kwargs"]
 
 
 def test_run_agent_gives_up_after_one_retry(monkeypatch):
@@ -343,3 +344,73 @@ def test_output_retries_setting_parses_from_env(monkeypatch):
     monkeypatch.delenv("DOCTEST_LLM_OUTPUT_RETRIES")
     assert load_llm_settings().output_retries == 3
     assert load_llm_settings({"llm_output_retries": 2}).output_retries == 2
+
+
+@pytest.mark.parametrize(
+    "provider, expected",
+    [
+        ("openai", "openai-chat:gpt-4o"),
+        ("", "openai-chat:gpt-4o"),
+        ("anthropic", "anthropic:gpt-4o"),
+    ],
+)
+def test_model_identifier_keeps_chat_completions_for_openai(provider, expected):
+    """pydantic-ai 2.x maps the bare 'openai:' prefix to the Responses API;
+    the OpenAI provider (incl. OpenAI-compatible base URLs) must stay on
+    Chat Completions on every supported runtime version."""
+    from DocTest.llm.client import _resolve_model_identifier
+
+    settings = _dummy_settings()
+    settings.provider = provider
+    assert _resolve_model_identifier(settings, "text") == expected
+
+
+def test_azure_identifier_uses_deployment():
+    from DocTest.llm.client import _resolve_model_identifier
+
+    settings = _dummy_settings()
+    settings.provider = "azure"
+    settings.azure_deployment = "my-deployment"
+    assert _resolve_model_identifier(settings, "text") == "azure:my-deployment"
+
+
+def test_runtime_import_suppresses_banner_but_respects_user_choice(monkeypatch):
+    from DocTest.llm import client as client_module
+
+    monkeypatch.setattr(client_module, "_RUNTIME_CACHE", {})
+    monkeypatch.delenv("PYDANTIC_AI_NO_BANNER", raising=False)
+    client_module._import_runtime()
+    assert client_module.os.environ["PYDANTIC_AI_NO_BANNER"] == "1"
+
+    monkeypatch.setattr(client_module, "_RUNTIME_CACHE", {})
+    monkeypatch.setenv("PYDANTIC_AI_NO_BANNER", "0")
+    client_module._import_runtime()
+    assert client_module.os.environ["PYDANTIC_AI_NO_BANNER"] == "0"
+
+
+def test_output_retry_budget_bounds_model_calls(monkeypatch):
+    """With the real pydantic-ai Agent, a budget of 3 means one initial call
+    plus three output-validation retries on persistently malformed output."""
+    pytest.importorskip("pydantic_ai")
+    from pydantic_ai.messages import ModelResponse, TextPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from DocTest.llm import client as client_module
+
+    calls = {"count": 0}
+
+    def malformed(messages, info):
+        calls["count"] += 1
+        return ModelResponse(parts=[TextPart("not json at all")])
+
+    monkeypatch.setattr(client_module, "_configure_environment", lambda settings: None)
+    monkeypatch.setattr(
+        client_module, "_resolve_model_identifier", lambda settings, purpose: FunctionModel(malformed)
+    )
+    settings = _dummy_settings()
+    settings.output_retries = 3
+
+    with pytest.raises(Exception):
+        client_module._run_agent(settings, "text", ["prompt"], LLMDecision)
+    # _run_agent re-runs once after UnexpectedModelBehavior: 2 runs x (1 + 3)
+    assert calls["count"] == 8

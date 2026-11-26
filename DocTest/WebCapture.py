@@ -12,6 +12,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from robot.utils import escape
+
+
+def _value(value):
+    """An argument for ``BuiltIn.run_keyword``: string arguments are parsed
+    like test data there, so Windows paths (``\\new`` -> newline), CSS/regex
+    backslashes and ``${...}`` would otherwise be rewritten."""
+    return escape(value) if isinstance(value, str) else value
+
+
+def _named(name: str, value) -> str:
+    """``name=value`` named-argument syntax with an escaped value."""
+    return f"{name}={escape(str(value))}"
+
 
 @dataclass
 class ElementRect:
@@ -119,7 +133,7 @@ class BrowserLibraryAdapter(WebCaptureAdapter):
         # Take Screenshot appends the extension itself → pass without suffix
         result = self._run(
             "Take Screenshot",
-            f"filename={path.with_suffix('')}",
+            _named("filename", path.with_suffix("")),
             f"fullPage={full_page}",
             "scale=css",
             "disableAnimations=True",
@@ -130,8 +144,8 @@ class BrowserLibraryAdapter(WebCaptureAdapter):
     def capture_element(self, path: Path, locator: str) -> Path:
         result = self._run(
             "Take Screenshot",
-            f"filename={path.with_suffix('')}",
-            f"selector={locator}",
+            _named("filename", path.with_suffix("")),
+            _named("selector", locator),
             "scale=css",
             "disableAnimations=True",
             "log_screenshot=False",
@@ -139,22 +153,22 @@ class BrowserLibraryAdapter(WebCaptureAdapter):
         return Path(str(result))
 
     def element_rects(self, locator: str) -> List[ElementRect]:
-        elements = self._run("Get Elements", f"selector={locator}")
+        elements = self._run("Get Elements", _named("selector", locator))
         rects = []
         for element in elements:
-            box = self._run("Get BoundingBox", f"selector={element}")
+            box = self._run("Get BoundingBox", _named("selector", element))
             rects.append(ElementRect(box["x"], box["y"], box["width"], box["height"]))
         return rects
 
     def device_pixel_ratio(self) -> float:
-        return float(self._run("Evaluate JavaScript", None, "() => window.devicePixelRatio"))
+        return float(self._run("Evaluate JavaScript", None, _value("() => window.devicePixelRatio")))
 
     def capture_scale(self) -> float:
         return 1.0  # scale=css captures are already in CSS pixels
 
     def dom_snapshot(self, locator: Optional[str] = None) -> str:
         # with a selector, Evaluate JavaScript hands the element to the function
-        return str(self._run("Evaluate JavaScript", locator, DOM_WALKER_JS))
+        return str(self._run("Evaluate JavaScript", _value(locator), _value(DOM_WALKER_JS)))
 
     def describe(self) -> Dict[str, Any]:
         context: Dict[str, Any] = {"library": self.library_name}
@@ -191,24 +205,24 @@ class SeleniumLibraryAdapter(WebCaptureAdapter):
                 "call with full_page=False to compare the visible viewport, "
                 "or use Browser Library for full-page comparisons."
             )
-        result = self._run("Capture Page Screenshot", f"filename={path}")
+        result = self._run("Capture Page Screenshot", _named("filename", path))
         return Path(str(result))
 
     def capture_element(self, path: Path, locator: str) -> Path:
         result = self._run(
-            "Capture Element Screenshot", f"locator={locator}", f"filename={path}"
+            "Capture Element Screenshot", _named("locator", locator), _named("filename", path)
         )
         return Path(str(result))
 
     def element_rects(self, locator: str) -> List[ElementRect]:
-        elements = self._run("Get WebElements", f"locator={locator}")
+        elements = self._run("Get WebElements", _named("locator", locator))
         return [
             ElementRect(rect["x"], rect["y"], rect["width"], rect["height"])
             for rect in (element.rect for element in elements)
         ]
 
     def device_pixel_ratio(self) -> float:
-        return float(self._run("Execute Javascript", "return window.devicePixelRatio"))
+        return float(self._run("Execute Javascript", _value("return window.devicePixelRatio")))
 
     def capture_scale(self) -> float:
         return self.device_pixel_ratio()
@@ -216,9 +230,9 @@ class SeleniumLibraryAdapter(WebCaptureAdapter):
     def dom_snapshot(self, locator: Optional[str] = None) -> str:
         script = f"return ({DOM_WALKER_JS})(arguments[0]);"
         if locator is None:
-            return str(self._run("Execute Javascript", script))
-        element = self._run("Get WebElement", f"locator={locator}")
-        return str(self._run("Execute Javascript", script, "ARGUMENTS", element))
+            return str(self._run("Execute Javascript", _value(script)))
+        element = self._run("Get WebElement", _named("locator", locator))
+        return str(self._run("Execute Javascript", _value(script), "ARGUMENTS", element))
 
     def describe(self) -> Dict[str, Any]:
         context: Dict[str, Any] = {"library": self.library_name}

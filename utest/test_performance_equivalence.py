@@ -7,7 +7,7 @@ code it replaced; these tests pin that down.
 from pathlib import Path
 
 import cv2
-import fitz
+import pymupdf
 import numpy as np
 import pytest
 
@@ -19,7 +19,7 @@ class TestPixmapConversionBitExact:
 
     @pytest.mark.parametrize("dpi", [72, 200])
     def test_bit_exact_against_png_roundtrip(self, testdata_dir, dpi):
-        with fitz.open(str(testdata_dir / "sample.pdf")) as doc:
+        with pymupdf.open(str(testdata_dir / "sample.pdf")) as doc:
             for page_num in range(len(doc)):
                 pix = doc.load_page(page_num).get_pixmap(dpi=dpi)
                 via_png = cv2.imdecode(
@@ -31,8 +31,8 @@ class TestPixmapConversionBitExact:
                 )
 
     def test_grayscale_pixmap(self, testdata_dir):
-        with fitz.open(str(testdata_dir / "sample_1_page.pdf")) as doc:
-            pix = doc.load_page(0).get_pixmap(dpi=100, colorspace=fitz.csGRAY)
+        with pymupdf.open(str(testdata_dir / "sample_1_page.pdf")) as doc:
+            pix = doc.load_page(0).get_pixmap(dpi=100, colorspace=pymupdf.csGRAY)
             via_png = cv2.imdecode(
                 np.frombuffer(pix.tobytes("png"), np.uint8), cv2.IMREAD_COLOR
             )
@@ -40,7 +40,7 @@ class TestPixmapConversionBitExact:
             assert np.array_equal(via_png, direct)
 
     def test_alpha_pixmap(self, testdata_dir):
-        with fitz.open(str(testdata_dir / "sample_1_page.pdf")) as doc:
+        with pymupdf.open(str(testdata_dir / "sample_1_page.pdf")) as doc:
             pix = doc.load_page(0).get_pixmap(dpi=100, alpha=True)
             direct = DocumentRepresentation._pixmap_to_bgr(pix)
             opaque = DocumentRepresentation._pixmap_to_bgr(
@@ -55,10 +55,10 @@ class TestLazyTextExtraction:
 
     def test_lazy_equals_eager_after_close(self, testdata_dir):
         pdf = str(testdata_dir / "sample_1_page.pdf")
-        doc = DocumentRepresentation(pdf)  # fitz handle closed after load
+        doc = DocumentRepresentation(pdf)  # PyMuPDF handle closed after load
         page = doc.pages[0]
 
-        with fitz.open(pdf) as ref_doc:
+        with pymupdf.open(pdf) as ref_doc:
             ref_page = ref_doc.load_page(0)
             expected = {
                 "text": ref_page.get_text("text", sort=True),

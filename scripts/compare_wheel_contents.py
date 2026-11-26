@@ -29,17 +29,32 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
 BASELINE_PATH = Path(__file__).parent / "wheel_baseline.json"
-SUPPORTED_PYTHONS = ["3.10", "3.11", "3.12", "3.13"]
+SUPPORTED_PYTHONS = ["3.11", "3.12", "3.13", "3.14", "3.15"]
 BASELINE_EXTRAS = ["ai"]
 
 # Documented intentional deviations from the baseline (tightenings only):
-# extra specifiers that may be ADDED for the named package without failing
-# the gate. Anything else still fails.
+# per package, the specifiers that may be ADDED and the baseline specifiers
+# they REPLACE. Anything else still fails the gate.
 INTENTIONAL_TIGHTENINGS = {
-    # 3.9 support drop: maintained pydantic-ai (>=1) requires Python 3.10+;
-    # the unpinned baseline resolved broken 0.8.x on EOL interpreters.
-    "pydantic-ai-slim": frozenset({">=1"}),
+    # pydantic-ai: >=1.40 is the oldest release verified to import against
+    # current OpenTelemetry; <3 guards the next unverified major.
+    "pydantic-ai-slim": {"add": frozenset({">=1.40", "<3"}), "replace": frozenset({">=1"})},
+    # PyMuPDF 2 requires onnxruntime (no cp315 wheels)
+    "pymupdf": {"add": frozenset({"<2"}), "replace": frozenset()},
+    # OpenCV 5 removed the TensorFlow importer used by the EAST model
+    "opencv-python-headless": {"add": frozenset({"<5"}), "replace": frozenset()},
+    # Python 3.15: first releases with cp315 wheels
+    "numpy": {"add": frozenset({">=2.5.2"}), "replace": frozenset({">=2.1.0"})},
+    "scikit-image": {"add": frozenset({">=0.27.0rc1"}), "replace": frozenset({">=0.25.0"})},
+    "deepdiff": {"add": frozenset({">=9.2.1"}), "replace": frozenset({">=6.0"})},
 }
+
+
+def _is_intentional_tightening(name, expected, actual):
+    allowed = INTENTIONAL_TIGHTENINGS.get(name)
+    if allowed is None:
+        return False
+    return (actual - expected) <= allowed["add"] and (expected - actual) <= allowed["replace"]
 
 
 def _effective_requirements(requires_dist, python_version, extra):
@@ -139,8 +154,7 @@ def main():
                     errors.append(
                         f"py{python_version} extra={extra}: dependency dropped: {key[0]}")
                 elif actual[key] != specifiers:
-                    allowed = INTENTIONAL_TIGHTENINGS.get(key[0], frozenset())
-                    if actual[key] == specifiers | allowed:
+                    if _is_intentional_tightening(key[0], specifiers, actual[key]):
                         continue
                     errors.append(
                         f"py{python_version} extra={extra}: {key[0]} specifiers "

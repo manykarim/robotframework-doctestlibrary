@@ -28,6 +28,16 @@ logger = logging.getLogger(__name__)
 _PDF_TEXT_UNSET = object()
 
 
+def _ssim_data_range(image: np.ndarray) -> float:
+    """The dtype range scikit-image 1.x uses by default for integer images.
+
+    Passed explicitly because skimage2's ``structural_similarity`` makes
+    ``data_range`` mandatory; the value keeps SSIM scores identical.
+    """
+    info = np.iinfo(image.dtype)
+    return float(info.max - info.min)
+
+
 class Page:
     def __init__(self, image: np.ndarray, page_number: int, dpi: int = DEFAULT_DPI):
         self.page_number = page_number
@@ -62,16 +72,16 @@ class Page:
     def _extract_pdf_text(self, fmt: str):
         """Extract a text representation on demand from the source PDF.
 
-        The rendering loaders close their fitz document deterministically,
+        The rendering loaders close their PyMuPDF document deterministically,
         so late access re-opens the document by path. This only happens on
         text-consuming paths (masks, text checks), never on plain pixel
         comparisons.
         """
         if self._pdf_text_source is None:
             return None
-        import fitz
+        import pymupdf
         path, index = self._pdf_text_source
-        with fitz.open(path) as doc:
+        with pymupdf.open(path) as doc:
             return doc.load_page(index).get_text(fmt, sort=True)
 
     @property
@@ -531,7 +541,9 @@ class Page:
             gray_self = cv2.GaussianBlur(gray_self, (kernel_size, kernel_size), 1.5)
             gray_other = cv2.GaussianBlur(gray_other, (kernel_size, kernel_size), 1.5)
 
-        score, diff = metrics.structural_similarity(gray_self, gray_other, full=True)
+        score, diff = metrics.structural_similarity(
+            gray_self, gray_other, full=True, data_range=_ssim_data_range(gray_self)
+        )
 
         diff = (diff * 255).astype("uint8")
 
@@ -615,7 +627,8 @@ class Page:
                 block_score = metrics.structural_similarity(
                     block_ref_gray,
                     block_cand_gray,
-                    win_size=win_size
+                    win_size=win_size,
+                    data_range=_ssim_data_range(block_ref_gray),
                 )
 
                 # Track the lowest block SSIM. SSIM ranges over [-1, 1];
@@ -960,16 +973,16 @@ class Page:
             return ""
 
         area_x, area_y, area_w, area_h = self._convert_to_pixels(area, area.get('unit', 'px'))
-        import fitz
-        fitz.TOOLS.set_aa_level(0)
-        rect = fitz.Rect(
+        import pymupdf
+        pymupdf.TOOLS.set_aa_level(0)
+        rect = pymupdf.Rect(
             area_x * 72 / self.dpi,
             area_y * 72 / self.dpi,
             (area_x + area_w) * 72 / self.dpi,
             (area_y + area_h) * 72 / self.dpi,
         )
         diff_area_ref_words = [
-            w for w in self.pdf_text_words if fitz.Rect(w[:4]).intersects(rect)
+            w for w in self.pdf_text_words if pymupdf.Rect(w[:4]).intersects(rect)
         ]
         normalized_words = [self._normalize_token(word[4]) for word in diff_area_ref_words]
         normalized_words = [word for word in normalized_words if word]
@@ -1084,9 +1097,9 @@ class DocumentRepresentation:
     def _load_pdf(self):
         """Load a PDF document, converting each page into a Page object."""
         try:
-            import fitz
-            fitz.TOOLS.set_aa_level(0)  # PyMuPDF
-            with fitz.open(str(self.file_path)) as doc:
+            import pymupdf
+            pymupdf.TOOLS.set_aa_level(0)  # PyMuPDF
+            with pymupdf.open(str(self.file_path)) as doc:
                 self.metadata = doc.metadata
                 self.sigflags = doc.get_sigflags()
                 for page_num in range(len(doc)):
@@ -1106,7 +1119,7 @@ class DocumentRepresentation:
                     self.pages.append(page_obj)
             self.page_count = len(self.pages)
         except ImportError as exc:
-            raise ImportError("PyMuPDF (fitz) is required for PDF processing.") from exc
+            raise ImportError("PyMuPDF is required for PDF processing.") from exc
 
     @staticmethod
     def _pixmap_to_bgr(pix) -> np.ndarray:
@@ -1128,14 +1141,14 @@ class DocumentRepresentation:
 
     def _prepare_pdf_stream(self):
         try:
-            import fitz
-            fitz.TOOLS.set_aa_level(0)
-            self._pdf_document = fitz.open(str(self.file_path))
+            import pymupdf
+            pymupdf.TOOLS.set_aa_level(0)
+            self._pdf_document = pymupdf.open(str(self.file_path))
             self.metadata = self._pdf_document.metadata
             self.sigflags = self._pdf_document.get_sigflags()
             self.page_count = len(self._pdf_document)
         except ImportError as exc:
-            raise ImportError("PyMuPDF (fitz) is required for PDF processing.") from exc
+            raise ImportError("PyMuPDF is required for PDF processing.") from exc
 
     def _render_pdf_page(self, page_index: int) -> Page:
         if self._pdf_document is None:
@@ -1380,15 +1393,15 @@ class DocumentRepresentation:
             return ""
 
         try:
-            import fitz
-            fitz.TOOLS.set_aa_level(0)  # PyMuPDF
-            with fitz.open(str(self.file_path)) as pdf:
+            import pymupdf
+            pymupdf.TOOLS.set_aa_level(0)  # PyMuPDF
+            with pymupdf.open(str(self.file_path)) as pdf:
                 text_content = ""
                 for page_num in range(len(pdf)):
                     page = pdf.load_page(page_num)
                     text_content += page.get_text("text")
                 return text_content if text_content.strip() else ""
-        except Exception as e:  # defensive: covers ImportError, fitz internal errors, and I/O failures
+        except Exception as e:  # defensive: covers ImportError, PyMuPDF internal errors, and I/O failures
             logger.error("Failed to extract text from PDF: %s", e)
             return ""
 

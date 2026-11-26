@@ -69,7 +69,7 @@ def test_history_unknown_comparison_404(client):
 def _passing_run(base_dir):
     """Same suite/test identity as _make_image_run, but the comparison passes."""
     import shutil
-    from helpers import run_robot_suite
+    from helpers import robot_path, run_robot_suite
 
     artifacts = base_dir / "artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)
@@ -82,7 +82,7 @@ Library    DocTest.VisualTest    result_json=true    take_screenshots=false
 
 *** Test Cases ***
 Comparison To Review
-    Compare Images    {reference}    {candidate}
+    Compare Images    {robot_path(reference)}    {robot_path(candidate)}
 """
     return run_robot_suite(suite, base_dir / "run"), artifacts
 

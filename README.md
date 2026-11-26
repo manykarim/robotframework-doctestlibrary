@@ -73,7 +73,7 @@ The project is managed with [uv](https://docs.astral.sh/uv/) — one `pyproject.
 ```bash
 uv sync --all-extras        # full dev environment (library, dashboard, test tooling)
 uv run invoke tests         # unit + acceptance suites
-uv run invoke multipython   # validate dependency resolution on Python 3.10–3.13
+uv run invoke multipython   # validate dependency resolution on Python 3.11–3.15
 uv run pytest e2e --browser chromium   # dashboard end-to-end journeys
 cd frontend && npm install && npm run build   # build the dashboard web UI once
 ```
@@ -88,6 +88,10 @@ for users who skip these dependencies.
    ```bash
    pip install "robotframework-doctestlibrary[ai]"
    ```
+   The extra supports [pydantic-ai](https://ai.pydantic.dev/) 1.40 up to (excluding) 3.0, so both
+   the 1.x and 2.x series work. With the default `openai` provider, requests always use the
+   Chat Completions API, so OpenAI-compatible endpoints configured via `DOCTEST_LLM_BASE_URL`
+   (e.g. OpenRouter or a local server) keep working with pydantic-ai 2.x.
 2. Create a `.env` file at the repository root (values here override existing environment variables):
    ```ini
    # OpenAI-compatible endpoints
@@ -122,7 +126,8 @@ assertion result is preserved.
 Pass `llm_prompt=` (or the specialty variants `llm_visual_prompt=` / `llm_pdf_prompt=`) to
 customise the prompt sent to the model for a particular comparison.
 
-Python 3.10 or newer is supported. Tested with Python 3.10/3.11/3.12/3.13
+Python 3.11 or newer is supported. Tested with Python 3.11/3.12/3.13/3.14/3.15 on Linux and Windows.
+Python 3.10 reached end of life; on 3.10, pin `robotframework-doctestlibrary<0.35`, the last release line that supports it.
 
 ## Install robotframework-doctestlibrary
 

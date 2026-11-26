@@ -2,7 +2,7 @@
 
 import shutil
 
-from helpers import CAND_IMAGE, REF_IMAGE, UTESTDATA, run_robot_suite
+from helpers import CAND_IMAGE, REF_IMAGE, UTESTDATA, robot_path, run_robot_suite
 
 from test_review import _ingest
 
@@ -30,7 +30,7 @@ def _grouping_run(base_dir, pairs):
         lines.append(
             f"Comparison {index}\n"
             "    Run Keyword And Expect Error    The compared images are different.\n"
-            f"    ...    Compare Images    {reference}    {candidate}\n")
+            f"    ...    Compare Images    {robot_path(reference)}    {robot_path(candidate)}\n")
     output_xml = run_robot_suite("\n".join(lines), base_dir / "run")
     return output_xml, artifacts, created
 

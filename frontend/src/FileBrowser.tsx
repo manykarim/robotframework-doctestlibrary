@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { joinPath } from "./paths";
 
 interface Entry {
   name: string;
@@ -190,7 +191,7 @@ export function FileBrowser({
               className="primary"
               data-testid="fb-select"
               disabled={!filename.trim()}
-              onClick={() => onSelect(`${listing.path}/${filename.trim()}`)}
+              onClick={() => onSelect(joinPath(listing.path!, filename.trim()))}
             >
               Select
             </button>

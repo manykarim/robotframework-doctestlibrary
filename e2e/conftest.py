@@ -29,12 +29,17 @@ def workspace(tmp_path_factory) -> Path:
 
 def _start_server(workspace: Path):
     port = _free_port()
+    # Server output goes to a file: an undrained PIPE fills up (after a few
+    # KB of access log on Windows) and blocks the server mid-request.
+    log_path = workspace / "dashboard-server.log"
+    log = open(log_path, "wb")
     process = subprocess.Popen(
         [sys.executable, "-m", "doctest_dashboard.cli",
          "--data-dir", str(workspace / ".dashboard"),
          "serve", "--port", str(port), "--root", str(workspace)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        stdout=log, stderr=subprocess.STDOUT,
     )
+    process.log = log
     url = f"http://127.0.0.1:{port}"
     for _ in range(100):
         try:
@@ -42,8 +47,14 @@ def _start_server(workspace: Path):
                 return process, url
         except httpx.HTTPError:
             time.sleep(0.2)
-    output = process.stdout.read().decode(errors="replace") if process.stdout else ""
-    raise RuntimeError(f"Server did not start:\n{output}")
+    _stop_server(process)
+    raise RuntimeError(f"Server did not start:\n{log_path.read_text(errors='replace')}")
+
+
+def _stop_server(process):
+    process.terminate()
+    process.wait(timeout=10)
+    process.log.close()
 
 
 @pytest.fixture(scope="session")
@@ -52,8 +63,7 @@ def server_url(workspace):
     try:
         yield url
     finally:
-        process.terminate()
-        process.wait(timeout=10)
+        _stop_server(process)
 
 
 @pytest.fixture
@@ -63,8 +73,7 @@ def fresh_server_url(tmp_path):
     try:
         yield url
     finally:
-        process.terminate()
-        process.wait(timeout=10)
+        _stop_server(process)
 
 
 @pytest.fixture

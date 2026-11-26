@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
@@ -174,7 +174,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          python-version: "3.13"
+          python-version: "3.15"
       - name: Install dependencies (all extras)
         run: uv sync --all-extras
       - name: Run tests with live LLM
@@ -187,6 +187,37 @@ jobs:
           path: |
             results/*.html
             results/*.xml
+
+  windows:
+    # Gates Windows wheel availability on the newest interpreter (issue #136)
+    # and Windows-only behavior (paths, console encodings). The acceptance
+    # suites need Ghostscript/GhostPCL/ImageMagick and stay on Linux.
+    needs: smoke-no-ai
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tesseract
+        shell: pwsh
+        run: |
+          choco install tesseract --no-progress -y
+          "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.15"
+      - name: Install dependencies (all extras)
+        run: uv sync --all-extras --python 3.15
+      - name: Audit resolved dependency versions
+        run: uv run python scripts/audit_resolved_versions.py
+      - name: Unit tests
+        run: uv run pytest utest -n auto --timeout=300 --junitxml=results/pytest-windows.xml
+      - name: Test Report
+        uses: dorny/test-reporter@main
+        if: success() || failure()
+        with:
+          name: Windows Unit Tests
+          path: results/pytest-windows.xml
+          reporter: java-junit
 
   dashboard:
     needs: smoke-no-ai

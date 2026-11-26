@@ -7,7 +7,7 @@ from pathlib import Path
 E2E_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(E2E_DIR.parent / "utest" / "dashboard"))
 
-from helpers import CAND_IMAGE, REF_IMAGE, run_robot_suite  # noqa: E402, F401
+from helpers import CAND_IMAGE, REF_IMAGE, robot_path, run_robot_suite  # noqa: E402, F401
 
 SUITE_TEMPLATE = """
 *** Settings ***
@@ -28,6 +28,6 @@ def make_image_run(base_dir: Path):
     candidate = artifacts / "candidate.png"
     shutil.copyfile(REF_IMAGE, reference)
     shutil.copyfile(CAND_IMAGE, candidate)
-    suite = SUITE_TEMPLATE.format(reference=reference, candidate=candidate)
+    suite = SUITE_TEMPLATE.format(reference=robot_path(reference), candidate=robot_path(candidate))
     output_xml = run_robot_suite(suite, base_dir / "run")
     return output_xml, reference, candidate

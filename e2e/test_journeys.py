@@ -131,15 +131,15 @@ def test_j3_mask_from_diff_recompare_save_rerun(page: Page, server_url, workspac
     assert parsed and all(entry["type"] == "coordinates" for entry in parsed)
 
     # ...and an actual robot re-run with that mask passes
+    from e2e_helpers import robot_path, run_robot_suite
     sys_path_suite = f"""
 *** Settings ***
 Library    DocTest.VisualTest    take_screenshots=false
 
 *** Test Cases ***
 Masked Comparison Passes
-    Compare Images    {reference}    {candidate}    placeholder_file={masks_file}
+    Compare Images    {robot_path(reference)}    {robot_path(candidate)}    placeholder_file={robot_path(masks_file)}
 """
-    from e2e_helpers import run_robot_suite
     run_robot_suite(sys_path_suite, workspace / "j3" / "rerun")  # asserts rc == 0
 
 
@@ -205,7 +205,9 @@ def test_j6_upload_local_image_and_edit_masks(page: Page, server_url, workspace)
     doc_value = page.get_by_test_id("doc-file").input_value()
     assert "uploads" in doc_value and doc_value.endswith("birthday_1080.png")
     mask_value = page.get_by_test_id("mask-file").input_value()
-    assert mask_value == doc_value.rsplit("/", 1)[0] + "/masks.json"
+    # next to the upload, keeping the server's native separator
+    cut = max(doc_value.rfind("/"), doc_value.rfind("\\"))
+    assert mask_value == doc_value[:cut + 1] + "masks.json"
 
     page.click('[data-testid="add-coordinates-mask"]')
     page.click('[data-testid="save-masks"]')
@@ -304,7 +306,7 @@ def test_j9_batch_accept_and_run_lifecycle(page: Page, server_url, workspace, ap
     """Multi-select two failing comparisons, batch-accept them with the
     confirmation bar, verify baselines changed on disk, then delete the run."""
     import shutil
-    from e2e_helpers import run_robot_suite
+    from e2e_helpers import robot_path, run_robot_suite
 
     base = workspace / "j9"
     artifacts = base / "artifacts"
@@ -321,7 +323,7 @@ def test_j9_batch_accept_and_run_lifecycle(page: Page, server_url, workspace, ap
         pairs.append((reference, candidate))
         suite_lines += [f"Comparison {index}",
                         "    Run Keyword And Expect Error    The compared images are different.",
-                        f"    ...    Compare Images    {reference}    {candidate}", ""]
+                        f"    ...    Compare Images    {robot_path(reference)}    {robot_path(candidate)}", ""]
     output_xml = run_robot_suite("\n".join(suite_lines), base / "run")
 
     page.goto(f"{server_url}/#/")
@@ -366,7 +368,7 @@ def test_j10_similarity_group_review(page: Page, server_url, workspace, api):
     """Two comparisons failing with the identical difference group together;
     the group is accepted with one confirmed action."""
     import shutil
-    from e2e_helpers import run_robot_suite
+    from e2e_helpers import robot_path, run_robot_suite
 
     base = workspace / "j10"
     artifacts = base / "artifacts"
@@ -388,7 +390,7 @@ def test_j10_similarity_group_review(page: Page, server_url, workspace, api):
         pairs.append((reference, candidate))
         lines += [f"Comparison {index}",
                   "    Run Keyword And Expect Error    The compared images are different.",
-                  f"    ...    Compare Images    {reference}    {candidate}", ""]
+                  f"    ...    Compare Images    {robot_path(reference)}    {robot_path(candidate)}", ""]
     output_xml = run_robot_suite("\n".join(lines), base / "run")
 
     page.goto(f"{server_url}/#/")
@@ -422,7 +424,7 @@ def test_j11_root_cause_explain_region_and_facets(page: Page, server_url, worksp
     """Explain-region shows the changed text of a diff region; PdfTest
     comparisons render their structured facet differences."""
     import shutil
-    from e2e_helpers import run_robot_suite
+    from e2e_helpers import robot_path, run_robot_suite
     from helpers import REPO_ROOT
 
     base = workspace / "j11"
@@ -444,11 +446,11 @@ Library    DocTest.PdfTest    result_json=true
 *** Test Cases ***
 Image Comparison
     Run Keyword And Expect Error    The compared images are different.
-    ...    Compare Images    {reference}    {candidate}
+    ...    Compare Images    {robot_path(reference)}    {robot_path(candidate)}
 
 Pdf Comparison
     Run Keyword And Expect Error    The compared PDF Document Data is different.
-    ...    Compare Pdf Documents    {pdf_ref}    {pdf_cand}
+    ...    Compare Pdf Documents    {robot_path(pdf_ref)}    {robot_path(pdf_cand)}
 """
     output_xml = run_robot_suite(suite, base / "run")
 

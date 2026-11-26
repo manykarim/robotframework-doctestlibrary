@@ -21,6 +21,7 @@ from helpers import (  # noqa: F401  (re-exported for test modules)
     REF_IMAGE,
     REPO_ROOT,
     UTESTDATA,
+    robot_path,
     run_robot_suite,
 )
 
@@ -30,15 +31,15 @@ Library    DocTest.VisualTest    result_json=true    take_screenshots=false
 
 *** Test Cases ***
 Passing Comparison
-    Compare Images    {REF_IMAGE}    {REF_IMAGE}
+    Compare Images    {robot_path(REF_IMAGE)}    {robot_path(REF_IMAGE)}
 
 Failing Comparison Expected
     Run Keyword And Expect Error    The compared images are different.
-    ...    Compare Images    {REF_IMAGE}    {CAND_IMAGE}
+    ...    Compare Images    {robot_path(REF_IMAGE)}    {robot_path(CAND_IMAGE)}
 
 Masked Failing Comparison
     Run Keyword And Expect Error    The compared images are different.
-    ...    Compare Images    {PDF_REF}    {PDF_CAND}    placeholder_file={PDF_MASK}
+    ...    Compare Images    {robot_path(PDF_REF)}    {robot_path(PDF_CAND)}    placeholder_file={robot_path(PDF_MASK)}
 """
 
 LEGACY_SUITE = f"""
@@ -48,7 +49,7 @@ Library    DocTest.VisualTest    take_screenshots=true    screenshot_format=png
 *** Test Cases ***
 Legacy Failing Comparison
     Run Keyword And Expect Error    The compared images are different.
-    ...    Compare Images    {REF_IMAGE}    {CAND_IMAGE}
+    ...    Compare Images    {robot_path(REF_IMAGE)}    {robot_path(CAND_IMAGE)}
 """
 
 

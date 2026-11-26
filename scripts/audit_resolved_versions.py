@@ -4,7 +4,7 @@ match the poetry-era selection intent for the *running* interpreter.
 
 Run inside each supported environment, e.g.::
 
-    uv sync --python 3.11 --all-extras
+    uv sync --python 3.15 --all-extras
     uv run python scripts/audit_resolved_versions.py
 
 Exit code 0 = the environment matches the expectation table.
@@ -19,17 +19,21 @@ from packaging.version import Version
 PY = sys.version_info[:2]
 
 # package -> expected specifier for this interpreter ("" = any version)
+# Caps shared by every interpreter: majors that break the library.
+_CAPS = {"pymupdf": ">=1.26.0,<2", "opencv-python-headless": ">=4.8,<5",
+         "pydantic-ai-slim": ">=1.40,<3"}
 EXPECTATIONS = {
-    (3, 10): {"numpy": ">=1.26", "pymupdf": ">=1.26.0", "pydantic-ai-slim": ">=1",
+    (3, 11): {**_CAPS, "numpy": ">=1.26",
               "scipy": "", "scikit-image": "", "deepdiff": ""},
-    (3, 11): {"numpy": ">=1.26", "pymupdf": ">=1.26.0", "pydantic-ai-slim": ">=1",
-              "scipy": "", "scikit-image": "", "deepdiff": ""},
-    (3, 12): {"numpy": ">=1.26", "pymupdf": ">=1.26.0",
-              "scipy": ">=1.11", "scikit-image": ">=0.22.0", "deepdiff": ">=6.0",
-              "pydantic-ai-slim": ">=1"},
-    (3, 13): {"numpy": ">=2.1.0", "pymupdf": ">=1.26.0",
-              "scipy": ">=1.11", "scikit-image": ">=0.25.0", "deepdiff": ">=6.0",
-              "pydantic-ai-slim": ">=1"},
+    (3, 12): {**_CAPS, "numpy": ">=1.26",
+              "scipy": ">=1.11", "scikit-image": ">=0.22.0", "deepdiff": ">=6.0"},
+    (3, 13): {**_CAPS, "numpy": ">=2.1.0",
+              "scipy": ">=1.11", "scikit-image": ">=0.25.0", "deepdiff": ">=6.0"},
+    (3, 14): {**_CAPS, "numpy": ">=2.1.0",
+              "scipy": ">=1.11", "scikit-image": ">=0.25.0", "deepdiff": ">=6.0"},
+    # first releases with cp315 wheels; scikit-image only as a release candidate
+    (3, 15): {**_CAPS, "numpy": ">=2.5.2",
+              "scipy": ">=1.18.1", "scikit-image": ">=0.27.0rc1", "deepdiff": ">=9.2.1"},
 }
 
 # packages that must exist on this interpreter (beyond the table)

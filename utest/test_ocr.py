@@ -76,11 +76,12 @@ def test_text_on_colored_background_with_east(testdata_dir):
     assert "123456789" in img.get_text()
     assert "OUVENIR" in img.get_text().upper()
 
-def test_ocr_in_hires_without_rerender(testdata_dir):
+def test_ocr_in_hires_without_rerender(testdata_dir, tmp_path):
     import cv2
     low_res_image = cv2.imread(str(testdata_dir / 'birthday_1080_date_id.png'))
-    # resize image to 10x bigger
+    # resize image to 10x bigger; written per test so parallel workers never
+    # read each other's half-written file
     low_res_image = cv2.resize(low_res_image, None, fx=10, fy=10, interpolation=cv2.INTER_CUBIC)
-    cv2.imwrite(str(testdata_dir / 'birthday_1080_date_id_10x.png'), low_res_image)
-    img = DocumentRepresentation(testdata_dir / 'birthday_1080_date_id_10x.png')
+    cv2.imwrite(str(tmp_path / 'birthday_1080_date_id_10x.png'), low_res_image)
+    img = DocumentRepresentation(tmp_path / 'birthday_1080_date_id_10x.png')
     assert "01-Jan-2021" in img.get_text()

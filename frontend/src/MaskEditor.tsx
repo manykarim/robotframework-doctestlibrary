@@ -3,6 +3,7 @@ import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konv
 import Konva from "konva";
 import { api, assetUrl, MaskEntry, Region } from "./api";
 import { FileBrowser } from "./FileBrowser";
+import { siblingPath } from "./paths";
 
 const DOCUMENT_EXTENSIONS = [".png", ".jpg", ".jpeg", ".pdf", ".ps", ".pcl", ".tif", ".tiff", ".bmp", ".gif"];
 const isDocumentFile = (name: string) =>
@@ -278,8 +279,7 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
       setPageNo(1);
       if (!maskFile) {
         // suggest saving masks next to the uploaded file
-        const folder = result.path.slice(0, result.path.lastIndexOf("/"));
-        setMaskFile(`${folder}/masks.json`);
+        setMaskFile(siblingPath(result.path, "masks.json"));
       }
       setMessage({ kind: "success", text: `Uploaded ${result.name}` });
     } catch (e: any) {

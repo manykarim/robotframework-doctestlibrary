@@ -287,3 +287,87 @@ class TestGetVersion:
         )
         version = _get_version("/usr/bin/gs")
         assert version == "gs 10.0.0"
+
+
+# ---------------------------------------------------------------------------
+# Windows system utilities sharing a fallback name
+# ---------------------------------------------------------------------------
+
+
+class TestWindowsSystemUtilityIgnored:
+    SYSTEM32 = r"C:\Windows\System32"
+
+    def _patch(self, monkeypatch, which):
+        import ntpath
+
+        import DocTest.CapabilityCheck as cc
+
+        monkeypatch.setattr(cc.shutil, "which", which)
+        monkeypatch.setattr(cc, "_get_version", lambda path: None)
+        monkeypatch.setattr(cc, "check_python_package", lambda name: False)
+        # Evaluate paths with Windows semantics on every platform
+        monkeypatch.setattr(cc.os, "path", ntpath)
+        monkeypatch.setattr(cc, "_windows_system_dirs", lambda: [ntpath.normcase(self.SYSTEM32)])
+
+    def test_system32_convert_is_not_imagemagick(self, monkeypatch):
+        self._patch(monkeypatch, lambda name: r"C:\WINDOWS\system32\convert.exe" if name == "convert" else None)
+
+        caps = check_all_capabilities()
+
+        assert caps["imagemagick"]["available"] is False
+        assert "install_hint" in caps["imagemagick"]
+
+    def test_imagemagick_convert_outside_system_dir_is_accepted(self, monkeypatch):
+        imagemagick = r"C:\Program Files\ImageMagick-7.1.1-Q16\convert.exe"
+        self._patch(monkeypatch, lambda name: imagemagick if name == "convert" else None)
+
+        caps = check_all_capabilities()
+
+        assert caps["imagemagick"]["available"] is True
+        assert caps["imagemagick"]["path"] == imagemagick
+        assert "fallback" in caps["imagemagick"]["note"].lower()
+
+    def test_primary_binary_in_system_dir_is_still_accepted(self, monkeypatch):
+        """Only fallback names are filtered; a primary name is never ambiguous."""
+        self._patch(monkeypatch, lambda name: r"C:\Windows\System32\magick.exe" if name == "magick" else None)
+
+        caps = check_all_capabilities()
+
+        assert caps["imagemagick"]["available"] is True
+
+    def test_not_filtered_on_posix(self, monkeypatch):
+        import DocTest.CapabilityCheck as cc
+
+        monkeypatch.setattr(cc.os, "name", "posix")
+        assert cc._windows_system_dirs() == []
+
+
+class TestGetVersionEncoding:
+    def test_non_utf8_tool_output_is_tolerated(self, monkeypatch, tmp_path):
+        """A localized tool printing cp1252 bytes must neither raise nor crash
+        the subprocess reader thread (Python 3.15 defaults to UTF-8 mode)."""
+        import subprocess
+        import threading
+
+        from DocTest.CapabilityCheck import _get_version
+
+        real_run = subprocess.run
+        tool = tmp_path / "localized_tool.py"
+        # "Ungültige Laufwerkangabe." as printed by a German Windows (cp1252)
+        tool.write_text(
+            "import sys\n"
+            "sys.stdout.buffer.write(bytes([85, 110, 103, 0xFC]) + b'ltige Laufwerkangabe.')\n"
+        )
+
+        def run_localized_tool(cmd, **kwargs):
+            return real_run([sys.executable, str(tool)], **kwargs)
+
+        thread_errors = []
+        monkeypatch.setattr("DocTest.CapabilityCheck.subprocess.run", run_localized_tool)
+        monkeypatch.setattr(threading, "excepthook", lambda args: thread_errors.append(args.exc_type))
+
+        version = _get_version(r"C:\Windows\System32\convert.exe")
+
+        assert thread_errors == []
+        assert version is not None and version.startswith("Ung")
+        assert version.endswith("ltige Laufwerkangabe.")

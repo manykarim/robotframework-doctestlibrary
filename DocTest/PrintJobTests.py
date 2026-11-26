@@ -291,7 +291,7 @@ def get_postscript_print_job(filename):
         postscript_prefix = ~r"%%[A-Z]"
         postscript_continue = "%%+" anything linefeed
         empty = ""
-        ws          = ~"\s*"
+        ws          = ~r"\s*"
         emptyline   = ws+
         """
     )

@@ -5,7 +5,7 @@ import json
 import pytest
 
 from doctest_dashboard.ingest import ingest_output_xml
-from helpers import CAND_IMAGE, REF_IMAGE, run_robot_suite
+from helpers import CAND_IMAGE, REF_IMAGE, robot_path, run_robot_suite
 
 NAMED_SUITE = f"""
 *** Settings ***
@@ -14,7 +14,7 @@ Library    DocTest.VisualTest    result_json=true    take_screenshots=false
 *** Test Cases ***
 Some Test Name
     Run Keyword And Expect Error    The compared images are different.
-    ...    Compare Images    {REF_IMAGE}    {CAND_IMAGE}    name=Invoice header
+    ...    Compare Images    {robot_path(REF_IMAGE)}    {robot_path(CAND_IMAGE)}    name=Invoice header
 """
 
 # Same labeled comparison under a DIFFERENT test name: the label must keep

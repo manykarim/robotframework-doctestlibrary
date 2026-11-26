@@ -10,7 +10,7 @@ built here with PyMuPDF.
 
 from unittest.mock import patch
 
-import fitz
+import pymupdf
 import pytest
 
 from DocTest.VisualTest import VisualTest
@@ -19,7 +19,7 @@ FAILURE_MESSAGE = "The compared images are different."
 
 
 def _make_pdf(path, page_texts):
-    doc = fitz.open()
+    doc = pymupdf.open()
     for text in page_texts:
         page = doc.new_page(width=400, height=400)
         page.insert_text((50, 100), text, fontsize=24)
