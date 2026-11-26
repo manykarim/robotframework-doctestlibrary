@@ -173,6 +173,8 @@
 - [x] 10.5 Raise the `[ai]` floor to pydantic-ai-slim 1.107.7. Verify: the LLM tests pass against exactly 1.107.7, and the audit and wheel-parity gates accept the floor.
 - [x] 10.6 Verify every open Dependabot alert is resolved by the branch's lock files (all locked versions at or above the first patched version, across all interpreter forks).
 - [x] 10.7 Make the small-sign OCR assertions (three unit tests and `atest/Compare.robot`) accept one-character OCR variance via a shared helper. Verify: the full CI-equivalent `invoke tests` passes on Ubuntu 26.04 for Python 3.11 and 3.15.
+- [x] 10.8 Fix the e2e race behind the j9 CI failure: journeys clicked the run list's first row right after an ingest, while the list could still show the previous newest run. A helper now opens the run named in the ingest message by id (7 sites). Verify: e2e 18/18 on Windows, 3/3 runs on Ubuntu 26.04.
+- [x] 10.9 Add `--locked` to every `uv sync`/`uv run` in the workflows (Sonar S8544), so CI fails instead of re-resolving when `uv.lock` is stale. Verify: `uv sync --locked --no-build --all-extras` succeeds, and actionlint is clean.
 
 ## Workflow follow-up
 

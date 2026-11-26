@@ -8,6 +8,7 @@ J4 shorthand import → edit → export round trip
 
 import io
 import json
+import re
 import shutil
 import zipfile
 
@@ -22,8 +23,17 @@ def ingest_via_ui(page: Page, server_url: str, output_xml) -> None:
     expect(page.get_by_test_id("ingest-message")).to_contain_text("Ingested run")
 
 
+def ingested_run_row(page: Page):
+    """Row of the run named in the ingest message ("... run <id>: N comparisons").
+
+    The run list refreshes asynchronously after an ingest; its first row can
+    still be the previous newest run, so address the new run by id."""
+    run_id = re.findall(r"run (\d+):", page.get_by_test_id("ingest-message").inner_text())[-1]
+    return page.get_by_test_id(f"run-row-{run_id}")
+
+
 def open_first_failing_comparison(page: Page) -> None:
-    page.locator('[data-testid="run-list"] tr.clickable').first.click()
+    ingested_run_row(page).click()
     page.select_option('[data-testid="status-filter"]', "fail")
     page.locator('[data-testid="test-grid"] tr.clickable').first.click()
     expect(page.get_by_test_id("comparison-status")).to_have_text("FAIL")
@@ -268,7 +278,7 @@ def test_j8_upload_results_folder_from_disk(page: Page, server_url, workspace):
     expect(message).to_contain_text("ingested run", timeout=30_000)
 
     # the uploaded run is reviewable end to end
-    page.locator('[data-testid="run-list"] tr.clickable').first.click()
+    ingested_run_row(page).click()
     page.select_option('[data-testid="status-filter"]', "fail")
     page.locator('[data-testid="test-grid"] tr.clickable').first.click()
     expect(page.get_by_test_id("comparison-status")).to_have_text("FAIL")
@@ -331,7 +341,7 @@ def test_j9_batch_accept_and_run_lifecycle(page: Page, server_url, workspace, ap
     page.click('[data-testid="ingest-button"]')
     expect(page.get_by_test_id("ingest-message")).to_contain_text("Ingested run")
     # runs are listed newest first
-    page.locator('[data-testid="run-list"] tr.clickable').first.click()
+    ingested_run_row(page).click()
 
     # select all eligible on the page, batch accept through the confirm bar
     page.click('[data-testid="select-page"]')
@@ -397,7 +407,7 @@ def test_j10_similarity_group_review(page: Page, server_url, workspace, api):
     page.fill('[data-testid="ingest-path"]', str(output_xml))
     page.click('[data-testid="ingest-button"]')
     expect(page.get_by_test_id("ingest-message")).to_contain_text("Ingested run")
-    page.locator('[data-testid="run-list"] tr.clickable').first.click()
+    ingested_run_row(page).click()
 
     page.click('[data-testid="view-groups"]')
     group_card = page.locator(".group-card").first
@@ -458,7 +468,7 @@ Pdf Comparison
     page.fill('[data-testid="ingest-path"]', str(output_xml))
     page.click('[data-testid="ingest-button"]')
     expect(page.get_by_test_id("ingest-message")).to_contain_text("Ingested run")
-    page.locator('[data-testid="run-list"] tr.clickable').first.click()
+    ingested_run_row(page).click()
 
     # image comparison: explain the first diff region
     page.select_option('[data-testid="status-filter"]', "fail")
@@ -493,7 +503,7 @@ def test_j13_visual_polish(page: Page, server_url, workspace, api):
     ingest_via_ui(page, server_url, output_xml)
 
     # run list: derived name "<suite> · <folder>", relative import time
-    run_row = page.locator('[data-testid="run-list"] tr.clickable').first
+    run_row = ingested_run_row(page)
     expect(run_row).to_contain_text(" · ")
     expect(run_row).to_contain_text("just now")
 
@@ -585,7 +595,7 @@ def test_j12_history_across_runs(page: Page, server_url, workspace, api):
         page.click('[data-testid="ingest-button"]')
         expect(page.get_by_test_id("ingest-message")).to_contain_text("Ingested run")
 
-    page.locator('[data-testid="run-list"] tr.clickable').first.click()
+    ingested_run_row(page).click()
     page.select_option('[data-testid="status-filter"]', "fail")
     page.locator('[data-testid="test-grid"] tr.clickable').first.click()
 

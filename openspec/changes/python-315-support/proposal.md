@@ -42,7 +42,8 @@ Users cannot install the library on Python 3.15 (issue #136): the resolver falls
 - Security and supply-chain fixes:
   - All open Dependabot alerts for `uv.lock` (Pillow, certifi, urllib3, anyio, httpx2/httpcore2, setuptools, opentelemetry-api, pydantic-ai-slim) are resolved by the refreshed lock. The `[ai]` floor becomes pydantic-ai-slim 1.107.7, the first 1.x without published advisories.
   - Frontend: vite 8.4, @vitejs/plugin-react 6.3, and transitive postcss/source-map-js/nanoid fixes; `npm audit` reports 0 vulnerabilities. Supersedes Dependabot PRs #154 (plugin-react), #155 (setup-node v7), #156 (checkout v7), #157 (docker/login-action) and #164 (pypi-publish).
-  - Every GitHub Action in all workflows is pinned to a full commit SHA, and `dorny/test-reporter` moves from `@main` to its v3.0.0 release. All `uv sync`/`uv run` steps use `--no-build`, so CI never executes a source distribution's build scripts. (Sonar S7637/S8541)
+  - Every GitHub Action in all workflows is pinned to a full commit SHA, and `dorny/test-reporter` moves from `@main` to its v3.0.0 release. All `uv sync`/`uv run` steps use `--locked --no-build`: CI never executes a source distribution's build scripts and fails on a stale lock instead of re-resolving. (Sonar S7637/S8541/S8544)
+  - The e2e journeys opened the run list's first row right after an ingest, which could still be the previous run (flaky on CI). They now open the ingested run by id.
   - Floating promises in the dashboard's file browser and mask editor are handled; a failed diff-region fetch now shows an error instead of being swallowed. (Sonar S9383)
 - CI runner: `ubuntu-latest` moved to Ubuntu 26.04 (ImageMagick 7, Tesseract 5.5). The ImageMagick policy is copied into whichever `/etc/ImageMagick-*` directory exists. Tests asserting the 8 px "SOUVENIR" sign accept one-character OCR variance (Ubuntu 26.04's model reads "souveonR").
 - CI:

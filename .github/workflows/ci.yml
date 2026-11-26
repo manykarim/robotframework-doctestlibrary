@@ -21,8 +21,8 @@ jobs:
         run: uvx ruff check DocTest
       - name: mypy
         run: |
-          uv sync --no-build --all-extras
-          uv run --no-build --with mypy mypy DocTest
+          uv sync --locked --no-build --all-extras
+          uv run --locked --no-build --with mypy mypy DocTest
       - name: pip-audit
         run: |
           uv export --format requirements-txt --no-emit-project --no-dev > requirements-audit.txt
@@ -54,10 +54,10 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install base dependencies (without AI extras)
-        run: uv sync --no-build
+        run: uv sync --locked --no-build
       - name: Run smoke end-to-end tests without AI extras
         run: |
-          uv run --no-build robot \
+          uv run --locked --no-build robot \
             --loglevel=TRACE:INFO \
             --listener RobotStackTracer \
             --xunit xunit.xml \
@@ -116,12 +116,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies (all extras)
-        run: uv sync --no-build --all-extras --python ${{ matrix.python-version }}
+        run: uv sync --locked --no-build --all-extras --python ${{ matrix.python-version }}
       - name: Audit resolved dependency versions
-        run: uv run --no-build python scripts/audit_resolved_versions.py
+        run: uv run --locked --no-build python scripts/audit_resolved_versions.py
       - name: Run tests
         run: |
-          uv run --no-build invoke tests
+          uv run --locked --no-build invoke tests
       - name: Store Artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure()
@@ -176,9 +176,9 @@ jobs:
         with:
           python-version: "3.15"
       - name: Install dependencies (all extras)
-        run: uv sync --no-build --all-extras
+        run: uv sync --locked --no-build --all-extras
       - name: Run tests with live LLM
-        run: uv run --no-build invoke tests
+        run: uv run --locked --no-build invoke tests
       - name: Store LLM Artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure()
@@ -206,11 +206,11 @@ jobs:
         with:
           python-version: "3.15"
       - name: Install dependencies (all extras)
-        run: uv sync --no-build --all-extras --python 3.15
+        run: uv sync --locked --no-build --all-extras --python 3.15
       - name: Audit resolved dependency versions
-        run: uv run --no-build python scripts/audit_resolved_versions.py
+        run: uv run --locked --no-build python scripts/audit_resolved_versions.py
       - name: Unit tests
-        run: uv run --no-build pytest utest -n auto --timeout=300 --junitxml=results/pytest-windows.xml
+        run: uv run --locked --no-build pytest utest -n auto --timeout=300 --junitxml=results/pytest-windows.xml
       - name: Test Report
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         if: success() || failure()
@@ -243,17 +243,17 @@ jobs:
           npm ci || npm install
           npm run build
       - name: Sync environment (all extras)
-        run: uv sync --no-build --all-extras
+        run: uv sync --locked --no-build --all-extras
       - name: Backend tests
-        run: uv run --no-build pytest utest/dashboard -v
+        run: uv run --locked --no-build pytest utest/dashboard -v
       - name: Wheel parity gate
         run: |
           uv build
-          uv run --no-build python scripts/compare_wheel_contents.py dist/*.whl --sdist dist/*.tar.gz
+          uv run --locked --no-build python scripts/compare_wheel_contents.py dist/*.whl --sdist dist/*.tar.gz
       - name: Install Playwright browser
-        run: uv run --no-build playwright install chromium --with-deps
+        run: uv run --locked --no-build playwright install chromium --with-deps
       - name: End-to-end journeys
-        run: uv run --no-build pytest e2e -v --browser chromium
+        run: uv run --locked --no-build pytest e2e -v --browser chromium
 
   web:
     needs: smoke-no-ai
@@ -274,13 +274,13 @@ jobs:
         with:
           node-version: "22"
       - name: Sync environment (web test group)
-        run: uv sync --no-build --group web-test
+        run: uv sync --locked --no-build --group web-test
       - name: Initialize Browser library
-        run: uv run --no-build rfbrowser init chromium firefox
+        run: uv run --locked --no-build rfbrowser init chromium firefox
       - name: Web capture unit tests
-        run: uv run --no-build pytest utest/test_web_visual.py -v
+        run: uv run --locked --no-build pytest utest/test_web_visual.py -v
       - name: Web visual acceptance (Browser + SeleniumLibrary)
-        run: uv run --no-build robot -d results-web atest/web/
+        run: uv run --locked --no-build robot -d results-web atest/web/
       - name: Store Web Artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
