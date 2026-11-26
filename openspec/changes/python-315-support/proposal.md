@@ -11,10 +11,10 @@ Users cannot install the library on Python 3.15 (issue #136): the resolver falls
 - Dependency specifiers:
   - `PyMuPDF>=1.26,<2`
   - `opencv-python-headless>=4.8,<5`
-  - `pydantic-ai-slim[openai]>=1.40,<3`
+  - `pydantic-ai-slim[openai]>=1.107.7,<3` (1.107.7 is the first 1.x without published security advisories)
   - Python-3.15-specific floors: numpy `>=2.5.2`, scikit-image `>=0.27.0rc1` (a pre-release, allowed explicitly because it is the only release with 3.15 wheels), deepdiff `>=9.2.1`.
   - `uv.lock` refreshed to the newest versions these specifiers allow.
-- LLM client works unchanged with pydantic-ai 1.40+ and 2.x: it uses the portable `retries=` argument, keeps OpenAI traffic on the Chat Completions API (`openai-chat:`), so OpenAI-compatible endpoints such as OpenRouter keep working, and suppresses pydantic-ai 2.x's Logfire console banner.
+- LLM client works unchanged with pydantic-ai 1.107.7+ and 2.x: it uses the portable `retries=` argument, keeps OpenAI traffic on the Chat Completions API (`openai-chat:`), so OpenAI-compatible endpoints such as OpenRouter keep working, and suppresses pydantic-ai 2.x's Logfire console banner.
 - The EAST model download becomes atomic. Today, concurrent processes (pytest-xdist workers, pabot) can read a half-written 96 MB file and fail with a parse error.
 - EAST text recognition defects fixed. These were found while investigating OCR results that differ between Windows (Tesseract 5.5) and Linux (Tesseract 5.3):
   - The model auto-download relied on `urllib.request` being imported elsewhere.
@@ -39,6 +39,12 @@ Users cannot install the library on Python 3.15 (issue #136): the resolver falls
 - Test races fixed: unit tests no longer write generated images into the shared `utest/testdata` directory.
 - Release 0.35.0: version bump and regenerated keyword documentation (`invoke libdoc`) for all five libraries, shipped with this change.
 - The repository tracked `docs/AI.html` *and* `docs/Ai.html` (likewise `-0.28.0`). On case-insensitive file systems (Windows, macOS) both map to one file, so every checkout looked modified and regenerated docs landed in the wrong entry. The stale uppercase copies (superseded in October 2025, unreferenced) are removed. A test fails if two tracked paths ever differ only by case.
+- Security and supply-chain fixes:
+  - All open Dependabot alerts for `uv.lock` (Pillow, certifi, urllib3, anyio, httpx2/httpcore2, setuptools, opentelemetry-api, pydantic-ai-slim) are resolved by the refreshed lock. The `[ai]` floor becomes pydantic-ai-slim 1.107.7, the first 1.x without published advisories.
+  - Frontend: vite 8.4, @vitejs/plugin-react 6.3, and transitive postcss/source-map-js/nanoid fixes; `npm audit` reports 0 vulnerabilities. Supersedes Dependabot PRs #154 (plugin-react), #155 (setup-node v7), #156 (checkout v7), #157 (docker/login-action) and #164 (pypi-publish).
+  - Every GitHub Action in all workflows is pinned to a full commit SHA, and `dorny/test-reporter` moves from `@main` to its v3.0.0 release. All `uv sync`/`uv run` steps use `--no-build`, so CI never executes a source distribution's build scripts. (Sonar S7637/S8541)
+  - Floating promises in the dashboard's file browser and mask editor are handled; a failed diff-region fetch now shows an error instead of being swallowed. (Sonar S9383)
+- CI runner: `ubuntu-latest` moved to Ubuntu 26.04 (ImageMagick 7, Tesseract 5.5). The ImageMagick policy is copied into whichever `/etc/ImageMagick-*` directory exists. Tests asserting the 8 px "SOUVENIR" sign accept one-character OCR variance (Ubuntu 26.04's model reads "souveonR").
 - CI:
   - The test matrix moves to 3.11–3.15.
   - The live-LLM job moves to the newest interpreter.
@@ -84,7 +90,7 @@ Users cannot install the library on Python 3.15 (issue #136): the resolver falls
 - **Tooling**: `scripts/audit_resolved_versions.py`, `scripts/compare_wheel_contents.py`, `tasks.py`, `.github/workflows/ci.yml`, `README.md`.
 - **Users**:
   - Python 3.10 users must stay on the current release.
-  - `[ai]` users pinned below pydantic-ai 1.40 must upgrade.
+  - `[ai]` users pinned below pydantic-ai 1.107.7 must upgrade.
   - Users who relied on getting OpenCV 5 or PyMuPDF 2 through this library will get 4.x / 1.x instead.
   - `ocr_engine=east` results improve: lines that were previously dropped are now returned, fewer garbage tokens appear, and EAST runs about 2× faster. Text recognized from EAST regions can therefore differ from earlier releases.
 - **Follow-up**: when scikit-image 0.27.0 final is released, replace the `>=0.27.0rc1` floor with `>=0.27.0`, so pip and uv stop preferring future pre-releases on 3.15.

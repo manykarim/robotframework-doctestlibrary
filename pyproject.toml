@@ -52,10 +52,12 @@ Homepage = "https://github.com/manykarim/robotframework-doctestlibrary"
 Repository = "https://github.com/manykarim/robotframework-doctestlibrary"
 
 [project.optional-dependencies]
-# pydantic-ai: 1.40 is the oldest release verified to work (older ones do not
-# import against current OpenTelemetry); <3 guards the next unverified major.
+# pydantic-ai: >=1.107.7 is the first 1.x without published security
+# advisories (GHSA-v36g-jcw9-x7cw and others); 2.x below 2.52 is also
+# affected but resolvers pick the newest 2.x. <3 guards the next unverified
+# major.
 ai = [
-    "pydantic-ai-slim[openai]>=1.40,<3",
+    "pydantic-ai-slim[openai]>=1.107.7,<3",
     "python-dotenv",
 ]
 dashboard = [

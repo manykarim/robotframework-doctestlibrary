@@ -53,12 +53,12 @@ Add `; python_version >= '3.15'` floors for numpy (`>=2.5.2`), scikit-image (`>=
 Older interpreters keep resolving scikit-image 0.26.0 final. Drop the 3.10-only branches.
 - *Alternative*: a global `>=0.27.0rc1`. Rejected, because it forces a pre-release onto every interpreter.
 
-### D3 — pydantic-ai: one code path for 1.40 ≤ v < 3
+### D3 — pydantic-ai: one code path for 1.107.7 ≤ v < 3
 Use `Agent(identifier, output_type=..., retries=n)`. An int `retries` sets the output-validation budget in both majors. Verified on 1.40, 1.107 and 2.75: `retries=3` gives exactly 4 model calls on persistent malformed output.
 
 Map the default provider to `openai-chat:<model>`. That prefix exists from 1.40 through 2.x and resolves to `OpenAIChatModel` on all three probed versions, so OpenRouter and other OpenAI-compatible base URLs keep using Chat Completions. Other providers keep their `<provider>:` prefix.
 
-The floor is 1.40 because it is the oldest release that imports cleanly against current OpenTelemetry. 1.0–1.20 fail with `opentelemetry._events` missing, so nothing older is verifiably installable. The cap `<3` guards against the next unverified major.
+The client code works from 1.40 on: older releases do not even import against current OpenTelemetry. The declared floor is nevertheless **1.107.7**, the first 1.x without published security advisories (GHSA-v36g-jcw9-x7cw, GHSA-h4xc-3qfq-jf93 and others; they concern web-fetch tools, `Agent.to_web()` and OTel instrumentation, none of which DocTest uses). 2.x is affected below 2.52. PEP 440 cannot exclude 2.0–2.51 without enumerating every minor, and resolvers select the newest 2.x anyway; the lock pins 2.75. The cap `<3` guards against the next unverified major.
 - *Alternative A*: cap `<2`. That leaves 1.100+ deprecation warnings and blocks users on 2.x.
 - *Alternative B*: detect the version at runtime and pick kwargs. That is more code for no gain, since the portable form exists.
 
@@ -144,15 +144,22 @@ The dashboard tests interpolate test-data paths into Robot suite text with `.as_
 `run_keyword` treats string arguments like test data: backslash escapes and `${...}` are resolved. WebCapture now escapes every data value with `robot.utils.escape`. `_named(name, value)` keeps the `name=` separator literal and escapes only the value, because `escape` also escapes `=`; `_value(...)` handles positional strings. Non-string arguments (element handles, `None`) pass through unchanged. The unit-test fake applies Robot's own `unescape`, so the tests assert what the keyword receives.
 - *Alternative*: pass `Path` objects instead of strings. That only covers paths, not selectors or JavaScript, and depends on each library's type conversion.
 
+### D21 — Supply-chain hardening and CI runner portability
+- **Action pinning**: every `uses:` references a full commit SHA with the release in a comment (checkout v7.0.1, setup-node v7.1.0, upload-artifact v7.0.2, setup-uv v7.6.0, test-reporter v3.0.0, docker/login-action v4.8.0, pypi-publish v1.14.3). Dependabot keeps bumping SHAs.
+- **`--no-build`**: verified to still install the workspace project (uv exempts it) and every locked package publishes wheels, so CI behavior is unchanged while sdist build scripts can never run.
+- **ImageMagick policy**: `cp policy.xml "$(ls -d /etc/ImageMagick-* | head -n 1)/"` works for ImageMagick 6 and 7 and fails loudly when no config directory exists. The policy XML format is unchanged in 7.
+- **Small-text OCR variance**: three engine setups read the 8 px sign as "SOUVENIR" (Tesseract 5.3 on Ubuntu 24.04, 5.5 with the UB Mannheim model) or "souveonR" (5.5 with Ubuntu 26.04's model). Upscaling variants (4x, 5x, height targets) did not change the 26.04 result and regressed others. The tests now accept a token with similarity >= 0.8 (one substitution, insertion or deletion), which still rejects partial or unrelated readings.
+- **pydantic-ai floor**: see D3.
+
 ### D18 — Per-interpreter environments for `invoke multipython`
 The task syncs each interpreter into `.venv-multipython/<version>` (via `UV_PROJECT_ENVIRONMENT`, already covered by the `.venv*/` ignore rule) instead of re-syncing the active `.venv`. On Windows, uv cannot delete `.venv\Scripts` while invoke runs from it, and the old final "restore" sync silently changed the developer's interpreter.
 
 ### D12 — Expectation table and parity gate
-- **Audit table**: `audit_resolved_versions.py` gains rows for 3.14 and 3.15 and drops 3.10. Every row also asserts the new caps (PyMuPDF `<2`, OpenCV `<5`, pydantic-ai `>=1.40,<3`). The 3.15 row asserts the 3.15 floors.
+- **Audit table**: `audit_resolved_versions.py` gains rows for 3.14 and 3.15 and drops 3.10. Every row also asserts the new caps (PyMuPDF `<2`, OpenCV `<5`, pydantic-ai `>=1.107.7,<3`). The 3.15 row asserts the 3.15 floors.
 - **Parity gate**:
   - `compare_wheel_contents.py` evaluates 3.11–3.15.
-  - Its allow-list gets the new intentional tightenings: the 3.15-only floors, PyMuPDF `<2`, OpenCV `<5`, and pydantic-ai `>=1.40,<3`.
-  - The allow-list semantics are extended so a documented entry may *replace* a baseline floor with a stricter one. Example: `>=1` becomes `>=1.40,<3`.
+  - Its allow-list gets the new intentional tightenings: the 3.15-only floors, PyMuPDF `<2`, OpenCV `<5`, and pydantic-ai `>=1.107.7,<3`.
+  - The allow-list semantics are extended so a documented entry may *replace* a baseline floor with a stricter one. Example: `>=1` becomes `>=1.107.7,<3`.
   - Any other deviation still fails.
 
 ## Risks / Trade-offs

@@ -7,7 +7,7 @@ Defines how the LLM-assisted comparison and extraction features interact with th
 ## ADDED Requirements
 
 ### Requirement: Supported pydantic-ai runtime range
-The `[ai]` extra SHALL declare a bounded pydantic-ai range covering every major version the LLM client is verified against (currently 1.40 up to, but excluding, 3). The LLM keywords SHALL behave identically on any version within that range.
+The `[ai]` extra SHALL declare a bounded pydantic-ai range covering every major version the LLM client is verified against (currently 1.107.7 up to, but excluding, 3). The LLM keywords SHALL behave identically on any version within that range.
 
 #### Scenario: Works on the oldest supported runtime
 - **WHEN** the LLM client runs an agent request with pydantic-ai at the declared lower bound

@@ -36,9 +36,9 @@ BASELINE_EXTRAS = ["ai"]
 # per package, the specifiers that may be ADDED and the baseline specifiers
 # they REPLACE. Anything else still fails the gate.
 INTENTIONAL_TIGHTENINGS = {
-    # pydantic-ai: >=1.40 is the oldest release verified to import against
-    # current OpenTelemetry; <3 guards the next unverified major.
-    "pydantic-ai-slim": {"add": frozenset({">=1.40", "<3"}), "replace": frozenset({">=1"})},
+    # pydantic-ai: >=1.107.7 is the first 1.x without published security
+    # advisories; <3 guards the next unverified major.
+    "pydantic-ai-slim": {"add": frozenset({">=1.107.7", "<3"}), "replace": frozenset({">=1"})},
     # PyMuPDF 2 requires onnxruntime (no cp315 wheels)
     "pymupdf": {"add": frozenset({"<2"}), "replace": frozenset()},
     # OpenCV 5 removed the TensorFlow importer used by the EAST model

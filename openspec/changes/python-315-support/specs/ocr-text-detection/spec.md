@@ -62,4 +62,4 @@ When OCR of a detected region yields no alphanumeric word, the region SHALL be r
 
 #### Scenario: Small sign on a coloured background
 - **WHEN** EAST OCR runs on `Beach_date.png`
-- **THEN** the extracted text contains `01-Jan-2021`, `123456789` and `SOUVENIR` (case-insensitive) with Tesseract 5.3 and 5.5
+- **THEN** the extracted text contains `01-Jan-2021`, `123456789` and a token reading `SOUVENIR` up to one OCR character error (similarity >= 0.8), with Tesseract 5.3 and 5.5

@@ -88,7 +88,7 @@ for users who skip these dependencies.
    ```bash
    pip install "robotframework-doctestlibrary[ai]"
    ```
-   The extra supports [pydantic-ai](https://ai.pydantic.dev/) 1.40 up to (excluding) 3.0, so both
+   The extra supports [pydantic-ai](https://ai.pydantic.dev/) 1.107.7 up to (excluding) 3.0, so both
    the 1.x and 2.x series work. With the default `openai` provider, requests always use the
    Chat Completions API, so OpenAI-compatible endpoints configured via `DOCTEST_LLM_BASE_URL`
    (e.g. OpenRouter or a local server) keep working with pydantic-ai 2.x.

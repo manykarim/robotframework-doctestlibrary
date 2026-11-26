@@ -12,7 +12,7 @@
   - close the 3.13+ branches at `< '3.15'`
   - add the 3.15 floors: numpy `>=2.5.2`, scikit-image `>=0.27.0rc1`, deepdiff `>=9.2.1`
   - drop the 3.10-only intent
-  - add caps: `PyMuPDF>=1.26.0,<2`, `opencv-python-headless>=4.8,<5`, `[ai]` and `[all]` `pydantic-ai-slim[openai]>=1.40,<3`
+  - add caps: `PyMuPDF>=1.26.0,<2`, `opencv-python-headless>=4.8,<5`, `[ai]` and `[all]` `pydantic-ai-slim[openai]>=1.107.7,<3`
   - verify: `uv lock` resolves with no error
 - [x] 1.3 Regenerate `uv.lock` with uv ≥0.13 (`uv lock --upgrade`). Verify that the lock contains pymupdf 1.28.x, opencv-python-headless 4.x, scikit-image 0.27.0rc1 only under the `>= '3.15'` marker, and deepdiff ≥9.2.1.
 - [x] 1.4 Verify the binary-only install from a built wheel (`uv build --wheel`) on Windows:
@@ -21,7 +21,7 @@
   - this must succeed and resolve scikit-image 0.27.0rc1
   - confirm `pip install` of the wheel is refused on Python 3.10
 
-## 2. LLM client compatibility (pydantic-ai 1.40 – 2.x)
+## 2. LLM client compatibility (pydantic-ai 1.107.7 – 2.x)
 
 - [x] 2.1 In `DocTest/llm/client.py`:
   - build the agent with `retries=max(1, settings.output_retries)` instead of `output_retries=`
@@ -34,9 +34,10 @@
   - add a FunctionModel-based test proving that `retries=3` yields 4 model calls on persistently malformed output
   - verify: `uv run pytest utest/test_llm_support.py` passes on the locked pydantic-ai 2.x
 - [x] 2.3 Verify the oldest supported runtime:
-  - run `uv run --with "pydantic-ai-slim[openai]==1.40.0" pytest utest/test_llm_support.py`; it must pass
+  - run `uv run --with "pydantic-ai-slim[openai]==1.40.0" pytest utest/test_llm_support.py`; it must pass (code compatibility; the declared floor is 1.107.7 for security)
+  - run the same with `==1.107.7`, the declared floor; it must pass
   - with 1.107, no `PydanticAIDeprecationWarning` about `output_retries` or `openai:` may be emitted
-- [x] 2.4 Document in the README LLM section that the `[ai]` extra supports pydantic-ai 1.40–2.x and that `openai` uses Chat Completions (OpenAI-compatible base URLs keep working). Verify that the README renders and the section states the supported range.
+- [x] 2.4 Document in the README LLM section that the `[ai]` extra supports pydantic-ai 1.107.7–2.x and that `openai` uses Chat Completions (OpenAI-compatible base URLs keep working). Verify that the README renders and the section states the supported range.
 
 ## 3. EAST model provisioning
 
@@ -115,7 +116,7 @@
 - [x] 6.1 Update the expectation table in `scripts/audit_resolved_versions.py`:
   - remove 3.10
   - add rows for 3.14 and 3.15 (3.15: numpy ≥2.5.2, scikit-image ≥0.27.0rc1, deepdiff ≥9.2.1, scipy ≥1.18.1)
-  - add caps to every row: pymupdf <2, opencv-python-headless <5, pydantic-ai-slim >=1.40,<3
+  - add caps to every row: pymupdf <2, opencv-python-headless <5, pydantic-ai-slim >=1.107.7,<3
   - update the usage docstring
 
   Verify: `uv run python scripts/audit_resolved_versions.py` prints `AUDIT OK` under 3.11 and 3.15.
@@ -163,6 +164,16 @@
   - no keyword was removed since 0.34.0
   - the keyword-signature snapshot tests pass
 
+## 10. CI runner, Sonar and dependency security
+
+- [x] 10.1 Make the ImageMagick policy copy version-agnostic in every CI job (Ubuntu 26.04 ships ImageMagick 7). Verify: CI's install step, extracted verbatim from `ci.yml`, succeeds in an `ubuntu:26.04` container and writes `/etc/ImageMagick-7/policy.xml`.
+- [x] 10.2 Pin every GitHub Action to a full commit SHA (folding in Dependabot #155, #156, #157, #164), move test-reporter off `@main`, and add `--no-build` to every `uv sync`/`uv run`. Verify: `actionlint` is clean, no `uses:` without a SHA remains, and `uv sync --no-build --all-extras` installs the project.
+- [x] 10.3 Handle the floating promises Sonar reports (S9383) in `FileBrowser.tsx` and `MaskEditor.tsx`. Verify: `npm run build` succeeds and e2e passes 18/18.
+- [x] 10.4 Upgrade vite and @vitejs/plugin-react (folding in Dependabot #154) and fix the transitive postcss, source-map-js and nanoid advisories. Verify: `npm audit` reports 0 vulnerabilities and e2e passes.
+- [x] 10.5 Raise the `[ai]` floor to pydantic-ai-slim 1.107.7. Verify: the LLM tests pass against exactly 1.107.7, and the audit and wheel-parity gates accept the floor.
+- [x] 10.6 Verify every open Dependabot alert is resolved by the branch's lock files (all locked versions at or above the first patched version, across all interpreter forks).
+- [x] 10.7 Make the small-sign OCR assertions (three unit tests and `atest/Compare.robot`) accept one-character OCR variance via a shared helper. Verify: the full CI-equivalent `invoke tests` passes on Ubuntu 26.04 for Python 3.11 and 3.15.
+
 ## Workflow follow-up
 
 - Push the branch (with the maintainer's go-ahead). Confirm every required CI job is green — lint, smoke-no-ai, test ×5, dashboard incl. parity gate, web, windows — and that the optional `llm-tests` job passes with pydantic-ai 2.x.
@@ -171,4 +182,5 @@
 - Switch SSIM to the public `skimage2.metrics.structural_similarity` once scikit-image ships the `skimage2` namespace. 0.27 emits `PendingSkimage2Change` unconditionally, and `data_range` is already explicit.
 - Re-evaluate Python 3.16 once numpy, scipy, scikit-image and pydantic-core publish cp316 wheels.
 - Comment on issue #136 with the release that adds Python 3.15 support.
+- Dependabot #152/#153 (react-konva 19, konva 10) are feature-level majors that need React 19; handle them in a separate change.
 - Archive the change after review.

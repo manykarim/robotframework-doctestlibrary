@@ -21,7 +21,7 @@ PY = sys.version_info[:2]
 # package -> expected specifier for this interpreter ("" = any version)
 # Caps shared by every interpreter: majors that break the library.
 _CAPS = {"pymupdf": ">=1.26.0,<2", "opencv-python-headless": ">=4.8,<5",
-         "pydantic-ai-slim": ">=1.40,<3"}
+         "pydantic-ai-slim": ">=1.107.7,<3"}
 EXPECTATIONS = {
     (3, 11): {**_CAPS, "numpy": ">=1.26",
               "scipy": "", "scikit-image": "", "deepdiff": ""},

@@ -103,10 +103,13 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
   // Diff-region overlay when arriving from a comparison
   useEffect(() => {
     if (!comparisonId) return;
-    api.comparison(comparisonId).then((detail) => {
-      const failing = detail.pages.find((page) => page.status === "FAIL");
-      if (failing) setDiffRegions(failing.regions);
-    });
+    api
+      .comparison(comparisonId)
+      .then((detail) => {
+        const failing = detail.pages.find((page) => page.status === "FAIL");
+        if (failing) setDiffRegions(failing.regions);
+      })
+      .catch((e) => setMessage({ kind: "error", text: `Diff regions unavailable: ${e.message || e}` }));
   }, [comparisonId]);
 
   // Debounced live pattern preview through the real extraction path.
@@ -339,7 +342,7 @@ export function MaskEditor({ routeQuery }: { routeQuery: string }) {
           style={{ display: "none" }}
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) uploadFile(file);
+            if (file) void uploadFile(file);
             e.target.value = "";
           }}
         />

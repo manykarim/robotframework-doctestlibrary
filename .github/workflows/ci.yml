@@ -12,7 +12,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
@@ -21,8 +21,8 @@ jobs:
         run: uvx ruff check DocTest
       - name: mypy
         run: |
-          uv sync --all-extras
-          uv run --with mypy mypy DocTest
+          uv sync --no-build --all-extras
+          uv run --no-build --with mypy mypy DocTest
       - name: pip-audit
         run: |
           uv export --format requirements-txt --no-emit-project --no-dev > requirements-audit.txt
@@ -32,7 +32,7 @@ jobs:
   smoke-no-ai:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Install Packages and Binaries
@@ -48,16 +48,16 @@ jobs:
           chmod +x ${archive_name}/gpcl6*
           cp ${archive_name}/gpcl6* ${archive_name}/pcl6
           sudo cp ${archive_name}/* /usr/bin
-          sudo cp policy.xml /etc/ImageMagick-6/
+          sudo cp policy.xml "$(ls -d /etc/ImageMagick-* | head -n 1)/"
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.11"
       - name: Install base dependencies (without AI extras)
-        run: uv sync
+        run: uv sync --no-build
       - name: Run smoke end-to-end tests without AI extras
         run: |
-          uv run robot \
+          uv run --no-build robot \
             --loglevel=TRACE:INFO \
             --listener RobotStackTracer \
             --xunit xunit.xml \
@@ -67,7 +67,7 @@ jobs:
             atest/ReferenceRun.robot \
             atest/ResultJson.robot
       - name: Store Smoke Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure()
         with:
           name: smoke-results
@@ -76,7 +76,7 @@ jobs:
             results-smoke/output.xml
             results-smoke/xunit.xml
       - name: Smoke Test Report
-        uses: dorny/test-reporter@main
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         if: success() || failure()
         with:
           name: Smoke Tests
@@ -94,7 +94,7 @@ jobs:
         python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Install Packages and Binaries
@@ -110,20 +110,20 @@ jobs:
           chmod +x ${archive_name}/gpcl6*
           cp ${archive_name}/gpcl6* ${archive_name}/pcl6
           sudo cp ${archive_name}/* /usr/bin
-          sudo cp policy.xml /etc/ImageMagick-6/
+          sudo cp policy.xml "$(ls -d /etc/ImageMagick-* | head -n 1)/"
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies (all extras)
-        run: uv sync --all-extras --python ${{ matrix.python-version }}
+        run: uv sync --no-build --all-extras --python ${{ matrix.python-version }}
       - name: Audit resolved dependency versions
-        run: uv run python scripts/audit_resolved_versions.py
+        run: uv run --no-build python scripts/audit_resolved_versions.py
       - name: Run tests
         run: |
-          uv run invoke tests
+          uv run --no-build invoke tests
       - name: Store Artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure()
         with:
           name: test-results ${{ matrix.python-version }} # Choose a descriptive name for your artifact
@@ -135,7 +135,7 @@ jobs:
             results/*.txt
             results/screenshots/
       - name: Test Report
-        uses: dorny/test-reporter@main
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         if: success() || failure() # run this step even if previous step failed
         with:
           name: xUnit Tests ${{ matrix.python-version }} # Name of the check run which will be created
@@ -156,7 +156,7 @@ jobs:
       DOCTEST_LLM_BASE_URL: https://openrouter.ai/api/v1
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Install Packages and Binaries
@@ -170,17 +170,17 @@ jobs:
           chmod +x ${archive_name}/gpcl6*
           cp ${archive_name}/gpcl6* ${archive_name}/pcl6
           sudo cp ${archive_name}/* /usr/bin
-          sudo cp policy.xml /etc/ImageMagick-6/
+          sudo cp policy.xml "$(ls -d /etc/ImageMagick-* | head -n 1)/"
       - name: Set up uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.15"
       - name: Install dependencies (all extras)
-        run: uv sync --all-extras
+        run: uv sync --no-build --all-extras
       - name: Run tests with live LLM
-        run: uv run invoke tests
+        run: uv run --no-build invoke tests
       - name: Store LLM Artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: success() || failure()
         with:
           name: llm-test-results
@@ -195,24 +195,24 @@ jobs:
     needs: smoke-no-ai
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Tesseract
         shell: pwsh
         run: |
           choco install tesseract --no-progress -y
           "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.15"
       - name: Install dependencies (all extras)
-        run: uv sync --all-extras --python 3.15
+        run: uv sync --no-build --all-extras --python 3.15
       - name: Audit resolved dependency versions
-        run: uv run python scripts/audit_resolved_versions.py
+        run: uv run --no-build python scripts/audit_resolved_versions.py
       - name: Unit tests
-        run: uv run pytest utest -n auto --timeout=300 --junitxml=results/pytest-windows.xml
+        run: uv run --no-build pytest utest -n auto --timeout=300 --junitxml=results/pytest-windows.xml
       - name: Test Report
-        uses: dorny/test-reporter@main
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         if: success() || failure()
         with:
           name: Windows Unit Tests
@@ -223,18 +223,18 @@ jobs:
     needs: smoke-no-ai
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Packages and Binaries
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
-          sudo cp policy.xml /etc/ImageMagick-6/
+          sudo cp policy.xml "$(ls -d /etc/ImageMagick-* | head -n 1)/"
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.13"
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
       - name: Build frontend
@@ -243,46 +243,46 @@ jobs:
           npm ci || npm install
           npm run build
       - name: Sync environment (all extras)
-        run: uv sync --all-extras
+        run: uv sync --no-build --all-extras
       - name: Backend tests
-        run: uv run pytest utest/dashboard -v
+        run: uv run --no-build pytest utest/dashboard -v
       - name: Wheel parity gate
         run: |
           uv build
-          uv run python scripts/compare_wheel_contents.py dist/*.whl --sdist dist/*.tar.gz
+          uv run --no-build python scripts/compare_wheel_contents.py dist/*.whl --sdist dist/*.tar.gz
       - name: Install Playwright browser
-        run: uv run playwright install chromium --with-deps
+        run: uv run --no-build playwright install chromium --with-deps
       - name: End-to-end journeys
-        run: uv run pytest e2e -v --browser chromium
+        run: uv run --no-build pytest e2e -v --browser chromium
 
   web:
     needs: smoke-no-ai
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install Packages and Binaries
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick tesseract-ocr ghostscript libdmtx0b libzbar0
-          sudo cp policy.xml /etc/ImageMagick-6/
+          sudo cp policy.xml "$(ls -d /etc/ImageMagick-* | head -n 1)/"
       - name: Set up uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.13"
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
       - name: Sync environment (web test group)
-        run: uv sync --group web-test
+        run: uv sync --no-build --group web-test
       - name: Initialize Browser library
-        run: uv run rfbrowser init chromium firefox
+        run: uv run --no-build rfbrowser init chromium firefox
       - name: Web capture unit tests
-        run: uv run pytest utest/test_web_visual.py -v
+        run: uv run --no-build pytest utest/test_web_visual.py -v
       - name: Web visual acceptance (Browser + SeleniumLibrary)
-        run: uv run robot -d results-web atest/web/
+        run: uv run --no-build robot -d results-web atest/web/
       - name: Store Web Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: web-results

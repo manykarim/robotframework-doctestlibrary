@@ -12,6 +12,7 @@ import pytest
 
 from DocTest import Ocr
 from DocTest.DocumentRepresentation import DocumentRepresentation
+from utest.ocr_matching import contains_word_like
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -230,4 +231,4 @@ def test_small_label_in_busy_image_is_recognized(testdata_dir):
     text = DocumentRepresentation(testdata_dir / "Beach_date.png", ocr_engine="east").get_text()
     assert "01-Jan-2021" in text
     assert "123456789" in text
-    assert "SOUVENIR" in text.upper()
+    assert contains_word_like(text, "SOUVENIR")

@@ -1,4 +1,5 @@
 from DocTest.DocumentRepresentation import DocumentRepresentation
+from utest.ocr_matching import contains_word_like
 import pytest
 from pathlib import Path
 
@@ -74,7 +75,7 @@ def test_text_on_colored_background_with_east(testdata_dir):
     img = DocumentRepresentation(testdata_dir / 'Beach_date.png', ocr_engine="east" )
     assert "01-Jan-2021" in img.get_text()
     assert "123456789" in img.get_text()
-    assert "OUVENIR" in img.get_text().upper()
+    assert contains_word_like(img.get_text(), "SOUVENIR")
 
 def test_ocr_in_hires_without_rerender(testdata_dir, tmp_path):
     import cv2

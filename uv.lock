@@ -2233,7 +2233,7 @@ requires-dist = [
     { name = "parsimonious", specifier = ">=0.10" },
     { name = "parsimonious", marker = "extra == 'printjobs'", specifier = ">=0.10" },
     { name = "pydantic", marker = "extra == 'dashboard'", specifier = ">=2.6" },
-    { name = "pydantic-ai-slim", extras = ["openai"], marker = "extra == 'ai'", specifier = ">=1.40,<3" },
+    { name = "pydantic-ai-slim", extras = ["openai"], marker = "extra == 'ai'", specifier = ">=1.107.7,<3" },
     { name = "pylibdmtx", specifier = ">=0.1.10" },
     { name = "pylibdmtx", marker = "extra == 'barcode'", specifier = ">=0.1.10" },
     { name = "pymupdf", specifier = ">=1.26.0,<2" },

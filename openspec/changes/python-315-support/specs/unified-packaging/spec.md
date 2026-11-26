@@ -10,7 +10,7 @@ Python-version-dependent constraints SHALL be expressed as PEP 508 environment m
 - deepdiff `>=6.0` on 3.12+ and `>=9.2.1` on 3.15+
 - setuptools present on 3.12+
 
-Dependencies whose next major release breaks the library SHALL carry an upper bound: PyMuPDF `>=1.26,<2`, opencv-python-headless `>=4.8,<5`, pydantic-ai-slim `>=1.40,<3` (the `[ai]` extra). `requires-python` SHALL be `>=3.11`: Python 3.10 is past end of life and unsupported by the current scientific stack. Python 3.16 SHALL NOT be declared supported until every compiled dependency publishes wheels for it.
+Dependencies whose next major release breaks the library SHALL carry an upper bound: PyMuPDF `>=1.26,<2`, opencv-python-headless `>=4.8,<5`, pydantic-ai-slim `>=1.107.7,<3` (the `[ai]` extra). `requires-python` SHALL be `>=3.11`: Python 3.10 is past end of life and unsupported by the current scientific stack. Python 3.16 SHALL NOT be declared supported until every compiled dependency publishes wheels for it.
 
 #### Scenario: Resolution matches the expectation table per interpreter
 - **WHEN** the environment is synced for each of Python 3.11, 3.12, 3.13, 3.14, and 3.15
