@@ -201,6 +201,13 @@ jobs:
         run: |
           choco install tesseract --no-progress -y
           "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # The 5.5.3 installer downloads tessdata_fast, which misreads EAST
+          # crops in cluttered images; use the pinned tessdata_best model.
+          $model = "C:\Program Files\Tesseract-OCR\tessdata\eng.traineddata"
+          Invoke-WebRequest -Uri https://github.com/tesseract-ocr/tessdata_best/raw/4.1.0/eng.traineddata -OutFile $model
+          $hash = (Get-FileHash $model -Algorithm SHA256).Hash
+          if ($hash -ne "8280AED0782FE27257A68EA10FE7EF324CA0F8D85BD2FD145D1C2B560BCB66BA") { throw "eng.traineddata checksum mismatch: $hash" }
+          tesseract --version
       - name: Set up uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:

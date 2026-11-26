@@ -477,6 +477,12 @@ Compare two Farm images with date pattern and east detection
     Compare Images    Reference.jpg    Candidate.jpg    placeholder_file=masks.json    ocr_engine=east
 ```
 
+EAST recognizes each detected text region separately, so its accuracy depends on the Tesseract
+language model more than full-page OCR does. Linux packages (`tesseract-ocr-eng`) and recent Windows
+installers (5.5.3+) ship the small `tessdata_fast` model, which can misread text in busy images
+(e.g. `XBCDEFCHI` instead of `ABCDEFGHI`). For best EAST results, replace `eng.traineddata` in your
+`tessdata` folder with the one from [tessdata_best](https://github.com/tesseract-ocr/tessdata_best).
+
 ### Check content of PDF files
 
 ```RobotFramework

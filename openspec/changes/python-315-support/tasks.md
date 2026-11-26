@@ -175,6 +175,7 @@
 - [x] 10.7 Make the small-sign OCR assertions (three unit tests and `atest/Compare.robot`) accept one-character OCR variance via a shared helper. Verify: the full CI-equivalent `invoke tests` passes on Ubuntu 26.04 for Python 3.11 and 3.15.
 - [x] 10.8 Fix the e2e race behind the j9 CI failure: journeys clicked the run list's first row right after an ingest, while the list could still show the previous newest run. A helper now opens the run named in the ingest message by id (7 sites). Verify: e2e 18/18 on Windows, 3/3 runs on Ubuntu 26.04.
 - [x] 10.9 Add `--locked` to every `uv sync`/`uv run` in the workflows (Sonar S8544), so CI fails instead of re-resolving when `uv.lock` is stale. Verify: `uv sync --locked --no-build --all-extras` succeeds, and actionlint is clean.
+- [x] 10.10 Pin the Windows CI job's English Tesseract model. Chocolatey's Tesseract 5.5.3 installer downloads `tessdata_fast`, with which EAST reads the birthday image's `ABCDEFGHI` as `XBCDEFCHI` (reproduced byte-for-byte locally with the official 5.5.3 binary). The job now installs `tessdata_best` 4.1.0 `eng.traineddata`, checked by SHA-256. The README recommends that model for EAST. Verify: full unit suite passes on Python 3.15 with Tesseract 5.5.3 + tessdata_best.
 
 ## Workflow follow-up
 
