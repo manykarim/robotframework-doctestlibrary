@@ -21,17 +21,17 @@ def test_get_text_from_pdf_does_not_match(testdata_dir):
     text = visual_tester.get_text_from_document(ref_image)
     assert 'THIS STRING DOES NOT EXIST' not in text
 
-def test_compare_two_different_images_from_url():
+def test_compare_two_different_images_from_url(testdata_url):
     visual_tester = VisualTest()
-    ref_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/utest/testdata/birthday_left.png'
-    test_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/utest/testdata/birthday_right.png'
+    ref_image=f'{testdata_url}/birthday_left.png'
+    test_image=f'{testdata_url}/birthday_right.png'
     with pytest.raises(AssertionError, match='The compared images are different.'):
         visual_tester.compare_images(ref_image, test_image)
 
-def test_compare_two_equal_images_from_url():
+def test_compare_two_equal_images_from_url(testdata_url):
     visual_tester = VisualTest()
-    ref_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/utest/testdata/birthday_left.png'
-    test_image='https://github.com/manykarim/robotframework-doctestlibrary/raw/main/utest/testdata/birthday_left_copy.png'
+    ref_image=f'{testdata_url}/birthday_left.png'
+    test_image=f'{testdata_url}/birthday_left_copy.png'
     visual_tester.compare_images(ref_image, test_image)
 
 def test_compare_birthday_image_with_noise(testdata_dir):

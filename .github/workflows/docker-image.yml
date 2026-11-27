@@ -22,7 +22,7 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Build the Docker image from the checkout
-      run: docker build . --file Dockerfile --tag ghcr.io/manykarim/robotframework-doctestlibrary/rf-doctest:$(date +%s) --tag ghcr.io/manykarim/robotframework-doctestlibrary/rf-doctest:latest
+      run: docker build . --file Dockerfile --tag ghcr.io/manykarim/robotframework-doctestlibrary/rf-doctest:"$(date +%s)" --tag ghcr.io/manykarim/robotframework-doctestlibrary/rf-doctest:latest
     - name: Smoke-test the image
       run: docker run --rm ghcr.io/manykarim/robotframework-doctestlibrary/rf-doctest:latest python -c "import DocTest.VisualTest; print('image ok')"
     - name: Push the latest Docker image
