@@ -11,9 +11,6 @@ import pytest
 
 from DocTest.VisualTest import VisualTest
 
-RAW_BASE_URL = "https://raw.githubusercontent.com/manykarim/robotframework-doctestlibrary/main"
-
-
 class TestVisualTestInitialization:
     """Test cases for VisualTest initialization and configuration."""
 
@@ -298,11 +295,11 @@ class TestVisualTestUtilityMethods:
 class TestVisualTestCompareImages:
     """Test cases for compare_images method edge cases."""
 
-    def test_compare_images_url_download(self):
+    def test_compare_images_url_download(self, testdata_url):
         """Test compare_images with URL inputs."""
         vt = VisualTest()
-        reference_url = f"{RAW_BASE_URL}/utest/testdata/birthday_left.png"
-        candidate_url = f"{RAW_BASE_URL}/utest/testdata/birthday_1080.png"
+        reference_url = f"{testdata_url}/birthday_left.png"
+        candidate_url = f"{testdata_url}/birthday_1080.png"
 
         with pytest.raises(AssertionError, match="The compared images are different."):
             vt.compare_images(reference_url, candidate_url)
@@ -358,10 +355,10 @@ class TestVisualTestCompareImages:
 class TestVisualTestTextAndBarcodes:
     """Test cases for text and barcode extraction methods."""
 
-    def test_get_text_from_document_url(self, testdata_dir):
+    def test_get_text_from_document_url(self, testdata_url):
         """Test get_text_from_document with URL input."""
         vt = VisualTest()
-        document_url = f"{RAW_BASE_URL}/utest/testdata/sample.pdf"
+        document_url = f"{testdata_url}/sample.pdf"
 
         text = vt.get_text_from_document(document_url)
 
@@ -376,10 +373,10 @@ class TestVisualTestTextAndBarcodes:
 
         assert "THE TEST SHIPPER" in text
 
-    def test_get_barcodes_url(self):
+    def test_get_barcodes_url(self, testdata_url):
         """Test get_barcodes with URL input."""
         vt = VisualTest()
-        document_url = f"{RAW_BASE_URL}/utest/testdata/sample_barcodes.pdf"
+        document_url = f"{testdata_url}/sample_barcodes.pdf"
 
         barcodes = vt.get_barcodes(document_url)
 

@@ -108,9 +108,9 @@ class LLMSettings:
     vision_models: List[str] = field(default_factory=lambda: list(DEFAULT_VISION_MODELS))
     api_key: Optional[str] = None
     base_url: Optional[str] = None
-    temperature: float = 0.2
+    temperature: Optional[float] = None
     max_output_tokens: Optional[int] = None
-    request_timeout: Optional[float] = 30.0
+    request_timeout: Optional[float] = None
     # structured-output validation retries per model call; remote models
     # occasionally return malformed JSON, so 1 (pydantic-ai default) flakes
     output_retries: int = 3
@@ -170,18 +170,16 @@ def load_llm_settings(overrides: Optional[Dict[str, Optional[str]]] = None) -> L
     api_key = overrides.get("llm_api_key") or env_get("DOCTEST_LLM_API_KEY") or env_get("OPENAI_API_KEY")
     base_url = overrides.get("llm_base_url") or env_get("DOCTEST_LLM_BASE_URL") or env_get("OPENAI_BASE_URL")
 
-    temperature = _as_float(
-        overrides.get("llm_temperature") or env_get("DOCTEST_LLM_TEMPERATURE"), 0.2
-    )
-    max_output_tokens = _as_int(
-        overrides.get("llm_max_output_tokens") or env_get("DOCTEST_LLM_MAX_OUTPUT_TOKENS"), None
-    )
-    request_timeout = _as_float(
-        overrides.get("llm_request_timeout") or env_get("DOCTEST_LLM_REQUEST_TIMEOUT"), 30.0
-    )
-    output_retries = _as_int(
-        overrides.get("llm_output_retries") or env_get("DOCTEST_LLM_OUTPUT_RETRIES"), 3
-    )
+    def numeric(key: str, env_name: str):
+        # ``or`` would drop an explicit 0 / 0.0 passed as a number
+        value = overrides.get(key)
+        return value if value is not None and value != "" else env_get(env_name)
+
+    # None means "not configured": the provider's default applies.
+    temperature = _as_float(numeric("llm_temperature", "DOCTEST_LLM_TEMPERATURE"), None)
+    max_output_tokens = _as_int(numeric("llm_max_output_tokens", "DOCTEST_LLM_MAX_OUTPUT_TOKENS"), None)
+    request_timeout = _as_float(numeric("llm_request_timeout", "DOCTEST_LLM_REQUEST_TIMEOUT"), None)
+    output_retries = _as_int(numeric("llm_output_retries", "DOCTEST_LLM_OUTPUT_RETRIES"), 3)
 
     azure_endpoint = overrides.get("azure_openai_endpoint") or env_get("AZURE_OPENAI_ENDPOINT")
     azure_deployment = overrides.get("azure_openai_deployment") or env_get("AZURE_OPENAI_DEPLOYMENT")
@@ -220,7 +218,7 @@ def load_llm_settings(overrides: Optional[Dict[str, Optional[str]]] = None) -> L
         vision_models=vision_models,
         api_key=api_key,
         base_url=base_url,
-        temperature=temperature if temperature is not None else 0.2,
+        temperature=temperature,
         max_output_tokens=max_output_tokens,
         request_timeout=request_timeout,
         output_retries=output_retries if output_retries is not None else 3,

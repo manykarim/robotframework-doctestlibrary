@@ -22,6 +22,7 @@ Usage from Python::
 
 import importlib
 import logging
+import os
 import shutil
 import subprocess
 from typing import Dict, List, Optional
@@ -66,7 +67,7 @@ CAPABILITY_REGISTRY: Dict[str, Dict[str, str]] = {
 
 PYTHON_PACKAGE_REGISTRY: Dict[str, Dict[str, str]] = {
     "pymupdf": {
-        "import_name": "fitz",
+        "import_name": "pymupdf",
         "feature": "PDF rendering and text extraction",
         "install_hint": "pip install PyMuPDF",
     },
@@ -98,6 +99,25 @@ def check_binary(name: str) -> Optional[str]:
         return None
 
 
+def _windows_system_dirs() -> List[str]:
+    """Normalised Windows system directories (empty on other platforms)."""
+    if os.name != "nt":
+        return []
+    root = os.environ.get("SystemRoot") or os.environ.get("WINDIR") or r"C:\Windows"
+    return [os.path.normcase(os.path.join(root, sub)) for sub in ("System32", "SysWOW64")]
+
+
+def _is_os_utility(path: str) -> bool:
+    """True when *path* lives in the Windows system directory.
+
+    Fallback names such as ``convert`` collide with Windows' own
+    ``System32/convert.exe`` (a disk-conversion tool), which must not be
+    reported as ImageMagick.
+    """
+    directory = os.path.normcase(os.path.dirname(os.path.abspath(path)))
+    return directory in _windows_system_dirs()
+
+
 def check_python_package(name: str) -> bool:
     """Return ``True`` if the Python package *name* can be imported."""
     try:
@@ -115,10 +135,13 @@ def _get_version(binary_path: str) -> Optional[str]:
     """
     for flag in ("--version", "-version"):
         try:
+            # errors="replace": tools may print in a localized code page,
+            # which fails to decode under Python 3.15's default UTF-8 mode
             result = subprocess.run(
                 [binary_path, flag],
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=5,
             )
             output = (result.stdout or result.stderr or "").strip()
@@ -156,6 +179,8 @@ def check_all_capabilities() -> Dict[str, Dict]:
 
         for idx, binary_name in enumerate(binaries_to_try):
             path = check_binary(binary_name)
+            if path is not None and idx > 0 and _is_os_utility(path):
+                continue
             if path is not None:
                 entry["available"] = True
                 entry["path"] = path

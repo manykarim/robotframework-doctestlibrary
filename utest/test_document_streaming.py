@@ -1,4 +1,4 @@
-import fitz
+import pymupdf
 import pytest
 
 from DocTest.DocumentRepresentation import DocumentRepresentation
@@ -6,7 +6,7 @@ from DocTest.VisualTest import VisualTest
 
 
 def _create_multipage_pdf(tmp_path, pages=3):
-    doc = fitz.open()
+    doc = pymupdf.open()
     for idx in range(pages):
         page = doc.new_page()
         page.insert_text((72, 72), f"Page {idx + 1}")

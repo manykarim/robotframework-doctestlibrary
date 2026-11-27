@@ -13,6 +13,12 @@ PDF_CAND = UTESTDATA / "sample_1_page_moved.pdf"
 PDF_MASK = UTESTDATA / "pdf_area_mask.json"
 
 
+def robot_path(path) -> str:
+    """A path for Robot suite text: forward slashes work on every platform,
+    whereas Windows backslashes are Robot escape characters (e.g. ``\\U``)."""
+    return Path(path).as_posix()
+
+
 def run_robot_suite(suite_text: str, out_dir: Path) -> Path:
     """Execute a real Robot Framework run; returns the output.xml path."""
     import robot

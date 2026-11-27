@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from helpers import CAND_IMAGE, REF_IMAGE, REPO_ROOT, run_robot_suite
+from helpers import CAND_IMAGE, REF_IMAGE, REPO_ROOT, robot_path, run_robot_suite
 from doctest_dashboard.ingest import ingest_output_xml
 
 ROOT_TESTDATA = REPO_ROOT / "testdata"
@@ -41,7 +41,7 @@ def _make_image_run(base_dir: Path, candidate_src: Path = CAND_IMAGE):
     candidate = artifacts / "candidate.png"
     shutil.copyfile(REF_IMAGE, reference)
     shutil.copyfile(candidate_src, candidate)
-    suite = PROMOTION_SUITE.format(reference=reference, candidate=candidate)
+    suite = PROMOTION_SUITE.format(reference=robot_path(reference), candidate=robot_path(candidate))
     output_xml = run_robot_suite(suite, base_dir / "run")
     return output_xml, reference, candidate, artifacts
 
@@ -114,7 +114,7 @@ def test_page_accept_on_multipage_pdf_redirects(client, config, tmp_path):
     candidate = artifacts / "candidate.pdf"
     shutil.copyfile(ROOT_TESTDATA / "sample.pdf", reference)
     shutil.copyfile(ROOT_TESTDATA / "sample_changed.pdf", candidate)
-    suite = PDF_PROMOTION_SUITE.format(reference=reference, candidate=candidate)
+    suite = PDF_PROMOTION_SUITE.format(reference=robot_path(reference), candidate=robot_path(candidate))
     output_xml = run_robot_suite(suite, tmp_path / "run")
     run_id = _ingest(client, config, output_xml, artifacts)
     comparison_id = _failing_comparison(client, run_id)

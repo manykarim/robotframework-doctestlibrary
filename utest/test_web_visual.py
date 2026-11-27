@@ -1,12 +1,16 @@
 """Unit tests for WebVisualTest and the web capture adapters (no robot run)."""
 
 import shutil
+from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
 
+from robot.utils import unescape
+
 from DocTest.WebCapture import (
+    DOM_WALKER_JS,
     BrowserLibraryAdapter,
     ElementRect,
     SeleniumLibraryAdapter,
@@ -16,7 +20,10 @@ from DocTest.WebVisualTest import WebVisualTest, sanitize_baseline_name
 
 
 class FakeBuiltIn:
-    """Records run_keyword calls; canned responses per keyword name."""
+    """Records run_keyword calls; canned responses per keyword name.
+
+    Like the real BuiltIn.run_keyword, string arguments are unescaped as
+    test data, so ``calls`` holds what the keyword actually receives."""
 
     def __init__(self, responses=None, libraries=()):
         self.calls = []
@@ -24,6 +31,7 @@ class FakeBuiltIn:
         self.libraries = set(libraries)
 
     def run_keyword(self, keyword, *args):
+        args = tuple(unescape(arg) if isinstance(arg, str) else arg for arg in args)
         self.calls.append((keyword, args))
         value = self.responses.get(keyword)
         return value(*args) if callable(value) else value
@@ -87,6 +95,36 @@ def test_selenium_viewport_and_element_capture(tmp_path):
     assert fake.calls[0][1] == (f"filename={tmp_path / 'page.png'}",)
     # locator travels as a named argument so '=' inside it survives run_keyword
     assert fake.calls[1][1] == ("locator=id=clock", f"filename={tmp_path / 'el.png'}")
+
+
+WINDOWS_PATH = r"C:\work\new\results\x${y}\shot.png"
+
+
+def test_browser_capture_path_survives_run_keyword_unescaping():
+    r"""Windows paths (\new, \results) and ${...} reach the keyword intact."""
+    fake = FakeBuiltIn({"Browser.Take Screenshot": WINDOWS_PATH})
+    BrowserLibraryAdapter(fake).capture_page(Path(WINDOWS_PATH), full_page=True)
+    _, args = fake.calls[0]
+    assert f"filename={WINDOWS_PATH[:-len('.png')]}" in args
+
+
+def test_selenium_capture_path_survives_run_keyword_unescaping():
+    fake = FakeBuiltIn({"SeleniumLibrary.Capture Element Screenshot": WINDOWS_PATH})
+    SeleniumLibraryAdapter(fake).capture_element(Path(WINDOWS_PATH), "css=a[href$='\\x']")
+    _, args = fake.calls[0]
+    assert args == ("locator=css=a[href$='\\x']", f"filename={WINDOWS_PATH}")
+
+
+@pytest.mark.parametrize("adapter_class, keyword", [
+    (BrowserLibraryAdapter, "Browser.Evaluate JavaScript"),
+    (SeleniumLibraryAdapter, "SeleniumLibrary.Execute Javascript"),
+])
+def test_dom_walker_script_survives_run_keyword_unescaping(adapter_class, keyword):
+    """The walker's whitespace regex (backslash-s) must not degrade to 's'."""
+    fake = FakeBuiltIn({keyword: "{}"})
+    adapter_class(fake).dom_snapshot()
+    _, args = fake.calls[-1]
+    assert any(isinstance(arg, str) and DOM_WALKER_JS in arg for arg in args)
 
 
 def test_selenium_capture_scale_is_dpr():

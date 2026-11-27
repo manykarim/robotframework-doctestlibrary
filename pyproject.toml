@@ -1,39 +1,47 @@
 [project]
 name = "robotframework-doctestlibrary"
-version = "0.34.0"
+version = "0.35.0"
 description = "A library for Visual Document Testing"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Many Kasiriha", email = "many.kasiriha@dbschenker.com" }]
 maintainers = [{ name = "Many Kasiriha", email = "many.kasiriha@dbschenker.com" }]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
     "Framework :: Robot Framework",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Software Development :: Testing",
 ]
 # Version-conditional pins translate poetry's multi-constraint tables.
-# Python floor is 3.10: pydantic-ai (the [ai] extra) only supports >=3.10
-# in maintained versions, and 3.9 is past end of life.
+# Python floor is 3.11: 3.10 is past end of life and numpy/scipy/Pillow have
+# dropped it. The >=3.15 floors are the first releases with cp315 wheels
+# (scikit-image only has a release candidate; naming it opts into it).
+# Upper caps guard majors that break the library: PyMuPDF 2 requires
+# onnxruntime (no cp315 wheels), OpenCV 5 removed the TensorFlow importer the
+# EAST text detector needs and changes template-matching results.
 dependencies = [
-    "PyMuPDF>=1.26.0",
+    "PyMuPDF>=1.26.0,<2",
     "numpy>=1.26; python_version < '3.13'",
-    "numpy>=2.1.0; python_version >= '3.13'",
-    "opencv-python-headless>=4.8",
+    "numpy>=2.1.0; python_version >= '3.13' and python_version < '3.15'",
+    "numpy>=2.5.2; python_version >= '3.15'",
+    "opencv-python-headless>=4.8,<5",
     "parsimonious>=0.10",
     "pytesseract>=0.3.10",
     "robotframework>=4",
     "scikit-image; python_version < '3.12'",
     "scikit-image>=0.22.0; python_version == '3.12'",
-    "scikit-image>=0.25.0; python_version >= '3.13'",
+    "scikit-image>=0.25.0; python_version >= '3.13' and python_version < '3.15'",
+    "scikit-image>=0.27.0rc1; python_version >= '3.15'",
     "pylibdmtx>=0.1.10",
     "deepdiff; python_version < '3.12'",
-    "deepdiff>=6.0; python_version >= '3.12'",
+    "deepdiff>=6.0; python_version >= '3.12' and python_version < '3.15'",
+    "deepdiff>=9.2.1; python_version >= '3.15'",
     "pyzbar>=0.1.9",
     "setuptools; python_version >= '3.12'",
     "robotframework-assertion-engine>=3.0.3",
@@ -44,8 +52,12 @@ Homepage = "https://github.com/manykarim/robotframework-doctestlibrary"
 Repository = "https://github.com/manykarim/robotframework-doctestlibrary"
 
 [project.optional-dependencies]
+# pydantic-ai: >=1.107.7 is the first 1.x without published security
+# advisories (GHSA-v36g-jcw9-x7cw and others); 2.x below 2.52 is also
+# affected but resolvers pick the newest 2.x. <3 guards the next unverified
+# major.
 ai = [
-    "pydantic-ai-slim[openai]>=1",
+    "pydantic-ai-slim[openai]>=1.107.7,<3",
     "python-dotenv",
 ]
 dashboard = [
@@ -116,7 +128,7 @@ exclude = ["DocTest/data/frozen_east_text_detection.pb"]
 artifacts = ["doctest_dashboard/static"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]

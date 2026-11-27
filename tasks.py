@@ -1,4 +1,5 @@
 import inspect
+import os
 import pathlib
 import subprocess
 
@@ -11,7 +12,7 @@ if not hasattr(inspect, "getargspec"):
     inspect.getargspec = inspect.getfullargspec
 
 ROOT = pathlib.Path(__file__).parent.resolve().as_posix()
-SUPPORTED_PYTHONS = ["3.10", "3.11", "3.12", "3.13"]
+SUPPORTED_PYTHONS = ["3.11", "3.12", "3.13", "3.14", "3.15"]
 utests_completed_process = None
 atests_completed_process = None
 
@@ -102,26 +103,28 @@ def e2e(context):
 def multipython(context):
     """Validate every supported interpreter: sync with all extras, audit the
     resolved marker-controlled dependency versions, and import-smoke both
-    packages. Restores the default environment afterwards."""
+    packages. Each interpreter gets its own environment under
+    .venv-multipython/, so the active .venv is never replaced (on Windows it
+    cannot be while this task runs from it)."""
     results = {}
     for version in SUPPORTED_PYTHONS:
         print(f"\n=== Python {version} ===")
+        env = dict(os.environ, UV_PROJECT_ENVIRONMENT=f"{ROOT}/.venv-multipython/{version}")
         steps = [
             f"uv sync --python {version} --all-extras -q",
-            "uv run python scripts/audit_resolved_versions.py",
+            f"uv run --python {version} python scripts/audit_resolved_versions.py",
             (
-                'uv run python -c "from DocTest.VisualTest import VisualTest; '
+                f'uv run --python {version} python -c "from DocTest.VisualTest import VisualTest; '
                 "from doctest_dashboard.server.app import create_app; "
                 "print('imports OK')\""
             ),
         ]
         outcome = "OK"
         for step in steps:
-            if subprocess.run(step, shell=True, check=False).returncode != 0:
+            if subprocess.run(step, shell=True, check=False, env=env).returncode != 0:
                 outcome = "FAILED"
                 break
         results[version] = outcome
-    subprocess.run("uv sync --all-extras -q", shell=True, check=False)
     print("\n=== multipython summary ===")
     for version, outcome in results.items():
         print(f"  {version}: {outcome}")

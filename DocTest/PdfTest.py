@@ -3,7 +3,7 @@ from pprint import pformat
 from deepdiff import DeepDiff
 from robot.api import logger as robot_logger
 from robot.api.deco import keyword
-import fitz
+import pymupdf
 import json
 import os
 import re
@@ -97,7 +97,7 @@ class PdfTest(object):
         result_json: bool = False,
         **kwargs,
     ):
-        fitz.TOOLS.set_aa_level(0)
+        pymupdf.TOOLS.set_aa_level(0)
         self.character_replacements = self._parse_character_replacements(character_replacements)
         self.reference_run = self._read_reference_run_variable()
         self.result_json = bool(result_json)
@@ -790,7 +790,7 @@ class PdfTest(object):
         """
         if is_url(candidate_document):
             candidate_document = download_file_from_url(candidate_document)
-        doc = fitz.open(candidate_document)
+        doc = pymupdf.open(candidate_document)
         try:
             missing_text_list = []
             all_texts_were_found = None
@@ -837,7 +837,7 @@ class PdfTest(object):
 
         if is_url(candidate_document):
             candidate_document = download_file_from_url(candidate_document)
-        doc = fitz.open(candidate_document)
+        doc = pymupdf.open(candidate_document)
         try:
             # if expected_text_list is a string, convert it to a list
             if isinstance(expected_text_list, str):
@@ -896,7 +896,7 @@ class PdfTest(object):
 
         if is_url(candidate_document):
             candidate_document = download_file_from_url(candidate_document)
-        doc = fitz.open(candidate_document)
+        doc = pymupdf.open(candidate_document)
         try:
             # if expected_text_list is a string, convert it to a list
             if isinstance(expected_text_list, str):

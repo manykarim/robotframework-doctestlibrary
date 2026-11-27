@@ -251,20 +251,20 @@ class TestSidecarMaskNotShadowed:
 
 
 class TestFitzDocumentsClosed:
-    """§2.8 — PdfTest text keywords must close their fitz documents."""
+    """§2.8 — PdfTest text keywords must close their PyMuPDF documents."""
 
     def _capture_open(self, monkeypatch):
         import DocTest.PdfTest as pdftest_module
 
         opened = []
-        real_open = pdftest_module.fitz.open
+        real_open = pdftest_module.pymupdf.open
 
         def _open(*args, **kwargs):
             doc = real_open(*args, **kwargs)
             opened.append(doc)
             return doc
 
-        monkeypatch.setattr(pdftest_module.fitz, "open", _open)
+        monkeypatch.setattr(pdftest_module.pymupdf, "open", _open)
         return opened
 
     def test_pdf_should_contain_strings_closes_doc(self, testdata_dir, monkeypatch):

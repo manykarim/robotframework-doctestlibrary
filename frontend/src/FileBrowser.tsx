@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { joinPath } from "./paths";
 
 interface Entry {
   name: string;
@@ -67,13 +68,13 @@ export function FileBrowser({
         setError(null);
         // Jump straight in when there is exactly one root
         if (!path && result.roots && result.roots.length === 1) {
-          navigate(result.roots[0].path);
+          void navigate(result.roots[0].path);
         }
       })
       .catch((e) => setError(String(e.message || e)));
 
   useEffect(() => {
-    navigate();
+    void navigate();
   }, []);
 
   useEffect(() => {
@@ -134,11 +135,11 @@ export function FileBrowser({
               data-testid={`fb-entry-${root.name}`}
               role="button"
               tabIndex={0}
-              onClick={() => navigate(root.path)}
+              onClick={() => void navigate(root.path)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  navigate(root.path);
+                  void navigate(root.path);
                 }
               }}
             >
@@ -161,7 +162,7 @@ export function FileBrowser({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    if (entry.type === "dir") navigate(entry.path);
+                    if (entry.type === "dir") void navigate(entry.path);
                     else pickFile(entry);
                   }
                 }}
@@ -190,7 +191,7 @@ export function FileBrowser({
               className="primary"
               data-testid="fb-select"
               disabled={!filename.trim()}
-              onClick={() => onSelect(`${listing.path}/${filename.trim()}`)}
+              onClick={() => onSelect(joinPath(listing.path!, filename.trim()))}
             >
               Select
             </button>

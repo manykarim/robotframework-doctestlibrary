@@ -1,5 +1,7 @@
 """Upload endpoint tests: workspace storage, type/size limits, integration."""
 
+import pytest
+
 from helpers import REF_IMAGE
 
 
@@ -112,10 +114,24 @@ def test_upload_results_skips_irrelevant_files(client, sidecar_output_xml):
     assert response.json()["skipped"] >= 1
 
 
+def _suggested_mask_target(uploaded_path):
+    """Mirror of siblingPath() in frontend/src/paths.ts: masks.json next to
+    the upload, keeping the separator of the native path the server returned."""
+    cut = max(uploaded_path.rfind("/"), uploaded_path.rfind("\\"))
+    return f"{uploaded_path[:cut + 1]}masks.json" if cut >= 0 else "masks.json"
+
+
+@pytest.mark.parametrize("uploaded, expected", [
+    (r"C:\data\uploads\9ae81ac8\ref.png", r"C:\data\uploads\9ae81ac8\masks.json"),
+    ("/srv/data/uploads/9ae81ac8/ref.png", "/srv/data/uploads/9ae81ac8/masks.json"),
+])
+def test_suggested_mask_target_follows_native_separator(uploaded, expected):
+    assert _suggested_mask_target(uploaded) == expected
+
+
 def test_mask_save_next_to_upload(client):
     """The editor's suggested masks.json target (upload folder) is writable."""
     path = _upload(client, "ref.png", REF_IMAGE.read_bytes()).json()["path"]
-    folder = path.rsplit("/", 1)[0]
     response = client.put("/api/masks", json={
-        "file": f"{folder}/masks.json", "masks": "top:10"})
+        "file": _suggested_mask_target(path), "masks": "top:10"})
     assert response.status_code == 200
