@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Iterable, List, Optional, Sequence, Type
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Type
 
 from pydantic import BaseModel, ValidationError
 
@@ -184,6 +184,23 @@ def _normalise_output(result: Any, output_type: Type[Any]) -> Any:
     return result
 
 
+def _model_settings(settings: LLMSettings) -> Optional[Dict[str, Any]]:
+    """Request settings the user configured; unset values keep the provider default.
+
+    ``max_tokens``, ``temperature`` and ``timeout`` mean the same in
+    pydantic-ai 1.x and 2.x. Without ``max_tokens`` OpenAI-compatible
+    gateways such as OpenRouter reserve credit for the model's full output
+    limit on every call."""
+    model_settings: Dict[str, Any] = {}
+    if settings.max_output_tokens is not None:
+        model_settings["max_tokens"] = settings.max_output_tokens
+    if settings.temperature is not None:
+        model_settings["temperature"] = settings.temperature
+    if settings.request_timeout is not None:
+        model_settings["timeout"] = settings.request_timeout
+    return model_settings or None
+
+
 def _run_agent(
     settings: LLMSettings,
     purpose: str,
@@ -204,6 +221,7 @@ def _run_agent(
         identifier,
         output_type=output_type,
         retries=max(1, getattr(settings, "output_retries", 3)),
+        model_settings=_model_settings(settings),
     )
 
     last_error: Optional[Exception] = None

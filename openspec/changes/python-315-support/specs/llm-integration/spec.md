@@ -49,3 +49,18 @@ Using the LLM keywords SHALL NOT print promotional or observability banners from
 #### Scenario: User preference wins
 - **WHEN** the user has explicitly set the runtime's banner environment variable before the library is imported
 - **THEN** the library does not override that value
+
+### Requirement: Configured request settings are applied
+The configured `temperature`, `max_output_tokens` and `request_timeout` (keyword arguments, library overrides or `DOCTEST_LLM_*` environment variables) SHALL be sent with every model request, on pydantic-ai 1.x and 2.x. Settings that are not configured SHALL NOT be sent, so the provider's default applies. An explicit value of `0` SHALL count as configured.
+
+#### Scenario: Output cap is sent
+- **WHEN** `DOCTEST_LLM_MAX_OUTPUT_TOKENS=8192` is set and an LLM assessment runs
+- **THEN** the request carries `max_tokens=8192`
+
+#### Scenario: Unset settings use provider defaults
+- **WHEN** no temperature, output cap or timeout is configured
+- **THEN** the request carries none of them
+
+#### Scenario: Zero temperature is honored
+- **WHEN** `temperature=0` is passed as a number
+- **THEN** the request carries `temperature=0.0`

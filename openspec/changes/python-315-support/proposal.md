@@ -45,6 +45,7 @@ Users cannot install the library on Python 3.15 (issue #136): the resolver falls
   - Every GitHub Action in all workflows is pinned to a full commit SHA, and `dorny/test-reporter` moves from `@main` to its v3.0.0 release. All `uv sync`/`uv run` steps use `--locked --no-build`: CI never executes a source distribution's build scripts and fails on a stale lock instead of re-resolving. (Sonar S7637/S8541/S8544)
   - The e2e journeys opened the run list's first row right after an ingest, which could still be the previous run (flaky on CI). They now open the ingested run by id.
   - Floating promises in the dashboard's file browser and mask editor are handled; a failed diff-region fetch now shows an error instead of being swallowed. (Sonar S9383)
+- LLM request settings: `temperature`, `max_output_tokens` and `request_timeout` are now applied to model requests (they were silently ignored). Unconfigured values keep the provider default.
 - CI runner: `ubuntu-latest` moved to Ubuntu 26.04 (ImageMagick 7, Tesseract 5.5). The ImageMagick policy is copied into whichever `/etc/ImageMagick-*` directory exists. Tests asserting the 8 px "SOUVENIR" sign accept one-character OCR variance (Ubuntu 26.04's model reads "souveonR").
 - CI:
   - The test matrix moves to 3.11–3.15.

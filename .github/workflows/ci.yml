@@ -154,6 +154,9 @@ jobs:
       DOCTEST_LLM_ENABLED: true
       DOCTEST_LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
       DOCTEST_LLM_BASE_URL: https://openrouter.ai/api/v1
+      # Bounds per-call cost; OpenRouter otherwise reserves credit for the
+      # model's full output limit (943k tokens for glm-5.3-flash).
+      DOCTEST_LLM_MAX_OUTPUT_TOKENS: 8192
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

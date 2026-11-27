@@ -414,3 +414,60 @@ def test_output_retry_budget_bounds_model_calls(monkeypatch):
         client_module._run_agent(settings, "text", ["prompt"], LLMDecision)
     # _run_agent re-runs once after UnexpectedModelBehavior: 2 runs x (1 + 3)
     assert calls["count"] == 8
+
+
+@pytest.mark.parametrize(
+    "configured, expected",
+    [
+        ({}, {}),
+        (
+            {"max_output_tokens": 2048, "temperature": 0.0, "request_timeout": 45.0},
+            {"max_tokens": 2048, "temperature": 0.0, "timeout": 45.0},
+        ),
+    ],
+)
+def test_configured_request_settings_reach_the_model(monkeypatch, configured, expected):
+    """max_output_tokens, temperature and request_timeout are sent with each
+    request; unset values are omitted so the provider default applies."""
+    pytest.importorskip("pydantic_ai")
+    from pydantic_ai.messages import ModelResponse, TextPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from DocTest.llm import client as client_module
+
+    seen = {}
+
+    def respond(messages, info):
+        seen.update(info.model_settings or {})
+        return ModelResponse(parts=[TextPart("done")])
+
+    monkeypatch.setattr(client_module, "_configure_environment", lambda settings: None)
+    monkeypatch.setattr(
+        client_module, "_resolve_model_identifier", lambda settings, purpose: FunctionModel(respond)
+    )
+    settings = _dummy_settings()
+    settings.temperature = None
+    settings.request_timeout = None
+    for key, value in configured.items():
+        setattr(settings, key, value)
+
+    client_module._run_agent(settings, "text", ["prompt"], str)
+    assert {key: seen[key] for key in ("max_tokens", "temperature", "timeout") if key in seen} == expected
+
+
+def test_request_settings_parse_from_env_and_overrides(monkeypatch):
+    from DocTest.llm.config import load_llm_settings
+
+    for name in ("DOCTEST_LLM_TEMPERATURE", "DOCTEST_LLM_MAX_OUTPUT_TOKENS", "DOCTEST_LLM_REQUEST_TIMEOUT"):
+        monkeypatch.delenv(name, raising=False)
+    defaults = load_llm_settings()
+    assert (defaults.temperature, defaults.max_output_tokens, defaults.request_timeout) == (None, None, None)
+
+    monkeypatch.setenv("DOCTEST_LLM_TEMPERATURE", "0.7")
+    monkeypatch.setenv("DOCTEST_LLM_MAX_OUTPUT_TOKENS", "4096")
+    monkeypatch.setenv("DOCTEST_LLM_REQUEST_TIMEOUT", "90")
+    from_env = load_llm_settings()
+    assert (from_env.temperature, from_env.max_output_tokens, from_env.request_timeout) == (0.7, 4096, 90.0)
+
+    # an explicit numeric 0 is a value, not "unset"
+    assert load_llm_settings({"llm_temperature": 0.0}).temperature == 0.0
