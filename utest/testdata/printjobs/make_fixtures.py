@@ -117,6 +117,44 @@ def main(out_dir=HERE):
     write("ps_creator_a.ps", ps())
     write("ps_creator_b.ps", ps().replace(b"%%Creator: fixture generator", b"%%Creator: fixture generator 2.0"))
 
+    # --- job tickets (print-job-ticket) -------------------------------------
+    def pjl(*lines, language=b"PCL"):
+        return UEL + b"".join(b"@PJL " + line + b"\r\n" for line in lines) + b"@PJL ENTER LANGUAGE=" + language + b"\r\n"
+
+    write("ticket_pjl_letter_pcl_a4.pcl",
+          pjl(b"SET PAPER=LETTER") + E + b"E" + E + b"&l26A" + b"Page one\x0c" + E + b"E" + UEL)
+    write("ticket_pjl_letter_reset.pcl",
+          pjl(b"SET PAPER=LETTER") + E + b"E" + E + b"&l26A" + b"Page one\x0c" + E + b"E"
+          + b"Page two\x0c" + E + b"E" + UEL)
+    write("ticket_duplex_once.pcl", pcl5(b"Page one", b"Page two", setup=b"&l26a1S"))
+    write("ticket_duplex_page1_only.pcl", E + b"E" + E + b"&l26a1S" + b"Page one\x0c"
+          + E + b"&l0S" + b"Page two\x0c" + E + b"E")
+    for tray in (2, 4, 6):
+        write(f"ticket_tray{tray}.pcl", pcl5(b"Page one", setup=b"&l26a%dH" % tray))
+    write("ticket_bin2.pcl", pcl5(b"Page one", setup=b"&l26a2G"))
+    media = b"dLetterhead"
+    write("ticket_media_name.pcl", E + b"E" + E + b"&l26A" + E + b"&n%dW" % len(media) + media
+          + b"Page one\x0c" + E + b"E")
+    write("ticket_pjl_duplex_short.pcl",
+          pjl(b"SET DUPLEX=ON", b"SET BINDING=SHORTEDGE") + E + b"E" + b"Page one\x0c" + E + b"E" + UEL)
+    write("ticket_run_a.pcl", pjl(b'SET JOBNAME="job-1"', b'SET USERNAME="alice"', b"SET RESOLUTION=600")
+          + pcl5(b"Page one") + UEL)
+    write("ticket_run_b.pcl", pjl(b'SET JOBNAME="job-2"', b'SET USERNAME="bob"', b"SET RESOLUTION=600")
+          + pcl5(b"Page one") + UEL)
+    # PCL XL: portrait A4, duplex vertical binding, 2 copies (little-endian binding)
+    xl_page = (b"\xc0\x00\xf8\x28" b"\xc0\x02\xf8\x25" b"\xc0\x01\xf8\x35" b"\x43"
+               b"\xc1\x02\x00\xf8\x31" b"\x44")
+    write("ticket_pclxl_duplex_copies.pcl",
+          pjl(language=b"PCLXL") + b") HP-PCL XL;2;0\n" + xl_page + UEL)
+    write("ticket_ps_inputslot_tray2.ps", ps(setup=b"%%BeginSetup\n" + feature(b"InputSlot", b"Tray2") + b"%%EndSetup\n"))
+    write("ticket_ps_dsc_letter_code_a4.ps", ps(setup=b"%%BeginSetup\n" + feature(
+        b"PageSize", b"Letter", b"<< /PageSize [595 842] >> setpagedevice") + b"%%EndSetup\n"))
+    write("ticket_ps_custom_size.ps", ps(setup=b"<< /PageSize [600 800] >> setpagedevice\n"))
+    write("ticket_ps_duplex_code.ps", ps(setup=b"<< /Duplex true /Tumble false >> setpagedevice\n"))
+    write("ticket_ps_mid_job_changes.ps", ps(
+        pages=3, setup=b"<< /PageSize [595 842] /Duplex true /Tumble false /NumCopies 2 /MediaPosition 1 >> setpagedevice\n")
+        .replace(b"%%Page: 3 3\n", b"%%Page: 3 3\n<< /PageSize [612 792] /Duplex false >> setpagedevice\n"))
+
 
 if __name__ == "__main__":
     main()

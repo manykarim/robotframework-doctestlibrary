@@ -716,6 +716,45 @@ Visually compare a PCL job that sets no page size, rendered on Letter
     Compare Images    reference.pcl    candidate.pcl    printing_papersize=letter
 ```
 
+### Assert and compare print settings (job tickets)
+
+`Get Print Job Ticket` returns the settings every page of a PCL 5, PCL XL or PostScript job prints with: PJL defaults, overridden by the job's own commands, carried forward from page to page.
+Values are normalized, so jobs in different printer languages can be compared:
+
+| Setting | Values |
+|---|---|
+| `paper_size` | `A4`, `A3`, `A5`, `Letter`, `Legal`, `Executive`, `Ledger`, ... or `<w>x<h>mm` |
+| `orientation` | `portrait`, `landscape`, `reverse_portrait`, `reverse_landscape` |
+| `duplex` | `simplex`, `long_edge`, `short_edge` |
+| `copies` | number of copies |
+| `input_tray`, `output_bin`, `media_type` | generic names where the language defines them (`auto`, `manual`, `envelope`, `plain`, ...), otherwise the raw value with its language, e.g. `pcl5:4` or `ps:Tray2` |
+
+A setting the job leaves to the printer is `unspecified`, and it counts as different from any concrete value.
+For PostScript, the settings the job actually requests are read with Ghostscript when it is installed; otherwise the DSC comments are used.
+A `mapping` (dictionary or JSON file) gives printer-specific trays, bins and media your own names, so they compare across languages.
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.PrintJobTests
+
+*** Test Cases ***
+Statement prints duplex on A4
+    Print Job Ticket Should Contain    statement.pcl    duplex=long_edge    paper_size=A4
+
+First page is taken from the letterhead tray
+    Print Job Ticket Should Contain    statement.pcl    page=1    input_tray=pcl5:4
+
+Print settings did not change
+    Compare Print Job Tickets    reference.pcl    candidate.pcl
+
+PostScript migration prints like the PCL original
+    ${trays}    Create Dictionary    pcl5:4=letterhead    ps:Tray2=letterhead
+    ${mapping}    Create Dictionary    input_tray=${trays}
+    Compare Print Job Tickets    original.pcl    migrated.ps    ignore_properties=pjl,resolution,color_mode    mapping=${mapping}
+```
+
+A failing comparison lists every difference, e.g. `page 3: input_tray pcl5:4 → auto`.
+
 ### Using pabot to run tests in parallel
 
 Document Testing can be run in parallel using [pabot](https://pabot.org/).  

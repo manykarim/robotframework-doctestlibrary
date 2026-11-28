@@ -42,6 +42,12 @@
       "property",
       "value"
     ],
+    "Compare Print Job Tickets": [
+      "reference",
+      "candidate",
+      "ignore_properties=None",
+      "mapping=None"
+    ],
     "Compare Print Jobs": [
       "type",
       "reference_file",
@@ -53,6 +59,16 @@
     ],
     "Get Postscript Print Job": [
       "filename"
+    ],
+    "Get Print Job Ticket": [
+      "print_job",
+      "mapping=None"
+    ],
+    "Print Job Ticket Should Contain": [
+      "print_job",
+      "page=None",
+      "mapping=None",
+      "**expected"
     ]
   },
   "DocTest.VisualTest": {
