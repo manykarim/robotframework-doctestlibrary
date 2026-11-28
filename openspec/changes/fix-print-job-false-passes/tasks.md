@@ -84,7 +84,7 @@
 
 ## 8. Acceptance and documentation
 
-- [ ] 8.1 Extend `atest/PrintJobs.robot`:
+- [x] 8.1 Extend `atest/PrintJobs.robot`:
   - PCL XL comparison;
   - 1-vs-2-page PCL and PS;
   - A4/Letter PS;
@@ -93,7 +93,7 @@
   - an empty-PCL visual comparison expecting the rendering error.
 
   Verify the suite passes locally with Ghostscript and GhostPCL 10.08.0 and on CI with 9.56.1.
-- [ ] 8.2 Confirm the GhostPCL 9.56.1 interpreter-error markers from CI output and adjust the marker list if needed (design Open Questions). Verify the CI acceptance job passes.
+- [x] 8.2 Confirm the GhostPCL 9.56.1 interpreter-error markers from CI output and adjust the marker list if needed (design Open Questions). Verify the CI acceptance job passes.
 - [x] 8.3 Update the README print-job section (supported languages, compared properties, ignore list, A4 default for PCL jobs without a page size) and the release notes (behavior change, BREAKING paper default, `ignore_properties`, `parsimonious` removal, removed visitor classes). Verify the README example keywords run as written in a Robot dry run.
 
 ## Workflow follow-up
