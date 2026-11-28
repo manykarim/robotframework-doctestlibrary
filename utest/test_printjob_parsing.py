@@ -222,3 +222,17 @@ def test_missing_ghostscript_is_a_clear_error():
     with mock.patch.object(parsing, "find_ghostscript", return_value=None):
         with pytest.raises(AssertionError, match="no DSC page structure.*Ghostscript is required"):
             count_postscript_pages(str(FIXTURES / "ps_07_no_dsc_two_pages.ps"))
+
+
+def test_committed_fixtures_match_their_generator(tmp_path):
+    """Fixtures are byte-exact inputs (line endings included); a checkout or
+    an edit that changes their bytes would silently weaken the tests."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("make_fixtures", FIXTURES / "make_fixtures.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.main(tmp_path)
+    generated = sorted(p.name for p in tmp_path.iterdir())
+    assert generated
+    for name in generated:
+        assert (tmp_path / name).read_bytes() == (FIXTURES / name).read_bytes(), name

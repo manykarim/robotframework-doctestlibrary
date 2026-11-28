@@ -38,11 +38,16 @@ def feature(key, option, code=b"% feature code"):
     return b"%%BeginFeature: *" + key + b" " + option + b"\n" + code + b"\n%%EndFeature\n"
 
 
+OUT = HERE
+
+
 def write(name, data):
-    (HERE / name).write_bytes(data)
+    (OUT / name).write_bytes(data)
 
 
-def main():
+def main(out_dir=HERE):
+    global OUT
+    OUT = Path(out_dir)
     # --- PCL 5 -------------------------------------------------------------
     write("pcl5_one_page.pcl", pcl5(b"Page one"))
     write("pcl5_two_pages.pcl", pcl5(b"Page one", b"Page two"))
