@@ -58,7 +58,7 @@
 ## 7. Packaging, acceptance and documentation
 
 - [x] 7.1 Add `DocTest/PrintJobTicket.py` to the wheel and sdist baselines. Verify the parity gate passes on a fresh `uv build` and that `uvx ruff check DocTest` and mypy are clean.
-- [ ] 7.2 Add acceptance tests to `atest/PrintJobs.robot`:
+- [x] 7.2 Add acceptance tests to `atest/PrintJobs.robot`:
   - ticket of the PCL 5 invoice;
   - tray difference message;
   - cross-format pass;
