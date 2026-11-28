@@ -170,6 +170,12 @@
         "kind": "POSITIONAL_OR_NAMED",
         "name": "test_file",
         "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "ignore_properties",
+        "required": false
       }
     ],
     "Get Pcl Print Job": [

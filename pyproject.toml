@@ -31,7 +31,6 @@ dependencies = [
     "numpy>=2.1.0; python_version >= '3.13' and python_version < '3.15'",
     "numpy>=2.5.2; python_version >= '3.15'",
     "opencv-python-headless>=4.8,<5",
-    "parsimonious>=0.10",
     "pytesseract>=0.3.10",
     "robotframework>=4",
     "scikit-image; python_version < '3.12'",
@@ -69,15 +68,15 @@ dashboard = [
 all = [
     "robotframework-doctestlibrary[ai,dashboard,barcode,printjobs]",
 ]
-# Forward-looking extras: these packages are currently also in the base
+# Forward-looking extra: these packages are currently also in the base
 # dependencies; a future documented release will move them here exclusively.
 barcode = [
     "pylibdmtx>=0.1.10",
     "pyzbar>=0.1.9",
 ]
-printjobs = [
-    "parsimonious>=0.10",
-]
+# Kept for existing install commands; the print-job keywords need no extra
+# packages since 0.36.0 (parsimonious was removed).
+printjobs = []
 # convenience extras: pull one web automation library for DocTest.WebVisualTest
 # (which itself needs no extra dependencies — it drives whichever is installed)
 browser = [

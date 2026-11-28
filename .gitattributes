@@ -1,0 +1,4 @@
+# Print-job fixtures are byte-exact test inputs: their line endings
+# (LF, CRLF, CR) are part of what the tests check, so never convert them.
+utest/testdata/printjobs/*.pcl -text
+utest/testdata/printjobs/*.ps -text

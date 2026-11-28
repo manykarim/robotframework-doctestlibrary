@@ -19,6 +19,10 @@ from DocTest.PdfStructureModels import (
 )
 from DocTest.config import DEFAULT_DPI, OCR_ENGINE_DEFAULT, DEFAULT_CONFIDENCE, MINIMUM_OCR_RESOLUTION, ADD_PIXELS_TO_IGNORE_AREA, TESSERACT_CONFIG
 import tempfile
+import shutil
+import subprocess
+import time
+from DocTest.PrintJobParsing import find_ghostscript, read_pcl_pages
 
 logger = logging.getLogger(__name__)
 
@@ -1023,6 +1027,13 @@ class Page:
         x, y, w, h = self._convert_to_pixels(area, area.get('unit', 'px'))
         return self.image[y:y+h, x:x+w]
     
+# Renderer output that signals an interpreter error despite exit code 0
+RENDER_ERROR_MARKERS = (
+    "Unrecoverable error",
+    "Warning interpreter exited with error code",
+)
+
+
 class DocumentRepresentation:
     def __init__(
         self,
@@ -1250,88 +1261,105 @@ class DocumentRepresentation:
         except Exception:  # defensive: destructor must never raise
             pass
 
+    def _render_print_job(self, args: List[str], renderer: str) -> List[np.ndarray]:
+        """Run a Ghostscript/GhostPCL render into a private directory.
+
+        Fails loudly when the renderer cannot start, exits non-zero, reports
+        an interpreter error, or produces no pages.
+        """
+        output_image_directory = tempfile.mkdtemp(
+            prefix=f"{self.filename_without_extension}-", dir=self.tmp_directory)
+        try:
+            output_filepath = os.path.join(output_image_directory, 'output-%d.png')
+            args = [arg.replace('{OUTPUT}', output_filepath) for arg in args]
+            tic = time.perf_counter()
+            try:
+                result = subprocess.run(args, capture_output=True)
+            except OSError as exc:
+                raise AssertionError(
+                    f"Rendering {self.file_path} failed: {renderer} could not be started: {exc}") from exc
+            logger.info("Rendering %s with %s performed in %.4f seconds",
+                        self.file_path, renderer, time.perf_counter() - tic)
+            output = (result.stdout + result.stderr).decode('latin-1', errors='replace').strip()
+            if result.returncode != 0:
+                code = result.returncode
+                shown = f"{code} (0x{code & 0xFFFFFFFF:08X})" if code > 255 or code < 0 else str(code)
+                raise AssertionError(
+                    f"Rendering {self.file_path} with {renderer} failed with exit code {shown}. "
+                    f"Renderer output: {output[-800:] or '(none)'}")
+            marker = next((m for m in RENDER_ERROR_MARKERS if m in output), None)
+            if marker is not None:
+                raise AssertionError(
+                    f"Rendering {self.file_path} with {renderer} reported an interpreter error "
+                    f"('{marker}'). Renderer output: {output[-800:]}")
+            file_num = len([f for f in os.listdir(output_image_directory) if f.endswith('.png')])
+            if file_num == 0:
+                raise AssertionError(
+                    f"Rendering {self.file_path} with {renderer} produced no pages. "
+                    f"Renderer output: {output[-800:] or '(none)'}")
+            images = []
+            for index in range(file_num):
+                image_file = os.path.join(output_image_directory, f'output-{index + 1}.png')
+                data = cv2.imread(image_file)
+                if data is None:
+                    raise AssertionError(
+                        "No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.file_path))
+                images.append(data)
+            return images
+        finally:
+            shutil.rmtree(output_image_directory, ignore_errors=True)
+
+    def _structural_pcl_page_count(self) -> Optional[int]:
+        """Pages the PCL command stream prints, or None when it cannot be told."""
+        try:
+            pages = read_pcl_pages(self.file_path.read_bytes())
+        except (OSError, ValueError) as exc:
+            logger.warning("Page count of %s could not be read from the PCL stream: %s", self.file_path, exc)
+            return None
+        if pages.overlay_macro:
+            return None
+        return pages.page_count
+
     def _load_pcl(self):
-        import subprocess
-        import shutil
-        import random
-        import time
         try:
             command = shutil.which('pcl6') or shutil.which('gpcl6win64') or shutil.which('gpcl6win32') or shutil.which('gpcl6')
         except (OSError, TypeError):
             command = None
         if not command:
             raise AssertionError("No pcl6 executable found in path. Please install ghostPCL")
-        self.opencv_images = []
-        
-        resolution = self.dpi
-        tic = time.perf_counter()
-        output_image_directory = os.path.join(self.tmp_directory, self.filename_without_extension+str(random.randint(100, 999)))
-        
-        is_exist = os.path.exists(output_image_directory)
-        if not is_exist:
-            os.makedirs(output_image_directory)
-        else:
-            shutil.rmtree(output_image_directory)
-            os.makedirs(output_image_directory)
-        Output_filepath = os.path.join(output_image_directory,'output-%d.png')
 
         args = [
             command,
-            f'-J"@PJL SET PAPER = {self.printing_papersize}"',
+            f'-J@PJL DEFAULT PAPER={str(self.printing_papersize).upper()}',
             '-dNOPAUSE',
             "-sDEVICE=png16m",
-            f"-r{resolution}",
-            f"-sOutputFile={Output_filepath}",
-            self.file_path
+            f"-r{self.dpi}",
+            "-sOutputFile={OUTPUT}",
+            str(self.file_path),
         ]
-        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        toc = time.perf_counter()
-        logger.info("Rendering pcl document to Image with ghostPCL performed in %.4f seconds", toc - tic)
-        tic = time.perf_counter()
-        file_num =len(os.listdir(output_image_directory))
-        for index in range(file_num):
-            if (index == 0 or index == int(file_num-1)) and self.ignore_printfactory_envelope is True:
-                logger.info("The printfactory envelope is ignored in page %s", index+1)
+        images = self._render_print_job(args, 'GhostPCL')
+        expected = self._structural_pcl_page_count()
+        if expected is not None and len(images) != expected:
+            raise AssertionError(
+                f"Rendering {self.file_path} produced {len(images)} page(s), but its PCL command "
+                f"stream contains {expected} page(s). The document may be corrupt or not fully rendered.")
+        for index, data in enumerate(images):
+            if (index == 0 or index == len(images) - 1) and self.ignore_printfactory_envelope is True:
+                logger.info("The printfactory envelope is ignored in page %s", index + 1)
                 continue
-            else:
-                filename = 'output-' + str(index+1)+'.png'
-                image_file =os.path.join(output_image_directory, filename)
-                data = cv2.imread(image_file)
-                page = Page(data, page_number=index + 1, dpi=self.dpi)
-                
-            
-                if page is None:
-                    raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.file_path))
-                #self.opencv_images.append(data)
-                self.pages.append(page)
-
-        toc = time.perf_counter()
-        logger.info("Conversion from Image to OpenCV Image performed in %.4f seconds", toc - tic)
-        shutil.rmtree(output_image_directory)
+            self.pages.append(Page(data, page_number=index + 1, dpi=self.dpi))
+        if not self.pages:
+            raise AssertionError(
+                f"No pages of {self.file_path} are left after ignoring the printfactory envelope pages.")
 
     def _load_ps(self):
-        import subprocess
-        import shutil
-        import random
-        import time
         try:
-            command = shutil.which('gs') or shutil.which('gswin64c') or shutil.which('gswin32c') or shutil.which('ghostscript')
+            command = find_ghostscript()
         except (OSError, TypeError):
             command = None
         if not command:
             raise AssertionError("No ghostscript executable found in path. Please install ghostscript")
-        self.opencv_images = []
-        
-        resolution = self.dpi
-        tic = time.perf_counter()
-        output_image_directory = os.path.join(self.tmp_directory, self.filename_without_extension+str(random.randint(100, 999)))
-        is_exist = os.path.exists(output_image_directory)
-        if not is_exist:
-            os.makedirs(output_image_directory)
-        else:
-            shutil.rmtree(output_image_directory)
-            os.makedirs(output_image_directory)
-        Output_filepath = os.path.join(output_image_directory, 'output-%d.png')
+
         args = [
             command,
             f'-sPAPERSIZE={self.printing_papersize}',
@@ -1339,28 +1367,12 @@ class DocumentRepresentation:
             "-dBATCH",
             "-dSAFER",
             "-sDEVICE=png16m",
-            f"-r{resolution}",
-            f"-sOutputFile={Output_filepath}",
-            self.file_path
+            f"-r{self.dpi}",
+            "-sOutputFile={OUTPUT}",
+            str(self.file_path),
         ]
-        subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        toc = time.perf_counter()
-        logger.info("Rendering ps document to Image with ghostscript performed in %.4f seconds", toc - tic)
-        tic = time.perf_counter()
-        file_num =len(os.listdir(output_image_directory))
-        for index in range(file_num):
-            filename = 'output-' + str(index+1)+'.png'
-            image_file =os.path.join(output_image_directory, filename)
-            data = cv2.imread(image_file)
-            page = Page(data, page_number=index + 1, dpi=self.dpi)
-            if page is None:
-                raise AssertionError("No OpenCV Image could be created for file {} . Maybe the file is corrupt?".format(self.file_path))
-            # self.opencv_images.append(data)
-            self.pages.append(page)
-        
-        toc = time.perf_counter()
-        logger.info("Conversion from Image to OpenCV Image performed in %.4f seconds", toc - tic)
-        shutil.rmtree(output_image_directory)
+        for index, data in enumerate(self._render_print_job(args, 'Ghostscript')):
+            self.pages.append(Page(data, page_number=index + 1, dpi=self.dpi))
 
     def get_barcodes(self):
         """Return a list of barcodes detected in the document."""

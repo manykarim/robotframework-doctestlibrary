@@ -45,7 +45,8 @@
     "Compare Print Jobs": [
       "type",
       "reference_file",
-      "test_file"
+      "test_file",
+      "ignore_properties=None"
     ],
     "Get Pcl Print Job": [
       "filename"

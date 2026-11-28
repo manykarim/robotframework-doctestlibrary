@@ -25,11 +25,12 @@ def test_module_compiles_without_syntax_warnings(path):
         compile(source, str(path), "exec")
 
 
-def test_print_job_grammars_build_without_syntax_warnings():
-    """parsimonious evaluates grammar literals at import time; a non-raw
-    regex literal surfaces there, not in a plain compile of the module."""
+def test_print_job_modules_import_without_syntax_warnings():
+    """The print-job readers compile their regular expressions at import
+    time; a non-raw literal surfaces there, not in a plain compile."""
     result = subprocess.run(
-        [sys.executable, "-W", "error::SyntaxWarning", "-c", "import DocTest.PrintJobTests"],
+        [sys.executable, "-W", "error::SyntaxWarning", "-c",
+         "import DocTest.PrintJobTests, DocTest.PrintJobParsing"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
