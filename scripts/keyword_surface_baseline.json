@@ -152,6 +152,32 @@
         "required": true
       }
     ],
+    "Compare Print Job Tickets": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "reference",
+        "required": true
+      },
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "candidate",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "ignore_properties",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "mapping",
+        "required": false
+      }
+    ],
     "Compare Print Jobs": [
       {
         "default": null,
@@ -192,6 +218,46 @@
         "kind": "POSITIONAL_OR_NAMED",
         "name": "filename",
         "required": true
+      }
+    ],
+    "Get Print Job Ticket": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "print_job",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "mapping",
+        "required": false
+      }
+    ],
+    "Print Job Ticket Should Contain": [
+      {
+        "default": null,
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "print_job",
+        "required": true
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "page",
+        "required": false
+      },
+      {
+        "default": "None",
+        "kind": "POSITIONAL_OR_NAMED",
+        "name": "mapping",
+        "required": false
+      },
+      {
+        "default": null,
+        "kind": "VAR_NAMED",
+        "name": "expected",
+        "required": false
       }
     ]
   },

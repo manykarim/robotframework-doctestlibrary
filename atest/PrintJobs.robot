@@ -93,3 +93,27 @@ Check page count of a PostScript Print Job without DSC page comments
 
 Visually compare an empty PCL file fails with a rendering error
     Run Keyword And Expect Error    *produced no pages*    Compare Images    ${PJ_DIR}/empty.pcl    ${PJ_DIR}/empty.pcl
+
+Get Print Job Ticket of a PCL 5 invoice
+    ${ticket}    Get Print Job Ticket    ${TESTDATA_DIR}/invoice.pcl
+    Should Be Equal    ${ticket}[pages][0][paper_size]    A4
+    Should Be Equal    ${ticket}[pages][0][input_tray]    auto
+    Should Be Equal As Integers    ${ticket}[page_count]    1
+
+Compare Print Job Tickets reports a changed tray
+    Run Keyword And Expect Error    *page 1: input_tray auto → pcl5:4*    Compare Print Job Tickets    ${TESTDATA_DIR}/invoice.pcl    ${TESTDATA_DIR}/invoice_difftray.pcl
+
+Compare Print Job Tickets of PCL 5 and PCL XL renditions
+    Compare Print Job Tickets    ${TESTDATA_DIR}/invoice.pcl    ${TESTDATA_DIR}/invoice_diff_format.pcl    ignore_properties=pjl,resolution,color_mode
+
+Print Job Ticket Should Contain expected settings
+    Print Job Ticket Should Contain    ${PJ_DIR}/ticket_duplex_once.pcl    duplex=long_edge    paper_size=A4
+    Print Job Ticket Should Contain    ${PJ_DIR}/ticket_duplex_page1_only.pcl    page=1    duplex=long_edge
+
+Print Job Ticket Should Contain fails on a different page
+    Run Keyword And Expect Error    *page 2: duplex is simplex, expected long_edge*    Print Job Ticket Should Contain    ${PJ_DIR}/ticket_duplex_page1_only.pcl    duplex=long_edge
+
+Compare Print Job Tickets with a tray mapping across languages
+    ${trays}    Create Dictionary    pcl5:4=drawer2    ps:Tray2=drawer2
+    ${mapping}    Create Dictionary    input_tray=${trays}
+    Compare Print Job Tickets    ${PJ_DIR}/ticket_tray4.pcl    ${PJ_DIR}/ticket_ps_inputslot_tray2.ps    ignore_properties=pjl,orientation,duplex,paper_size    mapping=${mapping}

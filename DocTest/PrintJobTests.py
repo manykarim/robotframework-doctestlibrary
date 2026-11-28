@@ -1,12 +1,13 @@
 import logging
 from pprint import pformat
 import re
-from typing import List, Union
+from typing import Dict, List, Optional, Union
 from deepdiff import DeepDiff
 from robot.api import logger as robot_logger
 from robot.api.deco import keyword, not_keyword
 from DocTest.Downloader import is_url, download_file_from_url
 from DocTest.PrintJobParsing import count_postscript_pages, read_pcl_pages, read_postscript
+from DocTest.PrintJobTicket import read_ticket, ticket_differences, ticket_mismatches
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +323,118 @@ def check_print_job_property(print_job, property, value):
     if not matches:
         robot_logger.info(f"Expected property: {property}\n\nExpected value:\n{pformat(value)}\n\nActual value:\n{pformat(test_property_item['value'])}")
         raise AssertionError('The print job property check failed.')
+
+def _ticket(print_job, mapping=None):
+    if isinstance(print_job, dict):
+        return print_job
+    path, data = _read_bytes(print_job)
+    return read_ticket(path, data, mapping).as_dict()
+
+
+@keyword
+def get_print_job_ticket(print_job, mapping: Union[Dict, str, None] = None):
+    """Returns the normalized print settings ("job ticket") of a PCL 5, PCL XL or PostScript job.
+
+    ``print_job`` is a print file (local path or url).
+
+    The ticket is a dictionary:
+
+    - ``languages``: page-description languages of the job (``PCL5``, ``PCLXL``, ``POSTSCRIPT``)
+    - ``page_count``: number of pages
+    - ``job``: ``resolution`` and ``color_mode``
+    - ``pjl``: every PJL ``SET``/``DEFAULT`` variable of the job
+    - ``pages``: one entry per page with ``paper_size``, ``orientation``, ``duplex``,
+      ``copies``, ``input_tray``, ``output_bin`` and ``media_type``, plus the
+      ``sources`` and ``raw`` values each setting was taken from
+    - ``settings_source``: which inputs were used; for PostScript it states
+      whether the page-device requests could be read with Ghostscript
+
+    Each page shows the settings in effect when it prints: PJL defaults,
+    overridden by the commands of the page-description language, carried
+    forward from page to page until changed or reset.
+
+    Values are normalized so jobs in different languages are comparable:
+    paper sizes as names (``A4``, ``Letter``, ...) or ``<w>x<h>mm``,
+    orientation ``portrait``/``landscape``/``reverse_portrait``/``reverse_landscape``,
+    duplex ``simplex``/``long_edge``/``short_edge``. Trays, bins and media use
+    generic names where the language defines them (``auto``, ``manual``,
+    ``envelope``) and otherwise a language-qualified raw value such as
+    ``pcl5:4`` or ``ps:Tray2``. A setting the job leaves to the printer is
+    ``unspecified``.
+
+    ``mapping`` translates printer-specific values into your own names: a
+    dictionary or the path of a JSON file with the sections ``input_tray``,
+    ``output_bin`` and ``media_type``, e.g.
+    ``{"input_tray": {"pcl5:4": "drawer2", "ps:Tray2": "drawer2"}}``.
+
+    Examples:
+    | ${ticket}    `Get Print Job Ticket`    invoice.pcl
+    | Should Be Equal    ${ticket}[pages][0][duplex]    long_edge
+    """
+    return _ticket(print_job, mapping)
+
+
+@keyword
+def compare_print_job_tickets(reference, candidate, ignore_properties: Union[List[str], str, None] = None,
+                              mapping: Union[Dict, str, None] = None):
+    """Compares the normalized print settings of two print jobs, page by page.
+
+    ``reference`` and ``candidate`` are print files (or tickets returned by
+    `Get Print Job Ticket`). They may use different languages, e.g. a PCL 5
+    job and its PostScript or PCL XL rendition.
+
+    Compared are the page count, ``resolution``, ``color_mode``, every PJL
+    variable and all page settings. The keyword fails with one line per
+    difference, e.g. ``page 3: input_tray tray2 → tray1``.
+
+    The run-specific PJL values ignored by `Compare Print Jobs` are ignored
+    here too. ``ignore_properties`` names more: settings (``input_tray``),
+    ``pjl`` for all PJL variables, or single PJL variables.
+
+    Different drivers emit different PJL, so cross-language comparisons
+    usually ignore the job-level values:
+
+    Examples:
+    | `Compare Print Job Tickets`    reference.pcl    candidate.pcl
+    | `Compare Print Job Tickets`    invoice.pcl    invoice.ps    ignore_properties=pjl,resolution,color_mode
+    """
+    reference_ticket = _ticket(reference, mapping)
+    candidate_ticket = _ticket(candidate, mapping)
+    robot_logger.info("Reference ticket:\n" + pformat(reference_ticket))
+    robot_logger.info("Candidate ticket:\n" + pformat(candidate_ticket))
+    differences = ticket_differences(reference_ticket, candidate_ticket, _ignored_names(ignore_properties))
+    if differences:
+        robot_logger.info("\n".join(differences))
+        shown = differences[:20]
+        if len(differences) > 20:
+            shown.append(f"... and {len(differences) - 20} more")
+        raise AssertionError("The compared print job tickets are different:\n" + "\n".join(shown))
+
+
+@keyword
+def print_job_ticket_should_contain(print_job, page: Optional[int] = None,
+                                    mapping: Union[Dict, str, None] = None, **expected):
+    """Checks expected print settings of a print job without a reference file.
+
+    ``print_job`` is a print file or a ticket from `Get Print Job Ticket`.
+    Name the expected settings as arguments: page settings (``paper_size``,
+    ``orientation``, ``duplex``, ``copies``, ``input_tray``, ``output_bin``,
+    ``media_type``) are checked on every page, or only on ``page``; job
+    settings (``resolution``, ``color_mode``, ``page_count``) on the job.
+    Values are compared case-insensitively.
+
+    Examples:
+    | `Print Job Ticket Should Contain`    statement.pcl    duplex=long_edge    paper_size=A4
+    | `Print Job Ticket Should Contain`    statement.pcl    page=1    input_tray=auto
+    """
+    if not expected:
+        raise ValueError("Name at least one expected setting, e.g. duplex=long_edge.")
+    ticket = _ticket(print_job, mapping)
+    mismatches = ticket_mismatches(ticket, expected, page)
+    if mismatches:
+        raise AssertionError("The print job ticket does not contain the expected settings:\n"
+                             + "\n".join(mismatches))
+
 
 def printTable(myDict, colList=None):
    """ Pretty print a list of dictionaries (myDict) as a dynamically sized table.

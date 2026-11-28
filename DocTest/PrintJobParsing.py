@@ -108,6 +108,7 @@ class PclCommand:
     terminator: str
     value: str
     payload: int = 0          # length of the binary payload that followed
+    payload_offset: int = field(default=-1, compare=False)   # where that payload starts
 
     @property
     def key(self) -> str:
@@ -182,7 +183,7 @@ def iter_pcl5(data: bytes) -> Iterator[Tuple]:
                     except ValueError:
                         payload = 0
                     payload = min(payload, n - pos)
-                yield ("cmd", PclCommand(parameter, group, terminator, value, payload))
+                yield ("cmd", PclCommand(parameter, group, terminator, value, payload, pos))
                 pos += payload
                 if 0x40 <= terminator_byte <= 0x5E:
                     break
@@ -219,7 +220,21 @@ def _is_marking_text(data: bytes, start: int, end: int) -> bool:
     return any(b > 0x20 for b in data[start:end])
 
 
-def read_pcl5_pages(data: bytes, result: PclPages) -> None:
+class PclObserver:
+    """Receives the PCL 5 command stream together with the page model's
+    decisions, so other views (e.g. job tickets) reuse the page-eject rules."""
+
+    def command(self, command: "PclCommand", data: bytes) -> None:
+        pass
+
+    def page_end(self, page: int) -> None:
+        pass
+
+    def reset(self) -> None:
+        pass
+
+
+def read_pcl5_pages(data: bytes, result: PclPages, observer: Optional[PclObserver] = None) -> None:
     """Count pages and attribute page-setup commands of one PCL 5 segment.
 
     A form feed always ejects a page; ``ESC&l0H``, ``ESC E``, a UEL and the
@@ -228,6 +243,7 @@ def read_pcl5_pages(data: bytes, result: PclPages) -> None:
     """
     marks = False
     pending: List[Dict[str, str]] = []
+    observer = observer or PclObserver()
 
     def end_page():
         nonlocal marks, pending
@@ -235,6 +251,7 @@ def read_pcl5_pages(data: bytes, result: PclPages) -> None:
         result.commands.extend(pending)
         pending = []
         marks = False
+        observer.page_end(result.page_count)
 
     for token in iter_pcl5(data):
         kind = token[0]
@@ -249,8 +266,11 @@ def read_pcl5_pages(data: bytes, result: PclPages) -> None:
         elif kind in ("uel",) or (kind == "esc2" and token[1] == "E"):
             if marks:
                 end_page()
+            if kind == "esc2":
+                observer.reset()
         elif kind == "cmd":
             command: PclCommand = token[1]
+            observer.command(command, data)
             key = command.key
             if key == "&lH" and command.value.lstrip("+") in ("0", ""):
                 if marks:
@@ -285,7 +305,7 @@ _XL_XY = {0xD0: ("B", 1), 0xD1: ("H", 2), 0xD2: ("I", 4), 0xD3: ("h", 2), 0xD4: 
 _XL_BOX = {0xE0: ("B", 1), 0xE1: ("H", 2), 0xE2: ("I", 4), 0xE3: ("h", 2), 0xE4: ("i", 4), 0xE5: ("f", 4)}
 _XL_WHITESPACE = frozenset({0x00, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20})
 XL_BEGIN_PAGE, XL_END_PAGE = 0x43, 0x44
-XL_ATTRIBUTES = {0x25: "MediaSize", 0x26: "MediaSource", 0x27: "MediaType", 0x28: "Orientation",
+XL_ATTRIBUTES = {0x24: "MediaDestination", 0x25: "MediaSize", 0x26: "MediaSource", 0x27: "MediaType", 0x28: "Orientation",
                  0x31: "PageCopies", 0x34: "SimplexPageMode", 0x35: "DuplexPageMode"}
 _XL_DUPLEX = {0: "duplex_horizontal", 1: "duplex_vertical"}
 
@@ -613,3 +633,60 @@ def count_postscript_pages(path: str) -> int:
             f"Cannot determine the page count of {path}: Ghostscript exited with "
             f"{result.returncode}: {output.strip()[-800:]}")
     return output.count(_PAGE_MARKER)
+
+
+@dataclass
+class PageDeviceCapture:
+    """Page-device settings a PostScript job requested while it ran."""
+
+    requests: List[Tuple[int, Dict[str, str]]] = field(default_factory=list)   # (page, {key: value})
+    page_count: int = 0
+    error: Optional[str] = None
+
+
+CAPTURED_PAGE_DEVICE_KEYS = ("PageSize", "Duplex", "Tumble", "NumCopies", "MediaPosition",
+                             "MediaType", "ManualFeed", "OutputType")
+_REQUEST_MARKER = "DOCTEST-SPD"
+# EndPage marks every printed page; the redefined setpagedevice prints each
+# requested dictionary before calling the original operator. Page numbers are
+# derived from the order of the markers, not from a PostScript counter, because
+# per-page save/restore would undo such a counter.
+_CAPTURE_PAGE_DEVICE = (
+    "/__doctest_spd /setpagedevice load def "
+    "<< /EndPage { exch pop 2 ne dup { (" + _PAGE_MARKER + "\n) print flush } if } bind >> __doctest_spd "
+    "/setpagedevice { dup (" + _REQUEST_MARKER + ") print "
+    "{ exch ( ) print =only (=) print ==only } forall (\n) print flush __doctest_spd } bind def"
+)
+_REQUEST_VALUE = re.compile(r" ([A-Za-z]+)=(\[[^\]]*\]|\([^)]*\)|\S+)")
+
+
+def capture_postscript_page_device(path: str) -> PageDeviceCapture:
+    """Run a PostScript job in Ghostscript and record its page-device requests.
+
+    Never raises for interpreter problems: the reason is returned in ``error``
+    so callers can fall back to DSC comments.
+    """
+    gs = find_ghostscript()
+    if gs is None:
+        return PageDeviceCapture(error="Ghostscript not found")
+    try:
+        result = subprocess.run(
+            [gs, "-q", "-dSAFER", "-dNOPAUSE", "-dBATCH", "-sDEVICE=nullpage",
+             "-c", _CAPTURE_PAGE_DEVICE, "-f", str(path)],
+            capture_output=True, timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return PageDeviceCapture(error=f"Ghostscript could not run: {exc}")
+    output = result.stdout.decode("latin-1", errors="replace")
+    capture = PageDeviceCapture()
+    for line in output.splitlines():
+        if line.startswith(_PAGE_MARKER):
+            capture.page_count += 1
+        elif line.startswith(_REQUEST_MARKER):
+            values = {key: value for key, value in _REQUEST_VALUE.findall(line[len(_REQUEST_MARKER):])
+                      if key in CAPTURED_PAGE_DEVICE_KEYS}
+            if values:
+                capture.requests.append((capture.page_count + 1, values))
+    if result.returncode != 0:
+        errors = (result.stderr.decode("latin-1", errors="replace") or output).strip()
+        capture.error = f"Ghostscript exited with {result.returncode}: {errors[-400:]}"
+    return capture
