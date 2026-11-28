@@ -1,165 +1,36 @@
 import logging
 from pprint import pformat
-from parsimonious.grammar import Grammar, NodeVisitor
 import re
+from typing import List, Union
 from deepdiff import DeepDiff
 from robot.api import logger as robot_logger
 from robot.api.deco import keyword, not_keyword
 from DocTest.Downloader import is_url, download_file_from_url
+from DocTest.PrintJobParsing import count_postscript_pages, read_pcl_pages, read_postscript
 
 logger = logging.getLogger(__name__)
 
 ROBOT_AUTO_KEYWORDS = False
 
+# Values that differ on every run of the same job (DSC comments and PJL
+# variables / key=value attributes); compared case-insensitively.
+DEFAULT_IGNORED_PROPERTIES = (
+    "CreationDate", "Title", "For", "Routing", "Invocation",
+    "NAME", "JOBNAME", "USERNAME", "USERID", "HOSTID", "HOSTNAME",
+    "LHOSTID", "LHOSTJOBID", "UPN", "DATE", "TIME",
+)
+
+_PJL_PAIR = re.compile(r'\b([A-Za-z][A-Za-z0-9_:]*)\s*=\s*("[^"]*"|\S+)')
+_EMPTY_PJL = re.compile(r"(?i)^@PJL(\s+(SET|DEFAULT))?$")
+
+
 class PrintJob(object):
 
-    
+
     def __init__(self, jobtype, properties):
         self.jobtype = jobtype
         self.properties = properties
 
-class PclVisitor(NodeVisitor):
-
-    def __init__(self):
-        self.pcl_commands = []
-        self.page = 1
-
-    
-    def visit_page_command_sequence(self, node, visited_children):
-        escape, page_sequence_start, page_command = visited_children
-        #Case1: Only one page_command item (No sequence): The children contain paper_source, copies, ..
-        #Case2: Multiple page_command items (It's a sequence): The children of items contain paper_source, copies, .
-        if type(page_command) is list:
-            for item in page_command:
-                self.add_page_property(item.children)
-        else:
-            self.add_page_property(page_command.children)
-
-     
-    def add_page_property(self, node):
-        value = node[0].text
-        if value != '':
-            expr_name = node[0].expr_name
-            if expr_name == 'paper_source_command':
-                value = chop(value, suffix='(h|H)$')     
-                self.pcl_commands.append({'page':str(self.page), 'property':'paper_source', 'value':value})    
-            elif expr_name == 'copies_command':
-                value = chop(value, suffix='(x|X)$')     
-                self.pcl_commands.append({'page':str(self.page), 'property':'copies', 'value':value})        
-            elif expr_name == 'duplex_command':
-                value = chop(value, suffix='(s|S)$')     
-                self.pcl_commands.append({'page':str(self.page), 'property':'duplex', 'value':value})   
-            elif expr_name == 'page_orientation_command':
-                value = chop(value, suffix='(o|O)$')     
-                self.pcl_commands.append({'page':str(self.page), 'property':'page_orientation', 'value':value})   
-            elif expr_name == 'paper_format_command':
-                value = chop(value, suffix='(a|A)$')     
-                self.pcl_commands.append({'page':str(self.page), 'property':'paper_format', 'value':value})    
-
-    
-    def visit_formfeed(self, node, visited_children):
-        self.page += 1
-
-    def generic_visit(self, node, visited_children):
-        if not node.expr_name and node.children:
-            if len(visited_children) == 1:
-                return visited_children[0]
-            return visited_children
-        return node
-
-class PostscriptVisitor(NodeVisitor):
-    def __init__(self):
-        self.comments=[]
-        self.pages=[]
-        self.features=[]
-        self.setup = []
-        self.header=[]
-        self.trailer=[]
-        self.pjl_commands=[]
-
-    # def visit_file(self, node, visited_children):
-    #     result = {'comments': [], 'pages': [], 'setup': []}
-    #     for i in visited_children:
-    #         try:
-    #             result.update(dict(i))
-    #         except Exception as e:
-    #             print(i)
-    #             print(e)
-    #             pass
-    #     return result
-
-    def visit_pages(self, node, visited_children):
-        page, page_sections, _, document, _, page_trailer = visited_children
-        page_number = page[1].strip().split()
-        for item in page_sections:
-            if item is not None:
-                item['page']=page_number[0]
-                self.pages.append(item)
-        pass
-
-
-    def visit_page_sections(self, node, visited_children):
-        if visited_children[0] is not None:
-
-            if node.children[0].expr_name=='page_setup':
-                return {'property':'feature', 'value':visited_children}
-            else:
-                name, value = visited_children[0].children
-                name = re.sub('(%%|[\\s]|:)', '', name.text)
-                value = value.text.strip()
-            return {'property':name, 'value':value}
-
-    def visit_page(self, node, visited_children):
-        page, value = visited_children
-        return page.text, value.text
-
-    def visit_comments(self, node, visited_children):
-        comment, value = visited_children
-        comment = re.sub('(%%|[\\s]|:)', '', comment.text)
-        value = value.text.strip()
-        return {'property':comment, 'value':value}
-        pass
-
-    def visit_pjl_content(self, node, visited_children):
-        self.pjl_commands.append(node.text.strip())
-        pass
-
-    def visit_pjl_commands(self, node, visited_children):
-        pass
-
-    def visit_feature(self, node, visited_children):
-        begin_feature, ppd_feature, _ = visited_children
-        feature = begin_feature.children[1]
-        feature = feature.text.strip()
-        ppd_feature = ppd_feature.text.strip()
-        self.features.append({'feature': feature, 'value': ppd_feature})
-        return {'feature': feature, 'value': ppd_feature}
-
-    def visit_page_setup(self, node, visited_children):
-        begin_page_setup, _, feature, _, _ = visited_children
-        if isinstance(feature, dict):
-            return feature
-    def visit_header(self, node, visited_children):
-        _, comments, _ = visited_children
-        for comment in comments:
-            if comment is not None:
-                self.header.append(comment)
-        return [comment for comment in comments if comment is not None]
-
-    def visit_document_trailer(self, node, visited_children):
-        _, items = visited_children
-        for item in items:
-            if isinstance(item, dict):
-                self.trailer.append(item)
-        return [item for item in items if isinstance(item, dict)]
-
-    def generic_visit(self, node, visited_children):
-        if not node.expr_name and node.children:
-            if len(visited_children) == 1:
-                return visited_children[0]
-            return visited_children
-        return node
-       
 @not_keyword
 def chop(text, prefix=None, suffix=None):
     if prefix is not None:
@@ -168,57 +39,42 @@ def chop(text, prefix=None, suffix=None):
         text=re.sub(suffix, '', text)
     return text
 
+
+def _read_bytes(filename):
+    if is_url(filename):
+        filename = download_file_from_url(filename)
+    with open(filename, "rb") as f:
+        return filename, f.read()
+
+
 @keyword
 def get_pcl_print_job(filename):
     """
     Parses a pcl file and returns a PrintJob object.
 
     ``filename`` is a pcl file. It can be a local file or a url.
+
+    Both PCL 5 and PCL XL (PCL 6) jobs are supported, including jobs that
+    contain several PJL-delimited sections. The returned properties are:
+
+    - ``pcl_commands``: page-setup commands per page, as dictionaries with
+      ``page``, ``property`` and ``value``. The properties are
+      ``paper_format``, ``paper_source``, ``page_orientation``, ``duplex``
+      and ``copies``. Values are reported as the job states them: PCL 5
+      command values (e.g. paper format ``26`` for A4), PCL XL attribute
+      values (e.g. media size ``2`` for A4) and duplex ``simplex``,
+      ``duplex_horizontal`` or ``duplex_vertical`` for PCL XL.
+    - ``page_count``: number of pages the job prints.
+    - ``language``: page-description language of every section
+      (``PCL5`` or ``PCLXL``).
     """
-    grammar_pcl_commands = Grammar(
-        r"""
-        file = command*
-        command     = (pcl_command / no_pcl_command / ";" / space / linefeed/ formfeed/ carriage_return / other_data)
-        reset       = escape "E"
-        no_pcl_command = ~r"[A-Z]{2}[0-9.,-]*"
-        pcl_command = raster_image_command_sequence / page_command_sequence / other_pcl_command_sequence
-        raster_image_command_sequence = escape ~r"\*r.*?(0|1)(a|A)[\S\s]*?\*r(B|C)"
-        other_pcl_command_sequence = escape other_pcl_command_sequence_start other_pcl_command
-        page_command_sequence = escape page_command_sequence_start page_command+
-        other_pcl_command_sequence_start = ~r"[&\(\)\*%]{1}[a-lm-z0-9]{1}"
-        other_pcl_command = ~r".+?(?=([\x1b]|[\x0c]))"
-        page_command = paper_source_command / copies_command / duplex_command / page_orientation_command / paper_format_command / other_page_command
-        page_command_sequence_start = ~r"&l"
-        paper_source_command = ~r"[0-6]{1}(h|H)" 
-        copies_command = ~r"(\d)+(x|X)"
-        duplex_command = ~r"[0-2]{1}(s|S)"
-        page_orientation_command = ~r"[0-3]{1}(o|O)"
-        paper_format_command = ~r"(\d)+(a|A)"
-        other_page_command = ~r"(\d)+[a-zA-Z]{1}"
-        pcl_special_code = "=" / "9" / "E" / "Y" / "Z" / "%-12345X" 
-        pcl_code    = ~r"[&\(\)\*%]{1}.*([A-Z]|@|ID){1}" &escape
-        whitespace = ~r"\s"
-        other_data     = ~r".+?"
-        escape      = ~r"[\x1b]"
-        other_pcl   = ~r"[\x08\x0d\x0c\x0a\x0f\x0e\x09\x03]"
-        space       = " "
-        linefeed      = ~r"[\x0a]"
-        formfeed    = ~r"[\x0c]"
-        carriage_return = ~r"[\x0d]"
-        """
-    )
-    if is_url(filename):
-        filename = download_file_from_url(filename)
-    with open(filename, encoding="utf8", errors="ignore") as f:
-        content = f.read()
-
-    tree = grammar_pcl_commands.parse(content)
-
-    pv = PclVisitor()
-    pv.visit(tree)
-    
-    pclPrintJob = PrintJob('pcl', [{'property':'pcl_commands', 'value':pv.pcl_commands}])
-    return pclPrintJob
+    _, data = _read_bytes(filename)
+    pages = read_pcl_pages(data)
+    return PrintJob('pcl', [
+        {'property': 'pcl_commands', 'value': pages.commands},
+        {'property': 'page_count', 'value': pages.page_count},
+        {'property': 'language', 'value': pages.languages},
+    ])
 
 @keyword
 def get_postscript_print_job(filename):
@@ -227,127 +83,84 @@ def get_postscript_print_job(filename):
 
     ``filename`` is a postscript file. It can be a local file or a url.
 
-    """
-    grammar_postscript_commands = Grammar(
-        r"""
-        file = header defaults? procedure_definitions document_setup? pages+ document_trailer eof emptyline?
-        header = header_start (comments/pjl_commands)* end_comments
-        header_start = "%!PS-Adobe-3.0" linefeed
-        comments = comment_type dataline
-        comment_type = title_comment / copyright_comment / creator_comment / creation_date_comment / bounding_box_comment / orientation_comment / pages_comment / document_needed_resources_comment / document_supplied_resources_comment / document_data_comment / language_level_comment / generic_dsc_comment
-        title_comment = "%%Title:"
-        copyright_comment = "%%Copyright:"
-        creator_comment = "%%Creator:"
-        creation_date_comment = "%%CreationDate:"
-        bounding_box_comment = "%%BoundingBox:"
-        orientation_comment = "%%Orientation:"
-        pages_comment = "%%Pages:"
-        document_needed_resources_comment = "%%DocumentNeededResources:"
-        document_supplied_resources_comment = "%%DocumentSuppliedResources:"
-        document_data_comment = "%%DocumentData:"
-        language_level_comment = "%%LanguageLevel:"
-        generic_dsc_comment = ~r"%%[A-Za-z]+:"
-        end_comments= "%%EndComments" linefeed
-        pjl_commands = begin_pjl pjl_content*
-        pjl_content = (pjl_prefix _ dataline)
-        pjl_prefix = "@PJL"
-        begin_pjl = ~r"[\x1b]%-12345X"
-        defaults = begin_defaults dataline* end_defaults
-        begin_defaults = "%%BeginDefaults:"
-        end_defaults = "%%EndDefaults" linefeed
-        procedure_definitions = begin_prolog dataline* resource* dataline* end_prolog
-        begin_prolog = "%%BeginProlog" linefeed
-        end_prolog = "%%EndProlog" linefeed
-        resource = begin_resource dataline* end_resource
-        begin_resource = "%%BeginResource:" anything linefeed
-        end_resource = "%%EndResource" linefeed
-        document_setup = begin_setup dataline* end_setup
-        begin_setup = "%%BeginSetup" linefeed
-        end_setup = "%%EndSetup" linefeed
-        pages = page page_sections* dataline* document? dataline* page_trailer?
-        page = "%%Page:" dataline
-        page_sections =  (page_bounding_box / page_orientation / page_setup)
-        page_trailer = "%%PageTrailer" dataline*
-        page_bounding_box = "%%PageBoundingBox:" dataline
-        page_orientation = "%%PageOrientation:" dataline
-        document = begin_document dataline* end_document
-        begin_document = "%%BeginDocument:" dataline
-        end_document = "%%EndDocument" linefeed
-        feature = begin_feature dataline* end_feature
-        begin_feature = "%%BeginFeature:" dataline
-        end_feature = "%%EndFeature" linefeed
-        page_setup = begin_page_setup dataline* feature* dataline* end_page_setup
-        begin_page_setup = "%%BeginPageSetup"
-        end_page_setup= "%%EndPageSetup" linefeed
-        document_trailer = trailer (comments / dataline)*
-        trailer = "%%Trailer" linefeed
-        dataline = (!postscript_prefix anything linefeed) postscript_continue*
-        anything = ~r".*"
-        _       = " "*
-        eof = "%%EOF" linefeed
-        linefeed      = ~r"[\x0a]"
-        formfeed    = ~r"[\x0c]"
-        whitespace = ~r"\s"
-        postscript_prefix = ~r"%%[A-Z]"
-        postscript_continue = "%%+" anything linefeed
-        empty = ""
-        ws          = ~r"\s*"
-        emptyline   = ws+
-        """
-    )
-    if is_url(filename):
-        filename = download_file_from_url(filename)
-    with open(filename, encoding="utf8", errors="ignore") as f:
-        content = f.read()
+    Jobs wrapped in PJL, with any line endings and with or without the
+    optional DSC sections are supported. The returned properties are:
 
-    tree = grammar_postscript_commands.parse(content)
-    pv = PostscriptVisitor()
-    pv.visit(tree)
+    - ``pjl_commands``: the ``@PJL`` lines around the job.
+    - ``header``: the header comments (``Version`` holds the ``%!`` line).
+    - ``features``: requested document features, e.g. ``*Duplex``.
+    - ``pages``: page comments and page features per page.
+    - ``trailer``: the trailer comments.
+    - ``page_count``: number of pages. A job without ``%%Page`` comments
+      is interpreted with Ghostscript to count its pages; without
+      Ghostscript such a job raises an error.
+    """
+    path, data = _read_bytes(filename)
+    job = read_postscript(data)
+    page_count = job.page_count
+    if page_count is None:
+        page_count = count_postscript_pages(path)
 
     properties = []
-    #properties.append({'property':'header', 'value':pv.header})
-    properties.append({'property':'pjl_commands', 'value':pv.pjl_commands})
-    properties.append({'property':'pages', 'value':pv.pages})
-    properties.append({'property':'trailer', 'value':pv.trailer})
+    properties.append({'property':'pjl_commands', 'value':job.pjl_commands})
+    properties.append({'property':'header', 'value':job.header})
+    properties.append({'property':'features', 'value':job.features})
+    properties.append({'property':'pages', 'value':job.pages})
+    properties.append({'property':'trailer', 'value':job.trailer})
+    properties.append({'property':'page_count', 'value':page_count})
     postscript_printjob = PrintJob('postscript', properties)
     return postscript_printjob
-       
+
 @keyword
-def compare_print_jobs(type, reference_file, test_file):
+def compare_print_jobs(type, reference_file, test_file, ignore_properties: Union[List[str], str, None] = None):
     """Compares several print job metadata/properties of ``reference_file`` and ``test_file``.
-        
+
         ``type`` can either be ``pcl`` or ``ps`` (postscript).
 
         The compared properties depend on the ``type``.
 
-            PCL
-                
+            PCL (PCL 5 and PCL XL)
+
                 - Paper Source
                 - Copies
                 - Duplex
                 - Page Orientation
                 - Paper Format
-            
+                - Page Count
+                - Language
+
             Postscript
-                
-                - Comments
-                - Pages
-                - Features
-                - Setup
-                - Header
-                - Trailer
+
                 - PJL Commands
-        
-        Result is passed if all properties are equal. 
-        
+                - Header
+                - Features
+                - Pages
+                - Trailer
+                - Page Count
+
+        Values that change on every run of the same job are ignored by
+        default: the DSC comments ``CreationDate``, ``Title``, ``For``,
+        ``Routing`` and ``Invocation``, and the PJL values ``NAME``,
+        ``JOBNAME``, ``USERNAME``, ``USERID``, ``HOSTID``, ``HOSTNAME``,
+        ``LHOSTID``, ``LHOSTJOBID``, ``UPN``, ``DATE`` and ``TIME``.
+
+        ``ignore_properties`` names further properties to ignore: a list or
+        a comma-separated string of property groups (e.g. ``trailer``), DSC
+        comment or feature names (e.g. ``Creator``, ``*InputSlot``) or PJL
+        variables. Names are matched case-insensitively and extend the
+        defaults.
+
+        Result is passed if all properties are equal.
+
         ``reference_file`` and ``test_file`` may be .ps or .pcl files
 
 
         Examples:
-        | `Compare Print Jobs`    reference.pcl    candidate.pcl    #Performs a property comparison of both files   
-        | `Compare Print Jobs`    reference.ps    candidate.ps    #Performs a property comparison of both files   
-        
-        
+        | `Compare Print Jobs`    pcl    reference.pcl    candidate.pcl    #Performs a property comparison of both files
+        | `Compare Print Jobs`    ps    reference.ps    candidate.ps    #Performs a property comparison of both files
+        | `Compare Print Jobs`    ps    reference.ps    candidate.ps    ignore_properties=Creator,trailer    #Also ignores the Creator comment and the trailer
+
+
         """
     if type=='ps':
         reference_print_job = get_postscript_print_job(reference_file)
@@ -359,41 +172,99 @@ def compare_print_jobs(type, reference_file, test_file):
         raise ValueError(
             f"Unsupported print job type '{type}'. Supported types are: 'pcl', 'ps'."
         )
-    compare_properties(reference_print_job, test_print_job)
+    compare_properties(reference_print_job, test_print_job, ignore_properties)
 
-def compare_properties(reference_print_job, test_print_job):
+
+def _normalize_name(name):
+    return str(name).strip().lstrip("*").lower()
+
+
+def _ignored_names(ignore_properties):
+    names = set(_normalize_name(n) for n in DEFAULT_IGNORED_PROPERTIES)
+    if ignore_properties:
+        if isinstance(ignore_properties, str):
+            ignore_properties = ignore_properties.split(",")
+        names.update(_normalize_name(n) for n in ignore_properties if str(n).strip())
+    return names
+
+
+def _filter_pjl(line, ignored):
+    filtered = _PJL_PAIR.sub(
+        lambda m: "" if _normalize_name(m.group(1)) in ignored else m.group(0), line)
+    filtered = re.sub(r"\s+", " ", filtered).strip()
+    return None if _EMPTY_PJL.match(filtered) else filtered
+
+
+def _filter_entry(entry, ignored):
+    if isinstance(entry, dict):
+        name = entry.get("property", entry.get("feature"))
+        if name is not None and _normalize_name(name) in ignored:
+            return None
+        return entry
+    if isinstance(entry, str) and entry.upper().startswith("@PJL"):
+        return _filter_pjl(entry, ignored)
+    return entry
+
+
+def _apply_ignores(properties, ignored):
+    result = []
+    for item in properties:
+        if _normalize_name(item["property"]) in ignored:
+            continue
+        value = item["value"]
+        if isinstance(value, list):
+            value = [e for e in (_filter_entry(e, ignored) for e in value) if e is not None]
+        result.append({"property": item["property"], "value": value})
+    return result
+
+
+def _as_list(value):
+    return value if isinstance(value, list) else [value]
+
+
+def compare_properties(reference_print_job, test_print_job, ignore_properties=None):
     properties_are_equal = True
     list_difference = []
+    ignored = _ignored_names(ignore_properties)
+    reference_properties = _apply_ignores(reference_print_job.properties, ignored)
+    test_properties = _apply_ignores(test_print_job.properties, ignored)
     robot_logger.info("Reference File:")
-    robot_logger.info(pformat(reference_print_job.properties))
+    robot_logger.info(pformat(reference_properties))
 
     robot_logger.info("Candidate File:")
-    robot_logger.info(pformat(test_print_job.properties))
+    robot_logger.info(pformat(test_properties))
 
-    robot_logger.info(pformat(DeepDiff(reference_print_job.properties, test_print_job.properties, verbose_level=2)))
-    for reference_property_item in reference_print_job.properties:
-        test_property_item = next((item for item in test_print_job.properties if item["property"] == reference_property_item["property"]), None)
+    robot_logger.info(pformat(DeepDiff(reference_properties, test_properties, verbose_level=2)))
+    for reference_property_item in reference_properties:
+        test_property_item = next((item for item in test_properties if item["property"] == reference_property_item["property"]), None)
         if test_property_item is None:
             properties_are_equal = False
-            for x in reference_property_item['value']:
+            for x in _as_list(reference_property_item['value']):
                 list_difference.append({'file':'reference', 'property':reference_property_item['property'], 'value':x})
             continue
         if reference_property_item['value']!=test_property_item['value']:
             properties_are_equal = False
+            reference_values = _as_list(reference_property_item['value'])
+            test_values = _as_list(test_property_item['value'])
+            before = len(list_difference)
 
-            for x in reference_property_item['value']:
-                if x not in test_property_item['value']:
+            for x in reference_values:
+                if x not in test_values:
                     list_difference.append({'file':'reference', 'property':reference_property_item['property'], 'value':x})
 
-            for x in test_property_item['value']:
-                if x not in reference_property_item['value']:
+            for x in test_values:
+                if x not in reference_values:
                     list_difference.append({'file':'test', 'property':test_property_item['property'], 'value':x})
 
-    reference_property_names = {item["property"] for item in reference_print_job.properties}
-    for test_property_item in test_print_job.properties:
+            if len(list_difference) == before:
+                list_difference.append({'file':'both', 'property':reference_property_item['property'],
+                                        'value':'same entries in a different order or multiplicity'})
+
+    reference_property_names = {item["property"] for item in reference_properties}
+    for test_property_item in test_properties:
         if test_property_item["property"] not in reference_property_names:
             properties_are_equal = False
-            for x in test_property_item['value']:
+            for x in _as_list(test_property_item['value']):
                 list_difference.append({'file':'test', 'property':test_property_item['property'], 'value':x})
 
     if not properties_are_equal:
@@ -403,49 +274,52 @@ def compare_properties(reference_print_job, test_print_job):
 @keyword
 def check_print_job_property(print_job, property, value):
     """Checks if one specific ``property`` of a ``print_job`` file has an expected ``value``.
-        
-        ``print_job`` is a printer file, with filetype ``pcl`` or ``ps`` (postscript).
 
-        The possible compared ``property`` depends on the ``type``.
+        ``print_job`` is a print job returned by `Get Pcl Print Job` or
+        `Get Postscript Print Job`.
+
+        The possible ``property`` depends on the type of the print job.
 
             PCL
-                
-                - Paper Source
-                - Copies
-                - Duplex
-                - Page Orientation
-                - Paper Format
-            
+
+                - pcl_commands (Paper Source, Copies, Duplex, Page Orientation, Paper Format per page)
+                - page_count
+                - language
+
             Postscript
-                
-                - Comments
-                - Pages
-                - Features
-                - Setup
-                - Header
-                - Trailer
-                - PJL Commands
-        
-        Result is passed if the value of ``property`` is equal to ``value``. 
-        
+
+                - pjl_commands
+                - header
+                - features
+                - pages
+                - trailer
+                - page_count
+
+        For list properties the check passes if ``value`` is one of the
+        entries. For ``page_count`` the check passes if the count equals
+        ``value``.
+
         Examples:
 
-        | ${value1} =     Create Dictionary     page=1     property=copies     value=1   
-        | ${value2} =     Create Dictionary     page=1     property=paper_source     value=2   
-        | `Check Print Job Property`     pcl_file.pcl     pcl_commands     ${value1}   
-        | `Check Print Job Property`     pcl_file.pcl     pcl_commands     ${value2}   
+        | ${value1} =     Create Dictionary     page=1     property=copies     value=1
+        | ${value2} =     Create Dictionary     page=1     property=paper_source     value=2
+        | `Check Print Job Property`     ${pcl_print_job}     pcl_commands     ${value1}
+        | `Check Print Job Property`     ${pcl_print_job}     pcl_commands     ${value2}
+        | `Check Print Job Property`     ${pcl_print_job}     page_count     2
 
-        | ${value1} =     Create Dictionary     property=Copyright     value=ExampleCompany Inc.   
-        | ${value2} =     Create Dictionary     property=LanguageLevel     value=2   
-        | `Check Print Job Property`     postscript_file.ps     header     ${value1}   
-        | `Check Print Job Property`     postscript_file.ps     header     ${value2}   
-        
+        | ${value1} =     Create Dictionary     property=Copyright     value=ExampleCompany Inc.
+        | ${value2} =     Create Dictionary     property=LanguageLevel     value=2
+        | `Check Print Job Property`     ${postscript_print_job}     header     ${value1}
+        | `Check Print Job Property`     ${postscript_print_job}     header     ${value2}
+
         """
 
     test_property_item = next((item for item in print_job.properties if item["property"] == property), None)
     if not test_property_item:
         raise AssertionError('The property does not exist:', property, value)
-    if value not in test_property_item['value']:
+    actual = test_property_item['value']
+    matches = value in actual if isinstance(actual, list) else str(value) == str(actual)
+    if not matches:
         robot_logger.info(f"Expected property: {property}\n\nExpected value:\n{pformat(value)}\n\nActual value:\n{pformat(test_property_item['value'])}")
         raise AssertionError('The print job property check failed.')
 

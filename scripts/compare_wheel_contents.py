@@ -50,6 +50,14 @@ INTENTIONAL_TIGHTENINGS = {
 }
 
 
+# Documented intentional removals: dependencies the library no longer
+# imports. Everything else that disappears still fails the gate.
+INTENTIONAL_REMOVALS = {
+    # print-job parsing moved to byte-level readers (fix-print-job-false-passes)
+    "parsimonious",
+}
+
+
 def _is_intentional_tightening(name, expected, actual):
     allowed = INTENTIONAL_TIGHTENINGS.get(name)
     if allowed is None:
@@ -151,6 +159,8 @@ def main():
             # comparison only assert the baseline set is preserved exactly
             for key, specifiers in expected.items():
                 if key not in actual:
+                    if key[0] in INTENTIONAL_REMOVALS:
+                        continue
                     errors.append(
                         f"py{python_version} extra={extra}: dependency dropped: {key[0]}")
                 elif actual[key] != specifiers:

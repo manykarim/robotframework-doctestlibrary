@@ -6,6 +6,7 @@ Library    DocTest.PrintJobTests
 *** Variables ***
 ${TESTDATA_DIR}    testdata
 ${MASK_DIR}    testdata
+${PJ_DIR}    ${CURDIR}/../utest/testdata/printjobs
 
 *** Test Cases ***
 Visually Compare Two PCL Invoices with missing Logo
@@ -63,3 +64,32 @@ Check non-existing property group of Print Job
     ${print_job}    Get Pcl Print Job    ${TESTDATA_DIR}/invoice.pcl
     ${page_orientation}    Create Dictionary    page=1    property=page_orientation    value=0    
     Run Keyword And Expect Error    *The property does not exist*    Check Print Job Property    ${print_job}    not_existing    ${page_orientation}
+
+Compare PCL XL Print Jobs with different paper size
+    Run Keyword And Expect Error    The compared print jobs are different.    Compare Print Jobs    pcl    ${TESTDATA_DIR}/invoice_diff_format.pcl    ${PJ_DIR}/pclxl_letter.pcl
+
+Compare PCL 5 with PCL XL rendition of the same document
+    Run Keyword And Expect Error    The compared print jobs are different.    Compare Print Jobs    pcl    ${TESTDATA_DIR}/invoice.pcl    ${TESTDATA_DIR}/invoice_diff_format.pcl
+
+Compare PCL Print Jobs with different page count
+    Run Keyword And Expect Error    The compared print jobs are different.    Compare Print Jobs    pcl    ${PJ_DIR}/pcl5_one_page.pcl    ${PJ_DIR}/pcl5_two_pages.pcl
+
+Compare PS Print Jobs with different page count
+    Run Keyword And Expect Error    The compared print jobs are different.    Compare Print Jobs    ps    ${PJ_DIR}/ps_01_minimal_dsc.ps    ${PJ_DIR}/ps_09_two_pages.ps
+
+Compare PS Print Jobs with A4 and Letter bounding box
+    Run Keyword And Expect Error    The compared print jobs are different.    Compare Print Jobs    ps    ${PJ_DIR}/ps_a4.ps    ${PJ_DIR}/ps_letter.ps
+
+Compare PS Print Jobs that differ only in run-specific values
+    Compare Print Jobs    ps    ${PJ_DIR}/ps_run_a.ps    ${PJ_DIR}/ps_run_b.ps
+
+Compare PS Print Jobs while ignoring additional properties
+    Run Keyword And Expect Error    The compared print jobs are different.    Compare Print Jobs    ps    ${PJ_DIR}/ps_creator_a.ps    ${PJ_DIR}/ps_creator_b.ps
+    Compare Print Jobs    ps    ${PJ_DIR}/ps_creator_a.ps    ${PJ_DIR}/ps_creator_b.ps    ignore_properties=Creator
+
+Check page count of a PostScript Print Job without DSC page comments
+    ${print_job}    Get Postscript Print Job    ${PJ_DIR}/ps_07_no_dsc_two_pages.ps
+    Check Print Job Property    ${print_job}    page_count    2
+
+Visually compare an empty PCL file fails with a rendering error
+    Run Keyword And Expect Error    *produced no pages*    Compare Images    ${PJ_DIR}/empty.pcl    ${PJ_DIR}/empty.pcl

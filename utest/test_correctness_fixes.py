@@ -318,7 +318,7 @@ class TestPclPageNumbersAreIntegers:
             output_arg = next(a for a in args if str(a).startswith("-sOutputFile="))
             pattern = str(output_arg)[len("-sOutputFile="):]
             cv2.imwrite(pattern % 1, rendered)
-            return SimpleNamespace(returncode=0)
+            return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
 
         monkeypatch.setattr(subprocess_module, "run", _fake_run)
 

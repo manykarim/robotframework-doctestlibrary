@@ -166,10 +166,9 @@ Windows
 
 ## Some special instructions for Windows 
 
-### Rename executable for GhostPCL to pcl6.exe (only needed for `.pcl` support)
-The executable for GhostPCL `gpcl6win64.exe` needs to be renamed to `pcl6.exe`
-
-Otherwise it will not be possible to render .pcl files successfully for visual comparison.
+### GhostPCL executable (only needed for `.pcl` support)
+The library finds GhostPCL as `pcl6`, `gpcl6win64`, `gpcl6win32` or `gpcl6`, so the Windows executable `gpcl6win64.exe` can be used as it is.
+Keep it in its installation folder next to `gpcl6dll64.dll`: a copy without that DLL cannot start, and rendering then fails with a clear error.
 
 ### Add tesseract, ghostscript and imagemagick to system path in windows (only needed for OCR, `.pcl` and `.ps` support)
 * C:\Program Files\ImageMagick-7.0.10-Q16-HDRI
@@ -183,7 +182,7 @@ That means: When you open the CMD shell you can run the commands
 * `magick.exe`
 * `tesseract.exe`
 * `gswin64.exe`
-* `pcl6.exe`
+* `gpcl6win64.exe` (or `pcl6.exe`)
 
 successfully from any folder/location
 
@@ -676,6 +675,45 @@ Library    DocTest.VisualTest
 Get Text Content And Compare
     ${text}    Get Barcodes From Document    reference.jpg
     List Should Contain Value    ${text}    123456789
+```
+
+### Compare print jobs (PCL and PostScript)
+
+`Compare Images` renders `.pcl` files with GhostPCL and `.ps` files with Ghostscript and compares them visually.
+A render that fails, produces no pages, or produces a different number of pages than the PCL job contains raises an error instead of passing.
+PCL jobs that do not set their own page size are rendered on A4; use `printing_papersize=letter` for Letter.
+
+`Compare Print Jobs` compares the print settings of two jobs without rendering them:
+
+| Type | Supported jobs | Compared properties |
+|---|---|---|
+| `pcl` | PCL 5 and PCL XL (PCL 6), with or without PJL | page count, language, and per page: paper format, paper source, orientation, duplex, copies |
+| `ps` | DSC and non-DSC PostScript, with or without PJL | page count, PJL commands, header comments, requested features (e.g. `*Duplex`), page comments, trailer |
+
+Values that change on every run of the same job are ignored by default: the DSC comments `CreationDate`, `Title`, `For`, `Routing`, `Invocation` and the PJL values `NAME`, `JOBNAME`, `USERNAME`, `USERID`, `HOSTID`, `HOSTNAME`, `LHOSTID`, `LHOSTJOBID`, `UPN`, `DATE`, `TIME`.
+Use `ignore_properties` to ignore more.
+Page counts of PostScript jobs without `%%Page` comments are determined with Ghostscript.
+
+```RobotFramework
+*** Settings ***
+Library    DocTest.PrintJobTests
+Library    DocTest.VisualTest
+
+*** Test Cases ***
+Compare print settings of two PCL jobs
+    Compare Print Jobs    pcl    reference.pcl    candidate.pcl
+
+Compare print settings of two PostScript jobs, ignoring the driver version
+    Compare Print Jobs    ps    reference.ps    candidate.ps    ignore_properties=Creator
+
+Check single print settings
+    ${print_job}    Get Pcl Print Job    candidate.pcl
+    ${tray}    Create Dictionary    page=1    property=paper_source    value=7
+    Check Print Job Property    ${print_job}    pcl_commands    ${tray}
+    Check Print Job Property    ${print_job}    page_count    2
+
+Visually compare a PCL job that sets no page size, rendered on Letter
+    Compare Images    reference.pcl    candidate.pcl    printing_papersize=letter
 ```
 
 ### Using pabot to run tests in parallel

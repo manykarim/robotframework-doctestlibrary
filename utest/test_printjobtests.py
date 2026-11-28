@@ -1,12 +1,17 @@
 """Unit tests for PrintJobTests module."""
 
 import os
-from unittest.mock import MagicMock, mock_open, patch
+from pathlib import Path
+from unittest import mock
+from unittest.mock import patch
 
+import pytest
+
+from DocTest import PrintJobParsing
+from DocTest.PrintJobParsing import PclXlError
 from DocTest.PrintJobTests import (
-    PclVisitor,
-    PostscriptVisitor,
     PrintJob,
+    check_print_job_property,
     chop,
     compare_print_jobs,
     get_pcl_print_job,
@@ -18,6 +23,17 @@ TESTDATA_DIR = os.path.join(
 )
 INVOICE_PS = os.path.join(TESTDATA_DIR, "invoice.ps")
 INVOICE_NO_LOGO_PS = os.path.join(TESTDATA_DIR, "invoice_no_logo.ps")
+INVOICE_PCL = os.path.join(TESTDATA_DIR, "invoice.pcl")
+INVOICE_PCLXL = os.path.join(TESTDATA_DIR, "invoice_diff_format.pcl")
+FIXTURES = Path(__file__).parent / "testdata" / "printjobs"
+
+
+def fx(name):
+    return str(FIXTURES / name)
+
+
+def prop(print_job, name):
+    return next(p["value"] for p in print_job.properties if p["property"] == name)
 
 
 class TestPrintJobFromPrintJobTests:
@@ -30,254 +46,6 @@ class TestPrintJobFromPrintJobTests:
 
         assert job.jobtype == "pcl"
         assert job.properties == properties
-
-
-class TestPclVisitor:
-    """Test cases for PclVisitor class."""
-
-    def test_pcl_visitor_initialization(self):
-        """Test PclVisitor initialization."""
-        visitor = PclVisitor()
-
-        assert visitor.pcl_commands == []
-        assert visitor.page == 1
-
-    def test_add_page_property_paper_source(self):
-        """Test adding paper source property."""
-        visitor = PclVisitor()
-
-        # Create a mock node structure
-        mock_node = MagicMock()
-        mock_node.text = "2h"
-        mock_node.expr_name = "paper_source_command"
-
-        visitor.add_page_property([mock_node])
-
-        assert len(visitor.pcl_commands) == 1
-        assert visitor.pcl_commands[0]["page"] == "1"
-        assert visitor.pcl_commands[0]["property"] == "paper_source"
-        assert visitor.pcl_commands[0]["value"] == "2"
-
-    def test_add_page_property_copies(self):
-        """Test adding copies property."""
-        visitor = PclVisitor()
-
-        mock_node = MagicMock()
-        mock_node.text = "3x"
-        mock_node.expr_name = "copies_command"
-
-        visitor.add_page_property([mock_node])
-
-        assert len(visitor.pcl_commands) == 1
-        assert visitor.pcl_commands[0]["property"] == "copies"
-        assert visitor.pcl_commands[0]["value"] == "3"
-
-    def test_add_page_property_duplex(self):
-        """Test adding duplex property."""
-        visitor = PclVisitor()
-
-        mock_node = MagicMock()
-        mock_node.text = "1s"
-        mock_node.expr_name = "duplex_command"
-
-        visitor.add_page_property([mock_node])
-
-        assert len(visitor.pcl_commands) == 1
-        assert visitor.pcl_commands[0]["property"] == "duplex"
-        assert visitor.pcl_commands[0]["value"] == "1"
-
-    def test_add_page_property_page_orientation(self):
-        """Test adding page orientation property."""
-        visitor = PclVisitor()
-
-        mock_node = MagicMock()
-        mock_node.text = "1o"
-        mock_node.expr_name = "page_orientation_command"
-
-        visitor.add_page_property([mock_node])
-
-        assert len(visitor.pcl_commands) == 1
-        assert visitor.pcl_commands[0]["property"] == "page_orientation"
-        assert visitor.pcl_commands[0]["value"] == "1"
-
-    def test_add_page_property_paper_format(self):
-        """Test adding paper format property."""
-        visitor = PclVisitor()
-
-        mock_node = MagicMock()
-        mock_node.text = "26a"
-        mock_node.expr_name = "paper_format_command"
-
-        visitor.add_page_property([mock_node])
-
-        assert len(visitor.pcl_commands) == 1
-        assert visitor.pcl_commands[0]["property"] == "paper_format"
-        assert visitor.pcl_commands[0]["value"] == "26"
-
-    def test_add_page_property_empty_value(self):
-        """Test adding property with empty value."""
-        visitor = PclVisitor()
-
-        mock_node = MagicMock()
-        mock_node.text = ""
-        mock_node.expr_name = "paper_source_command"
-
-        visitor.add_page_property([mock_node])
-
-        assert len(visitor.pcl_commands) == 0
-
-    def test_visit_formfeed(self):
-        """Test formfeed visitor increments page number."""
-        visitor = PclVisitor()
-        initial_page = visitor.page
-
-        visitor.visit_formfeed(None, None)
-
-        assert visitor.page == initial_page + 1
-
-    def test_generic_visit_with_children(self):
-        """Test generic visit with children nodes."""
-        visitor = PclVisitor()
-
-        mock_node = MagicMock()
-        mock_node.expr_name = None
-        mock_node.children = ["child1", "child2"]
-
-        visited_children = ["visited1"]
-        result = visitor.generic_visit(mock_node, visited_children)
-
-        assert result == "visited1"
-
-    def test_generic_visit_without_expr_name(self):
-        """Test generic visit without expression name."""
-        visitor = PclVisitor()
-
-        mock_node = MagicMock()
-        mock_node.expr_name = None
-        mock_node.children = ["child1", "child2"]
-
-        visited_children = ["visited1", "visited2"]
-        result = visitor.generic_visit(mock_node, visited_children)
-
-        assert result == visited_children
-
-
-class TestPostscriptVisitor:
-    """Test cases for PostscriptVisitor class."""
-
-    def test_postscript_visitor_initialization(self):
-        """Test PostscriptVisitor initialization."""
-        visitor = PostscriptVisitor()
-
-        assert visitor.comments == []
-        assert visitor.pages == []
-        assert visitor.features == []
-        assert visitor.setup == []
-        assert visitor.header == []
-        assert visitor.trailer == []
-        assert visitor.pjl_commands == []
-
-    def test_visit_page(self):
-        """Test visit_page method."""
-        visitor = PostscriptVisitor()
-
-        mock_page = MagicMock()
-        mock_page.text = "%%Page:"
-        mock_value = MagicMock()
-        mock_value.text = "1 1"
-
-        result = visitor.visit_page(None, [mock_page, mock_value])
-
-        assert result == ("%%Page:", "1 1")
-
-    def test_visit_comments(self):
-        """Test visit_comments method."""
-        visitor = PostscriptVisitor()
-
-        mock_comment = MagicMock()
-        mock_comment.text = "%%Title"
-        mock_value = MagicMock()
-        mock_value.text = " Test Document "
-
-        result = visitor.visit_comments(None, [mock_comment, mock_value])
-
-        assert result["property"] == "Title"
-        assert result["value"] == "Test Document"
-
-    def test_visit_pjl_content(self):
-        """Test visit_pjl_content method."""
-        visitor = PostscriptVisitor()
-
-        mock_node = MagicMock()
-        mock_node.text = "@PJL SET RESOLUTION=600"
-
-        visitor.visit_pjl_content(mock_node, None)
-
-        assert len(visitor.pjl_commands) == 1
-        assert visitor.pjl_commands[0] == "@PJL SET RESOLUTION=600"
-
-    def test_visit_feature(self):
-        """Test visit_feature method."""
-        visitor = PostscriptVisitor()
-
-        # Mock the begin_feature structure
-        mock_begin_feature = MagicMock()
-        mock_begin_feature.children = [MagicMock(), MagicMock()]
-        mock_begin_feature.children[1].text = " *MediaType Plain "
-
-        mock_ppd_feature = MagicMock()
-        mock_ppd_feature.text = " Plain "
-
-        visitor.visit_feature(None, [mock_begin_feature, mock_ppd_feature, None])
-
-        assert len(visitor.features) == 1
-        assert visitor.features[0]["feature"] == "*MediaType Plain"
-        assert visitor.features[0]["value"] == "Plain"
-
-    def test_visit_page_setup(self):
-        """Test visit_page_setup method."""
-        visitor = PostscriptVisitor()
-
-        mock_begin_page_setup = MagicMock()
-        feature_dict = {"feature": "test", "value": "test_value"}
-
-        result = visitor.visit_page_setup(
-            None, [mock_begin_page_setup, None, feature_dict, None, None]
-        )
-
-        assert result == feature_dict
-
-    def test_visit_header(self):
-        """Test visit_header method."""
-        visitor = PostscriptVisitor()
-
-        comments = [
-            {"property": "Title", "value": "Test"},
-            None,
-            {"property": "Creator", "value": "Test App"},
-        ]
-
-        result = visitor.visit_header(None, [None, comments, None])
-
-        assert len(visitor.header) == 2
-        assert len(result) == 2
-        assert result[0]["property"] == "Title"
-        assert result[1]["property"] == "Creator"
-
-    def test_visit_document_trailer(self):
-        """Test visit_document_trailer method."""
-        visitor = PostscriptVisitor()
-
-        comments = [
-            {"property": "Pages", "value": "1"},
-            None,
-            {"property": "EOF", "value": "true"},
-        ]
-
-        result = visitor.visit_document_trailer(None, [None, comments])
-
-        assert len(visitor.trailer) == 2
-        assert len(result) == 2
 
 
 class TestChopFunction:
@@ -318,46 +86,48 @@ class TestChopFunction:
 class TestGetPclPrintJob:
     """Test cases for get_pcl_print_job function."""
 
-    @patch("DocTest.PrintJobTests.is_url")
-    @patch("builtins.open", new_callable=mock_open, read_data="test pcl content")
-    def test_get_pcl_print_job_local_file(self, mock_file, mock_is_url):
-        """Test getting PCL print job from local file."""
-        mock_is_url.return_value = False
+    def test_pcl5_invoice_properties(self):
+        job = get_pcl_print_job(INVOICE_PCL)
+        assert job.jobtype == "pcl"
+        assert [p["property"] for p in job.properties] == ["pcl_commands", "page_count", "language"]
+        assert prop(job, "page_count") == 1
+        assert prop(job, "language") == ["PCL5"]
+        commands = prop(job, "pcl_commands")
+        for expected in ({"page": "1", "property": "page_orientation", "value": "0"},
+                         {"page": "1", "property": "paper_format", "value": "26"},
+                         {"page": "1", "property": "copies", "value": "1"},
+                         {"page": "1", "property": "paper_source", "value": "7"}):
+            assert expected in commands
 
-        # This will likely fail due to grammar parsing, but we can test the file reading part
-        filename = "test.pcl"
+    def test_tray_value_above_six_is_reported(self):
+        commands = prop(get_pcl_print_job(fx("pcl5_tray7.pcl")), "pcl_commands")
+        assert {"page": "1", "property": "paper_source", "value": "7"} in commands
 
-        try:
-            result = get_pcl_print_job(filename)
-            # If we get here, check that it's a PrintJob
-            assert isinstance(result, PrintJob)
-            assert result.jobtype == "pcl"
-        except Exception:
-            # Expected due to simplified test content
-            pass
+    def test_pclxl_invoice_properties(self):
+        job = get_pcl_print_job(INVOICE_PCLXL)
+        assert prop(job, "language") == ["PCLXL"]
+        assert prop(job, "page_count") == 1
+        assert prop(job, "pcl_commands") == [
+            {"page": "1", "property": "paper_format", "value": "2"},
+            {"page": "1", "property": "paper_source", "value": "1"},
+            {"page": "1", "property": "page_orientation", "value": "0"},
+            {"page": "1", "property": "duplex", "value": "simplex"},
+        ]
 
-        mock_file.assert_called_once_with(filename, encoding="utf8", errors="ignore")
+    def test_file_is_read_as_bytes(self):
+        with patch("builtins.open", mock.mock_open(read_data=b"\x1bE\x1b&l26AText\x0c")) as mock_file:
+            job = get_pcl_print_job("test.pcl")
+        mock_file.assert_called_once_with("test.pcl", "rb")
+        assert prop(job, "page_count") == 1
 
     @patch("DocTest.PrintJobTests.is_url")
     @patch("DocTest.PrintJobTests.download_file_from_url")
-    @patch("builtins.open", new_callable=mock_open, read_data="test pcl content")
-    def test_get_pcl_print_job_url(self, mock_file, mock_download, mock_is_url):
-        """Test getting PCL print job from URL."""
+    def test_url_is_downloaded_before_parsing(self, mock_download, mock_is_url):
         mock_is_url.return_value = True
-        mock_download.return_value = "downloaded_file.pcl"
-
-        url = "http://example.com/test.pcl"
-
-        try:
-            get_pcl_print_job(url)
-        except Exception:
-            # Expected due to simplified test content
-            pass
-
-        mock_download.assert_called_once_with(url)
-        mock_file.assert_called_once_with(
-            "downloaded_file.pcl", encoding="utf8", errors="ignore"
-        )
+        mock_download.return_value = INVOICE_PCL
+        job = get_pcl_print_job("http://example.com/test.pcl")
+        mock_download.assert_called_once_with("http://example.com/test.pcl")
+        assert prop(job, "page_count") == 1
 
 
 class TestGetPostscriptPrintJob:
@@ -369,43 +139,18 @@ class TestGetPostscriptPrintJob:
 
         assert isinstance(result, PrintJob)
         assert result.jobtype == "postscript"
-        assert len(result.properties) > 0
-
-        # Verify expected property keys exist
-        property_names = [p["property"] for p in result.properties]
-        assert "pjl_commands" in property_names
-        assert "pages" in property_names
-        assert "trailer" in property_names
-
-    def test_get_postscript_print_job_invoice_no_logo(self):
-        """Test parsing a real PostScript fixture (invoice_no_logo.ps)."""
-        result = get_postscript_print_job(INVOICE_NO_LOGO_PS)
-
-        assert isinstance(result, PrintJob)
-        assert result.jobtype == "postscript"
-        assert len(result.properties) > 0
-
-        # Verify expected property keys exist
-        property_names = [p["property"] for p in result.properties]
-        assert "pjl_commands" in property_names
-        assert "pages" in property_names
-        assert "trailer" in property_names
+        assert [p["property"] for p in result.properties] == [
+            "pjl_commands", "header", "features", "pages", "trailer", "page_count"]
+        assert prop(result, "page_count") == 1
+        assert {"property": "BoundingBox", "value": "0 0 596 842"} in prop(result, "header")
 
     def test_postscript_print_job_pages_parsed(self):
         """Test that page metadata is correctly extracted from the fixture."""
-        result = get_postscript_print_job(INVOICE_PS)
-
-        pages_prop = next(
-            p for p in result.properties if p["property"] == "pages"
-        )
-        pages = pages_prop["value"]
-        assert len(pages) > 0
-        assert pages[0]["property"] == "PageBoundingBox"
-        assert pages[0]["page"] == "1"
+        pages = prop(get_postscript_print_job(INVOICE_PS), "pages")
+        assert pages[0] == {"page": "1", "property": "PageBoundingBox", "value": "0 0 595 841"}
 
     def test_compare_postscript_print_jobs(self):
-        """Test comparing two real PostScript fixtures succeeds without error."""
-        # Both fixtures share the same page structure, so comparison should pass
+        """Both fixtures share the same page structure, so comparison should pass."""
         compare_print_jobs("ps", INVOICE_PS, INVOICE_NO_LOGO_PS)
 
     @patch("DocTest.PrintJobTests.is_url")
@@ -420,3 +165,76 @@ class TestGetPostscriptPrintJob:
         mock_download.assert_called_once_with("http://example.com/test.ps")
         assert isinstance(result, PrintJob)
         assert result.jobtype == "postscript"
+
+    def test_header_property_check_passes(self):
+        job = get_postscript_print_job(fx("ps_01_minimal_dsc.ps"))
+        check_print_job_property(job, "header", {"property": "Title", "value": "invoice"})
+
+    @pytest.mark.skipif(PrintJobParsing.find_ghostscript() is None, reason="Ghostscript not installed")
+    def test_non_dsc_job_is_counted_by_ghostscript(self):
+        assert prop(get_postscript_print_job(fx("ps_07_no_dsc_two_pages.ps")), "page_count") == 2
+
+    def test_non_dsc_job_without_ghostscript_is_an_error(self):
+        with mock.patch.object(PrintJobParsing, "find_ghostscript", return_value=None):
+            with pytest.raises(AssertionError, match="Ghostscript is required"):
+                get_postscript_print_job(fx("ps_07_no_dsc_two_pages.ps"))
+
+
+def assert_differs(kind, reference, candidate, *, names=(), ignore=None):
+    with patch("DocTest.PrintJobTests.robot_logger") as log:
+        with pytest.raises(AssertionError, match="The compared print jobs are different."):
+            compare_print_jobs(kind, reference, candidate, ignore)
+    logged = "\n".join(str(c.args[0]) for c in log.info.call_args_list)
+    for name in names:
+        assert name in logged.split("Candidate File:")[-1], f"{name} not reported as a difference"
+
+
+class TestComparePrintJobs:
+    """False-pass regressions and comparison semantics."""
+
+    def test_postscript_page_count_difference(self):
+        assert_differs("ps", fx("ps_01_minimal_dsc.ps"), fx("ps_09_two_pages.ps"), names=["page_count"])
+
+    def test_pcl_page_count_difference(self):
+        assert_differs("pcl", fx("pcl5_one_page.pcl"), fx("pcl5_two_pages.pcl"), names=["page_count"])
+
+    def test_bounding_box_difference(self):
+        assert_differs("ps", fx("ps_a4.ps"), fx("ps_letter.ps"), names=["BoundingBox"])
+
+    def test_requested_feature_difference(self):
+        assert_differs("ps", fx("ps_duplex_notumble.ps"), fx("ps_duplex_tumble.ps"), names=["*Duplex"])
+
+    def test_pclxl_attribute_difference(self):
+        assert_differs("pcl", INVOICE_PCLXL, fx("pclxl_letter.pcl"), names=["paper_format"])
+
+    def test_scrambled_pclxl_is_not_equal(self):
+        with pytest.raises(PclXlError):
+            compare_print_jobs("pcl", INVOICE_PCLXL, fx("pclxl_scrambled.pcl"))
+
+    def test_language_difference(self):
+        assert_differs("pcl", INVOICE_PCL, INVOICE_PCLXL, names=["language"])
+
+    def test_run_specific_fields_are_ignored_by_default(self):
+        compare_print_jobs("ps", fx("ps_run_a.ps"), fx("ps_run_b.ps"))
+
+    def test_ignore_properties_extends_defaults(self):
+        assert_differs("ps", fx("ps_creator_a.ps"), fx("ps_creator_b.ps"), names=["Creator"])
+        compare_print_jobs("ps", fx("ps_creator_a.ps"), fx("ps_creator_b.ps"), "Creator")
+        compare_print_jobs("ps", fx("ps_creator_a.ps"), fx("ps_creator_b.ps"), ["creator"])
+
+    def test_ignore_properties_accepts_groups(self):
+        compare_print_jobs("ps", fx("ps_a4.ps"), fx("ps_letter.ps"), "header")
+        assert_differs("ps", fx("ps_a4.ps"), fx("ps_letter.ps"), ignore="trailer")
+
+    def test_pjl_key_value_pairs_are_filtered_not_whole_lines(self):
+        from DocTest.PrintJobTests import _filter_pjl, _ignored_names
+        ignored = _ignored_names(None)
+        assert _filter_pjl('@PJL LJOBINFO USERID="a" HOSTID="b" COPIES="2"', ignored) == '@PJL LJOBINFO COPIES="2"'
+        assert _filter_pjl('@PJL SET USERNAME="alice"', ignored) is None
+        assert _filter_pjl('@PJL SET DUPLEX=ON', ignored) == "@PJL SET DUPLEX=ON"
+
+    def test_page_count_property_check(self):
+        job = get_pcl_print_job(fx("pcl5_two_pages.pcl"))
+        check_print_job_property(job, "page_count", "2")
+        with pytest.raises(AssertionError, match="check failed"):
+            check_print_job_property(job, "page_count", "3")
